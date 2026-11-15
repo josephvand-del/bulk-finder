@@ -303,6 +303,8 @@ async function processOutbox() {
   }
 }
 
+var cloudError = null; // last cloud-save failure, shown in the status pill
+
 function updateSyncStatus() {
   var pill = $('syncStatus');
   if (!pill) return;
@@ -317,6 +319,8 @@ function updateSyncStatus() {
       : 'Offline — saved on this phone';
   } else if (syncing || pending) {
     pill.textContent = 'Syncing… (' + pending + ' pending)';
+  } else if (cloudError) {
+    pill.textContent = 'Cloud save failed — will retry';
   } else {
     pill.textContent = 'Synced';
   }
@@ -335,10 +339,12 @@ async function fetchCloudSets() {
 }
 
 async function createCloudSet(meta) {
+  if (!user) return null;
   var res = await sb.from('user_sets')
-    .insert({ set_num: meta.set_num, set_name: meta.set_name, total_parts: meta.total_parts, total_lots: meta.total_lots })
+    .upsert({ user_id: user.id, set_num: meta.set_num, set_name: meta.set_name, total_parts: meta.total_parts, total_lots: meta.total_lots }, { onConflict: 'user_id,set_num' })
     .select().single();
-  if (res.error) { console.warn('user_sets insert failed', res.error); return null; }
+  if (res.error) { console.warn('user_sets save failed', res.error); cloudError = res.error.message || 'save failed'; updateSyncStatus(); return null; }
+  cloudError = null;
   var ids = cloudIds();
   ids[meta.set_num] = res.data.id;
   saveCloudIds(ids);
@@ -387,17 +393,36 @@ async function ensureCloudSet(meta) {
     var rows = await fetchCloudParts(userSetId);
     if (rows === null) return; // fetch failed: keep local, retry next open
     if (rows.length > 0) {
-      // Cloud wins.
       var inv = getInventory(meta.set_num);
       var map = {};
       inv.items.forEach(function (it) { map[it.id] = it.qty; });
+      var local = remainingBySet[meta.set_num] || loadCounts(meta.set_num);
+      // First contact = this device never saved this set's cloud row
+      // (no bf:cloudIds entry). Merge best-of-both per lot and push the
+      // merged counts back up, so neither device's progress is lost.
+      // Already-synced devices keep cloud-wins (Reset propagates).
+      var firstContact = !ids[meta.set_num];
       rows.forEach(function (r) {
-        if (map.hasOwnProperty(r.part_key)) map[r.part_key] = Math.max(0, r.qty_remaining);
+        if (map.hasOwnProperty(r.part_key)) {
+          var cloudRem = Math.max(0, r.qty_remaining);
+          map[r.part_key] = firstContact
+            ? Math.min(cloudRem, (typeof local[r.part_key] === 'number' ? local[r.part_key] : cloudRem))
+            : cloudRem;
+        }
       });
       remainingBySet[meta.set_num] = map;
       saveCounts(meta.set_num, map);
+      if (firstContact) {
+        await uploadAllParts(userSetId, meta.set_num, map);
+        var ids2 = cloudIds();
+        ids2[meta.set_num] = userSetId;
+        saveCloudIds(ids2);
+      }
     } else {
       await uploadAllParts(userSetId, meta.set_num, remainingBySet[meta.set_num] || loadCounts(meta.set_num));
+      var ids3 = cloudIds();
+      ids3[meta.set_num] = userSetId;
+      saveCloudIds(ids3);
     }
     updateSyncStatus();
   })();
@@ -427,6 +452,11 @@ async function refreshSetsFromCloud() {
   }));
   // Inventories for every set in the list, so openSet can use them.
   await loadInventoriesForSets();
+  // First-contact sync for every set (merge or upload): the merge must
+  // land before any 20s pull can adopt cloud counts over local progress.
+  for (var i = 0; i < sets.length; i++) {
+    await ensureCloudSet(sets[i]);
+  }
 }
 
 /* ---------- Live sync (v3.3): other devices, no refresh ----------
@@ -981,19 +1011,24 @@ async function addImportedSet() {
   var map = {};
   p.inventory.items.forEach(function (it) { map[it.id] = it.qty; });
   saveCounts(p.set_num, map);
+  var cloudSaved = true;
   if (user && sb) {
     var id = await createCloudSet(meta);
     if (id) {
       meta.user_set_id = id;
-      await uploadAllParts(id, p.set_num, map);
+      cloudSaved = await uploadAllParts(id, p.set_num, map);
+    } else {
+      cloudSaved = false;
     }
-    // If the cloud set failed, the local copy stays; it uploads on next open.
+    // If the cloud save failed, the local copy stays; it uploads on next open.
   }
   hideAddSetPreview();
   $('setNumInput').value = '';
   renderSets();
   openSet(meta.key);
-  say('Added ' + p.set_num + ' — ' + p.inventory.lots + ' lots, ' + p.inventory.pieces + ' pieces. All lots start at full count.');
+  say(cloudSaved
+    ? 'Added ' + p.set_num + ' — ' + p.inventory.lots + ' lots, ' + p.inventory.pieces + ' pieces. All lots start at full count.'
+    : 'Added ' + p.set_num + ' on this device, but the cloud save failed — it is not on your other devices yet. Reopen the set to retry.');
   updateSyncStatus();
 }
 
