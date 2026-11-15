@@ -142,6 +142,8 @@ function partNumOf(item) { var parts = String(item.id || '').split('-'); return 
  * bf:outbox          — pending sync ops (retried until they land)
  * bf:activeSet       — last opened set
  * bf:selectedSets    — set keys shown together in the combined view
+ * bf:view            — { date, status, type, colour } for the filter + set
+ *                      view (same-day restore; a new day resets to defaults)
  * bf:guestDismissed  — auth card dismissed for this session's guest */
 var LS = {
   get: function (k, fallback) {
@@ -201,9 +203,49 @@ function remOf(item) {
 }
 var mergedThisSession = {};   // set_num -> true once cloud merge ran
 var cloudMergePromises = {};  // set_num -> in-flight cloud-merge promise
-var statusFilter = 'all';     // all | needed | done
+var statusFilter = 'needed'; // all | needed | done (Still needed is the default)
 var colourFilter = 'all';     // all | family name
 var typeFilter = 'all';       // Rebrickable category name, or 'all'
+
+// ---------- View state (filters + set selection) ----------
+// Joseph's rule (2026-11-15): a refresh keeps whatever view he's on —
+// status, sets, type, colour — but a brand-new day starts fresh at the
+// defaults (Still needed, all sets). The view is stamped with the local
+// date; a stored view from any other day is ignored and the defaults win.
+// Counts are never part of this — they live in bf:counts:<setNum> and a
+// refresh or a new day never touches them.
+function todayStr() {
+  var d = new Date();
+  function p(n) { return (n < 10 ? '0' : '') + n; }
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+function saveViewState() {
+  LS.set('bf:view', { date: todayStr(), status: statusFilter, type: typeFilter, colour: colourFilter });
+}
+// Restore the saved view when it is from today; otherwise fall back to
+// the defaults. Returns true when a same-day view was restored.
+function loadViewState() {
+  var v = LS.get('bf:view', null);
+  var sameDay = !!(v && v.date === todayStr());
+  if (sameDay) {
+    if (v.status === 'all' || v.status === 'needed' || v.status === 'done') statusFilter = v.status;
+    if (typeof v.type === 'string') typeFilter = v.type;
+    if (typeof v.colour === 'string') colourFilter = v.colour;
+  } else {
+    statusFilter = 'needed';
+    typeFilter = 'all';
+    colourFilter = 'all';
+  }
+  syncFilterButtons();
+  return sameDay;
+}
+// The status buttons are static HTML — keep the highlighted one on the
+// filter that is actually active (restored, default, or just tapped).
+function syncFilterButtons() {
+  document.querySelectorAll('.filter-btn').forEach(function (b) {
+    b.classList.toggle('active', b.dataset.filter === statusFilter);
+  });
+}
 
 var SEED_SET = {
   key: '8961-1',
@@ -1186,6 +1228,7 @@ function setSelected(keys) {
   if (!valid.length) return;
   selectedKeys = valid;
   saveSelectedKeys();
+  saveViewState();
   loadSelected();
 }
 
@@ -1200,6 +1243,7 @@ function toggleSet(key) {
     selectedKeys.push(key);
   }
   saveSelectedKeys();
+  saveViewState();
   loadSelected();
 }
 
@@ -1211,6 +1255,7 @@ function selectAllSets(select) {
     selectedKeys = [sets.length ? sets[0].key : activeSetKey].filter(Boolean);
   }
   saveSelectedKeys();
+  saveViewState();
   loadSelected();
 }
 
@@ -1267,7 +1312,8 @@ function cardMatches(item) {
 
 function rebuildColourSelect() {
   var sel = $('colourSelect');
-  var current = sel.value || 'all';
+  if (!sel) return;
+  var current = colourFilter || 'all'; // the filter variable is the source of truth
   // Remaining pieces per family (trans variants folded into base colours;
   // lots that used to be "any colour" count under their pictured colour).
   var famLeft = {};
@@ -1298,7 +1344,7 @@ function rebuildColourSelect() {
 function rebuildTypeSelect() {
   var sel = $('typeSelect');
   if (!sel) return;
-  var current = sel.value || 'all';
+  var current = typeFilter || 'all'; // the filter variable is the source of truth
   rebuildCatCounts(); // the fold follows what is left, so refresh it here too
   // Remaining pieces per displayed category — small raw categories fold
   // into Miscellaneous (see displayCat), from the lots actually here.
@@ -1618,16 +1664,19 @@ function bindEvents() {
       document.querySelectorAll('.filter-btn').forEach(function (b) { b.classList.remove('active'); });
       btn.classList.add('active');
       statusFilter = btn.dataset.filter;
+      saveViewState();
       renderSetView();
     });
   });
   $('colourSelect').addEventListener('change', function (e) {
     colourFilter = e.target.value;
+    saveViewState();
     renderSetView();
   });
 
   $('typeSelect').addEventListener('change', function (e) {
     typeFilter = e.target.value;
+    saveViewState();
     renderSetView();
   });
   $('setPickerBtn').addEventListener('click', function (e) {
@@ -1694,12 +1743,19 @@ async function init() {
   await loadInventoriesForSets();
   renderAuth();
   renderSets();
+  // Restore today's view (filters + set selection); a new day starts
+  // fresh at Still needed with every set open.
+  var sameDay = loadViewState();
   var last = LS.get('bf:activeSet', null);
   var savedSel = loadSelectedKeys();
-  if (savedSel && savedSel.length && savedSel.every(function (k) { return findSet(k); })) {
+  if (sameDay && savedSel && savedSel.length && savedSel.every(function (k) { return findSet(k); })) {
     selectedKeys = savedSel;
     activeSetKey = (last && selectedKeys.indexOf(last) >= 0) ? last : selectedKeys[0];
     loadSelected();
+  } else if (!sameDay && sets.length) {
+    activeSetKey = sets[0].key;
+    LS.set('bf:activeSet', activeSetKey);
+    selectAllSets(true);
   } else if (last && findSet(last)) openSet(last);
   else if (sets.length) openSet(sets[0].key);
   else showEmpty();
