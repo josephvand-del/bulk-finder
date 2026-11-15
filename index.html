@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bulk Finder — LEGO bulk hunt tracker</title>
+<link rel="stylesheet" href="styles.css">
+<!-- Supabase JS v2 (CDN). Auth + database live here; the app still works
+     as a guest if this fails to load (local-only mode). -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="header-text">
+    <h1>Bulk Finder</h1>
+    <p class="tagline">Pick a set, hunt the bulk bins, tap each piece as it goes in the bag.</p>
+  </div>
+  <div class="header-auth">
+    <span id="syncStatus" class="sync-status">Saved on this phone</span>
+    <span id="userChip" class="user-chip" hidden></span>
+    <button id="authToggleBtn" class="btn btn-small">Log in / Sign up</button>
+    <button id="logoutBtn" class="btn btn-small" hidden>Log out</button>
+  </div>
+</header>
+
+<!-- Auth card: shown when logged out and not dismissed. Guest mode is the
+     default — the tracker fully works without an account, on this device. -->
+<section id="authCard" class="auth-card" hidden>
+  <h2>Your account</h2>
+  <p>Log in to save your sets to your account and see them on any device.
+     Or keep going as a guest — everything still works, it just stays on
+     this phone.</p>
+  <label>Email <input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com"></label>
+  <label>Password <input id="authPassword" type="password" autocomplete="current-password" placeholder="Password (6+ characters)"></label>
+  <div class="auth-buttons">
+    <button id="loginBtn" class="btn">Log in</button>
+    <button id="signupBtn" class="btn">Sign up</button>
+    <button id="guestBtn" class="btn btn-quiet">Continue as guest</button>
+  </div>
+  <p id="authMsg" class="auth-msg" role="status"></p>
+</section>
+
+<div class="layout">
+  <aside class="sidebar">
+    <h2>My sets</h2>
+    <ul id="setList" class="set-list"></ul>
+    <p id="noSetsMsg" class="muted">No sets yet — add the starter set below.</p>
+
+    <h3>Add a set by number</h3>
+    <div class="add-set">
+      <input id="setNumInput" type="text" inputmode="numeric" placeholder="Set number, e.g. 8961-1" aria-label="Set number">
+      <button id="addSetBtn" class="btn">Add set</button>
+    </div>
+    <p id="addSetMsg" class="coming-soon">Set lookup via Rebrickable is coming in the next version — for now, add the starter set below.</p>
+
+    <h3>Starter set</h3>
+    <button id="seedBtn" class="btn btn-wide">Add 8961-1 Crystal Sweeper</button>
+    <p class="muted small">The full 138-lot, 430-piece list from the bulk-hunt tracker, ready to go.</p>
+  </aside>
+
+  <main class="content">
+    <!-- Sticky progress bar + filters, rendered per active set -->
+    <div id="progressWrap" class="progress-wrap" hidden>
+      <div class="progress-text">
+        <span id="progressFound">0 of 430 found</span>
+        <span id="progressLots">0 of 138 lots done</span>
+      </div>
+      <div class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
+      <div class="filters">
+        <div class="filter-group" role="group" aria-label="Status filter">
+          <button class="filter-btn active" data-filter="all">All</button>
+          <button class="filter-btn" data-filter="needed">Still needed</button>
+          <button class="filter-btn" data-filter="done">Done</button>
+        </div>
+        <select id="colourSelect" aria-label="Filter by colour"></select>
+        <button id="resetBtn" class="btn btn-small btn-danger">Reset all</button>
+      </div>
+    </div>
+
+    <div id="setView"></div>
+
+    <div id="emptyState" class="empty-state">
+      <h2>No set open yet</h2>
+      <p>Add the starter set from the sidebar, or log in to see the sets saved to your account.</p>
+    </div>
+  </main>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
