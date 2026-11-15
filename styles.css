@@ -262,10 +262,16 @@ input, select {
 .tier-3 { background: #8b1a1a; }
 .tier-note { color: #555; font-size: 13px; margin: 0 0 10px; }
 
-/* ---------- Card grid ---------- */
+/* ---------- Card grid ----------
+ * minmax(0, 1fr), not bare 1fr: a bare 1fr track's minimum is the widest
+ * item's content, so a 500px part photo (Rebrickable ldraw PNGs, the
+ * BrickLink 6087 PNG) stretched its whole column to 500px and the grid
+ * ran off the right edge — only ~2 cards visible. minmax(0, ...) caps
+ * every column at its share of the container, and the photo's
+ * max-width: 100% / max-height: 110px then sizes it inside the card. */
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
 }
 .card {
@@ -276,6 +282,7 @@ input, select {
   text-align: center;
   display: flex;
   flex-direction: column;
+  min-width: 0; /* let the grid shrink this card below its content size */
 }
 .card .photo {
   background: #fff;
@@ -324,7 +331,7 @@ input, select {
 
 /* ---------- Small screens ---------- */
 @media (max-width: 900px) {
-  .card-grid { grid-template-columns: repeat(3, 1fr); }
+  .card-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 700px) {
   .layout { flex-direction: column; }
@@ -377,7 +384,7 @@ input, select {
     background: rgba(0, 0, 0, 0.45);
   }
   body.drawer-open .drawer-backdrop { display: block; }
-  .card-grid { grid-template-columns: repeat(2, 1fr); }
+  .card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 /* v3.3 — password visibility toggle + forgot-password link. */
