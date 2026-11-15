@@ -51,7 +51,16 @@
       <input id="setNumInput" type="text" inputmode="numeric" placeholder="Set number, e.g. 8961-1" aria-label="Set number">
       <button id="addSetBtn" class="btn">Add set</button>
     </div>
-    <p id="addSetMsg" class="coming-soon">Set lookup via Rebrickable is coming in the next version — for now, add the starter set below.</p>
+    <div id="addSetPreview" class="add-set-preview" hidden>
+      <img id="addSetPreviewImg" class="add-set-preview-img" alt="">
+      <div id="addSetPreviewName" class="set-name"></div>
+      <div id="addSetPreviewMeta" class="muted small"></div>
+      <div class="add-set-preview-buttons">
+        <button id="addSetConfirmBtn" class="btn btn-small">Add this set</button>
+        <button id="addSetCancelBtn" class="btn btn-small btn-quiet">Cancel</button>
+      </div>
+    </div>
+    <p id="addSetMsg" class="coming-soon">Type a set number and tap Add set — the app looks it up on Rebrickable and adds the full parts list. Log in first.</p>
 
     <h3>Starter set</h3>
     <button id="seedBtn" class="btn btn-wide">Add 8961-1 Crystal Sweeper</button>
