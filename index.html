@@ -56,6 +56,10 @@
     <h3>Starter set</h3>
     <button id="seedBtn" class="btn btn-wide">Add 8961-1 Crystal Sweeper</button>
     <p class="muted small">The full 138-lot, 430-piece list from the bulk-hunt tracker, ready to go.</p>
+    <div id="importSeedWrap">
+      <button id="importSeedBtn" class="btn btn-wide">Add it with my old progress</button>
+      <p class="muted small">Same set, but starts with the 340 pieces you already found in the old tracker. Log in first — it saves to your account.</p>
+    </div>
   </aside>
 
   <main class="content">
@@ -73,8 +77,10 @@
           <button class="filter-btn" data-filter="done">Done</button>
         </div>
         <select id="colourSelect" aria-label="Filter by colour"></select>
+        <button id="importBtn" class="btn btn-small" hidden>Import my old progress</button>
         <button id="resetBtn" class="btn btn-small btn-danger">Reset all</button>
       </div>
+      <p id="importMsg" class="auth-msg" role="status"></p>
     </div>
 
     <div id="setView"></div>
