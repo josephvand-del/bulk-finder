@@ -78,11 +78,12 @@
     <ul id="setList" class="set-list"></ul>
     <p id="noSetsMsg" class="muted">No sets yet — add the starter set below.</p>
 
-    <h3>Add a set by number</h3>
+    <h3>Add a set</h3>
     <div class="add-set">
-      <input id="setNumInput" type="text" inputmode="numeric" placeholder="Set number, e.g. 8961-1" aria-label="Set number">
+      <input id="setNumInput" type="text" placeholder="Set number or name, e.g. 8961-1 or Crystal King" aria-label="Set number or name">
       <button id="addSetBtn" class="btn">Add set</button>
     </div>
+    <div id="addSetResults" class="add-set-results" hidden></div>
     <div id="addSetPreview" class="add-set-preview" hidden>
       <img id="addSetPreviewImg" class="add-set-preview-img" alt="">
       <div id="addSetPreviewName" class="set-name"></div>
@@ -92,7 +93,7 @@
         <button id="addSetCancelBtn" class="btn btn-small btn-quiet">Cancel</button>
       </div>
     </div>
-    <p id="addSetMsg" class="coming-soon">Type a set number and tap Add set — the app looks it up on Rebrickable and adds the full parts list. Log in first.</p>
+    <p id="addSetMsg" class="coming-soon">Type a set number or name and tap Add set — the app looks it up on Rebrickable and adds the full parts list. Log in first.</p>
 
     <h3>Starter set</h3>
     <button id="seedBtn" class="btn btn-wide">Add 8961-1 Crystal Sweeper</button>
