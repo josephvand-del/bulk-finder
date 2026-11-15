@@ -1,4 +1,4 @@
-/* Bulk Finder v1 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.0 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -7,10 +7,16 @@
  * user is logged in and online. A failed sync never wipes local
  * progress — the queue just retries later.
  *
- * Tables (already created in the "bulk finder" Supabase project):
+ * Tables (in the "bulk finder" Supabase project):
  *   public.user_sets — one row per set a user tracks
  *   public.set_parts — one row per part lot, qty_remaining is the
  *   live count. Unique on (user_set_id, part_key).
+ *   public.set_inventories — one row per LEGO set number, holding
+ *   the converted inventory. Public read; only the import-set Edge
+ *   Function writes (service_role).
+ * Edge Function import-set — POST { set_num } looks a set up on
+ * Rebrickable, converts it with Joseph's category/colour rules,
+ * caches it in set_inventories, and returns it.
  * Row Level Security: a user can only touch their own rows.
  */
 
@@ -164,9 +170,25 @@ var SEED_SET = {
   user_set_id: null
 };
 
-function getInventory(setNum) {
-  if (setNum === '8961-1') return INVENTORY_8961;
-  return null; // more sets arrive with the Rebrickable lookup (next version)
+/* Inventories by set number. 8961-1 is baked in (the audited list);
+ * every other set arrives from the set_inventories cache table — the
+ * import-set Edge Function writes the row the first time a set is
+ * imported, and any device can read it after that (public read). */
+var INVENTORIES = { '8961-1': INVENTORY_8961 };
+function getInventory(setNum) { return INVENTORIES[setNum] || null; }
+
+async function fetchSetInventory(setNum) {
+  if (INVENTORIES[setNum]) return INVENTORIES[setNum];
+  if (!sb) return null;
+  var res = await sb.from('set_inventories').select('inventory').eq('set_num', setNum).maybeSingle();
+  if (res.error || !res.data || !res.data.inventory) return null;
+  INVENTORIES[setNum] = res.data.inventory;
+  return INVENTORIES[setNum];
+}
+
+// Load the inventory for every set in the sidebar list, before open.
+async function loadInventoriesForSets() {
+  for (var i = 0; i < sets.length; i++) await fetchSetInventory(sets[i].set_num);
 }
 
 /* ---------- Small DOM helpers ---------- */
@@ -395,6 +417,8 @@ async function refreshSetsFromCloud() {
   saveLocalSets(sets.map(function (s) {
     return { key: s.set_num, set_num: s.set_num, set_name: s.set_name, total_parts: s.total_parts, total_lots: s.total_lots, user_set_id: s.user_set_id || null };
   }));
+  // Inventories for every set in the list, so openSet can use them.
+  await loadInventoriesForSets();
 }
 
 /* ---------- Auth ---------- */
@@ -583,6 +607,119 @@ async function importOldProgress() {
   say(added > 0
     ? 'Imported ' + added + ' found pieces from your old tracker — now ' + t.found + ' of ' + t.total + ' found.'
     : 'Already up to date — ' + t.found + ' of ' + t.total + ' found.');
+  updateSyncStatus();
+}
+
+
+/* ---------- Add a set by number (Rebrickable lookup) ---------- */
+// The number the user typed, with "-1" assumed when no variant is given
+// (mirrors the import-set function, which does the same).
+function normalizeSetNumInput(raw) {
+  var s = String(raw || '').trim();
+  if (!s) return '';
+  return s.indexOf('-') >= 0 ? s : s + '-1';
+}
+
+var pendingImport = null; // { set_num, name, year, num_parts, set_img_url, inventory, lots, pieces, cached }
+
+// The import-set function answers with { ok, cached, set, inventory, ... }
+// or { ok:false, error, message }. supabase-js may put the error body in
+// data or in error.context depending on the status — check both.
+function importErrorText(res) {
+  var payload = (res && res.data) || null;
+  var ctx = (res && res.error && res.error.context) || null;
+  var body = payload || ctx;
+  if (body && body.message) return body.message;
+  var code = body && body.error;
+  if (code === 'set_not_found') return 'Rebrickable has no set with that number — check it and try again.';
+  if (code === 'no_api_key') return 'The Rebrickable key is not set up yet — add it in Supabase and try again.';
+  if (code === 'rate_limited') return 'Rebrickable is busy right now — wait a minute and try again.';
+  if (code === 'unauthorized') return 'Log in first — adding a set saves it to your account.';
+  if (res && res.error && res.error.message) return res.error.message;
+  return 'Lookup failed — try again.';
+}
+
+function showAddSetPreview(p) {
+  var wrap = $('addSetPreview');
+  if (!wrap) return;
+  var img = $('addSetPreviewImg');
+  if (img) img.src = p.set_img_url || '';
+  var name = $('addSetPreviewName');
+  if (name) name.textContent = p.set_num + ' — ' + p.name;
+  var meta = $('addSetPreviewMeta');
+  if (meta) meta.textContent = (p.year ? p.year + ' · ' : '') + p.lots + ' lots, ' + p.pieces + ' pieces' + (p.cached ? ' · imported before' : '');
+  wrap.hidden = false;
+}
+
+function hideAddSetPreview() {
+  var wrap = $('addSetPreview');
+  if (wrap) wrap.hidden = true;
+  pendingImport = null;
+}
+
+async function lookupSet() {
+  var msg = $('addSetMsg');
+  function say(t) { if (msg) msg.textContent = t; }
+  var raw = $('setNumInput').value.trim();
+  if (!raw) { say('Type a set number first — e.g. 10294-1.'); return; }
+  if (!sb || !user) { say('Log in first — adding a set saves it to your account.'); return; }
+  var num = normalizeSetNumInput(raw);
+  if (findSet(num)) { say('That set is already in your list — open it from the sidebar.'); return; }
+  hideAddSetPreview();
+  say('Looking up ' + num + '…');
+  var res;
+  try {
+    res = await sb.functions.invoke('import-set', { body: { set_num: num } });
+  } catch (e) {
+    say('Lookup failed — check your connection and try again.');
+    return;
+  }
+  var payload = (res && res.data) || null;
+  if (!payload || !payload.ok) {
+    say(importErrorText(res));
+    return;
+  }
+  pendingImport = {
+    set_num: payload.set.set_num, name: payload.set.name, year: payload.set.year,
+    num_parts: payload.set.num_parts, set_img_url: payload.set.set_img_url,
+    inventory: payload.inventory, lots: payload.lots, pieces: payload.pieces,
+    cached: !!payload.cached
+  };
+  showAddSetPreview(pendingImport);
+  say('Found it — tap "Add this set" to put it in your list.');
+}
+
+async function addImportedSet() {
+  var p = pendingImport;
+  if (!p) return;
+  var msg = $('addSetMsg');
+  function say(t) { if (msg) msg.textContent = t; }
+  // Register the inventory first: loadCounts/openSet need it right away.
+  INVENTORIES[p.set_num] = p.inventory;
+  var meta = {
+    key: p.set_num, set_num: p.set_num, set_name: p.name,
+    total_parts: p.inventory.pieces, total_lots: p.inventory.lots, user_set_id: null
+  };
+  var local = localSets();
+  local.push(meta);
+  saveLocalSets(local);
+  sets.push(meta);
+  var map = {};
+  p.inventory.items.forEach(function (it) { map[it.id] = it.qty; });
+  saveCounts(p.set_num, map);
+  if (user && sb) {
+    var id = await createCloudSet(meta);
+    if (id) {
+      meta.user_set_id = id;
+      await uploadAllParts(id, p.set_num, map);
+    }
+    // If the cloud set failed, the local copy stays; it uploads on next open.
+  }
+  hideAddSetPreview();
+  $('setNumInput').value = '';
+  renderSets();
+  openSet(meta.key);
+  say('Added ' + p.set_num + ' — ' + p.inventory.lots + ' lots, ' + p.inventory.pieces + ' pieces. All lots start at full count.');
   updateSyncStatus();
 }
 
@@ -832,6 +969,13 @@ function buildCard(item) {
   card.appendChild(el('div', 'dim', item.dim));
   card.appendChild(el('div', 'colour', displayColour(item)));
   card.appendChild(el('div', 'partnum', 'Part ' + partNumOf(item)));
+  // Imported sets carry the Rebrickable part name — handy for a set he
+  // hasn't hunted before. The 8961-1 list has no names, so it stays photo-only.
+  if (item.name) {
+    var nm = el('div', 'partname', item.name);
+    nm.title = item.name;
+    card.appendChild(nm);
+  }
   if (selectedKeys.length > 1) card.appendChild(el('div', 'set-tag', 'Set ' + item.setKey));
 
   var counter = el('div', 'counter');
@@ -978,11 +1122,12 @@ function bindEvents() {
   $('seedBtn').addEventListener('click', addSeedSet);
   $('importBtn').addEventListener('click', importOldProgress);
   $('importSeedBtn').addEventListener('click', importOldProgress);
-  $('addSetBtn').addEventListener('click', function () {
-    var n = $('setNumInput').value.trim();
-    $('addSetMsg').textContent = n
-      ? 'Set ' + n + ' lookup is coming soon — Rebrickable support is the next version. For now, try the starter set below.'
-      : 'Type a set number first — but heads up, lookup via Rebrickable is coming in the next version. For now, try the starter set below.';
+  $('addSetBtn').addEventListener('click', lookupSet);
+  $('setNumInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') lookupSet(); });
+  $('addSetConfirmBtn').addEventListener('click', addImportedSet);
+  $('addSetCancelBtn').addEventListener('click', function () {
+    hideAddSetPreview();
+    $('addSetMsg').textContent = '';
   });
   document.querySelectorAll('.filter-btn').forEach(function (btn) {
     btn.addEventListener('click', function () {
@@ -1043,6 +1188,9 @@ async function init() {
       console.warn('auth check failed, continuing as guest', e);
     }
   }
+  // Guest path (or a set added on another device): load every set's
+  // inventory from the cache table before the first open.
+  await loadInventoriesForSets();
   renderAuth();
   renderSets();
   var last = LS.get('bf:activeSet', null);
