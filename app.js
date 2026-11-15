@@ -97,19 +97,24 @@ function displayColour(item) { return familyOf(item); }
  * their own part_cat_id, so this dropdown works for any set with no
  * hand-mapping.
  *
- * Display rule (Joseph's audit, 2026-11-15): a raw category with only
- * 1-2 lots in the open set folds into 'Miscellaneous' at display time,
- * so tiny sections never get their own dropdown entry.
+ * Display rule (Joseph's audit, 2026-11-15): a raw category keeps its own
+ * section only while 3 or more of its lots still have pieces left to find
+ * — fewer than 3 open lots folds into 'Miscellaneous' at display time, so
+ * tiny sections never get their own dropdown entry. Windows and Doors
+ * (3 lots) is the smallest section that stands on its own.
  * 'Minifig / Accessories' is exempt — he placed the minifig gear there
  * on purpose. Empty categories never appear: the dropdown is built
  * from the lots that are actually there. */
 function itemCat(item) { return item.cat || 'Other'; }
 
-// Lot counts per raw category, per set — rebuilt when the selection loads.
+// Lots still open (pieces remaining) per raw category, per set — rebuilt
+// when the selection loads and whenever a count changes, so the fold
+// follows what is actually left to find, not the full inventory.
 var catLotCount = {};
 function rebuildCatCounts() {
   catLotCount = {};
   items.forEach(function (it) {
+    if (remOf(it) <= 0) return; // a fully found lot no longer holds a section open
     var m = catLotCount[it.setKey] || (catLotCount[it.setKey] = {});
     var c = itemCat(it);
     m[c] = (m[c] || 0) + 1;
@@ -1271,7 +1276,8 @@ function rebuildColourSelect() {
     var fam = familyOf(it);
     famLeft[fam] = (famLeft[fam] || 0) + rem;
   });
-  var fams = Object.keys(famLeft).sort(function (a, b) {
+  // A colour with nothing left to find gets no entry at all.
+  var fams = Object.keys(famLeft).filter(function (f) { return famLeft[f] > 0; }).sort(function (a, b) {
     if (famLeft[b] !== famLeft[a]) return famLeft[b] - famLeft[a];
     return a < b ? -1 : 1;
   });
@@ -1285,7 +1291,7 @@ function rebuildColourSelect() {
     sel.appendChild(o);
   });
   // Keep the previous selection if it still exists.
-  sel.value = (current === 'all' || famLeft.hasOwnProperty(current)) ? current : 'all';
+  sel.value = (current === 'all' || (famLeft[current] || 0) > 0) ? current : 'all';
   colourFilter = sel.value;
 }
 
@@ -1293,6 +1299,7 @@ function rebuildTypeSelect() {
   var sel = $('typeSelect');
   if (!sel) return;
   var current = sel.value || 'all';
+  rebuildCatCounts(); // the fold follows what is left, so refresh it here too
   // Remaining pieces per displayed category — small raw categories fold
   // into Miscellaneous (see displayCat), from the lots actually here.
   var catLeft = {};
@@ -1301,7 +1308,8 @@ function rebuildTypeSelect() {
     var c = displayCat(it);
     catLeft[c] = (catLeft[c] || 0) + rem;
   });
-  var cats = Object.keys(catLeft).sort(function (a, b) {
+  // A category with nothing left to find gets no entry at all.
+  var cats = Object.keys(catLeft).filter(function (c) { return catLeft[c] > 0; }).sort(function (a, b) {
     if (catLeft[b] !== catLeft[a]) return catLeft[b] - catLeft[a];
     return a < b ? -1 : 1;
   });
@@ -1315,7 +1323,7 @@ function rebuildTypeSelect() {
     sel.appendChild(o);
   });
   // Keep the previous selection if it still exists.
-  sel.value = (current === 'all' || catLeft.hasOwnProperty(current)) ? current : 'all';
+  sel.value = (current === 'all' || (catLeft[current] || 0) > 0) ? current : 'all';
   typeFilter = sel.value;
 }
 
@@ -1345,29 +1353,38 @@ function renderSetView() {
   };
 
   var shown = 0;
+  // Tier names are the same across sets; take them from the first set
+  // that has an inventory, so a combined view still names each tier once.
+  var tierNames = { 1: 'MOST LIKELY IN BULK', 2: 'MEDIUM — WORTH A DIG', 3: 'LEAST LIKELY IN BULK' };
   selectedKeys.forEach(function (key) {
-    var meta = findSet(key);
-    if (!meta) return;
-    var setItems = items.filter(function (it) { return it.setKey === key; });
-    if (!setItems.length) return;
     var inv = getInventory(key);
-    var tierNames = inv ? inv.tiers : { 1: 'MOST LIKELY IN BULK', 2: 'MEDIUM — WORTH A DIG', 3: 'LEAST LIKELY IN BULK' };
-    // With several sets open, each set gets its own heading.
-    if (selectedKeys.length > 1) {
-      view.appendChild(el('h3', 'set-heading', meta.set_num + ' — ' + meta.set_name));
-    }
-    [1, 2, 3].forEach(function (tier) {
-      var tierItems = setItems.filter(function (it) { return it.tier === tier && cardMatches(it); });
-      if (!tierItems.length) return;
-      shown++;
-      var banner = el('h3', 'tier-banner tier-' + tier, 'TIER ' + tier + ' — ' + tierNames[String(tier)]);
-      view.appendChild(banner);
-      view.appendChild(el('p', 'tier-note', tierNotes[tier]));
-      var grid = el('div', 'card-grid');
-      tierItems.forEach(function (it) { grid.appendChild(buildCard(it)); });
-      view.appendChild(grid);
-    });
+    if (inv && inv.tiers) tierNames = inv.tiers;
   });
+  function appendTier(tier, tierItems) {
+    if (!tierItems.length) return;
+    shown++;
+    var banner = el('h3', 'tier-banner tier-' + tier, 'TIER ' + tier + ' — ' + tierNames[String(tier)]);
+    view.appendChild(banner);
+    view.appendChild(el('p', 'tier-note', tierNotes[tier]));
+    var grid = el('div', 'card-grid');
+    tierItems.forEach(function (it) { grid.appendChild(buildCard(it)); });
+    view.appendChild(grid);
+  }
+  if (selectedKeys.length > 1) {
+    // Several sets open: one banner per tier across ALL sets, so TIER 2
+    // never repeats after TIER 3. Cards still carry their "Set NNNN-N" tag.
+    [1, 2, 3].forEach(function (tier) {
+      appendTier(tier, items.filter(function (it) { return it.tier === tier && cardMatches(it); }));
+    });
+  } else {
+    selectedKeys.forEach(function (key) {
+      var setItems = items.filter(function (it) { return it.setKey === key; });
+      if (!setItems.length) return;
+      [1, 2, 3].forEach(function (tier) {
+        appendTier(tier, setItems.filter(function (it) { return it.tier === tier && cardMatches(it); }));
+      });
+    });
+  }
   if (!shown) view.appendChild(el('p', 'muted', 'No pieces match these filters — try widening the type or colour.'));
 
   var impBtn = $('importBtn');
@@ -1388,6 +1405,13 @@ function buildCard(item) {
   img.src = item.img;
   img.alt = ''; // no part names anywhere, photos speak for themselves
   img.loading = 'lazy';
+  // A dead image (e.g. a plain-http link the browser blocks as mixed
+  // content — Part 85418's Peeron photo) leaves a blank white box; show
+  // the part number in its place instead.
+  img.addEventListener('error', function () {
+    img.style.display = 'none';
+    photo.appendChild(el('div', 'photo-fallback', 'Part ' + partNumOf(item)));
+  });
   photo.appendChild(img);
   card.appendChild(photo);
 
@@ -1443,6 +1467,7 @@ function changeRemaining(item, delta) {
 }
 
 function updateCardUI(item) {
+  rebuildCatCounts(); // the tap may have opened or closed a folded section
   var rem = remOf(item);
   var card = document.querySelector('.card[data-key="' + CSS.escape(item.setKey + '|' + item.id) + '"]');
   if (!card) return; // card hidden by the current filter; progress still updated
@@ -1471,6 +1496,7 @@ function resetAll() {
     var meta = findSet(key);
     if (meta) enqueueBulkSync(meta);
   });
+  rebuildCatCounts(); // a reset reopens every section
   renderSetView();
   updateSyncStatus();
 }
