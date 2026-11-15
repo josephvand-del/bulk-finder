@@ -80,6 +80,11 @@ function familyOf(item) {
  * this dropdown works for any set with no hand-mapping. */
 function itemCat(item) { return item.cat || 'Other'; }
 
+/* Piece number = the LEGO design ID (middle segment of the lot id,
+ * e.g. 6590). Shown on every card so a mis-sorted piece can be reported
+ * by number and re-binned. */
+function partNumOf(item) { var parts = String(item.id || '').split('-'); return parts.length > 1 ? parts[1] : ''; }
+
 /* ---------- Local storage ----------
  * bf:sets            — set metas known on this device
  * bf:counts:<setNum> — remaining map { partKey: remaining } for a set
@@ -732,6 +737,7 @@ function buildCard(item) {
   } else {
     card.appendChild(el('div', 'colour', item.colour));
   }
+  card.appendChild(el('div', 'partnum', 'Part ' + partNumOf(item)));
 
   var counter = el('div', 'counter');
   var minus = el('button', null, '−');
