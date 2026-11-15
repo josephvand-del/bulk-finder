@@ -97,6 +97,7 @@ var activeSetKey = null;      // set_num of the open set
 var items = [];               // inventory items of the active set
 var remaining = {};           // partKey -> pieces still to find (active set)
 var mergedThisSession = {};   // set_num -> true once cloud merge ran
+var cloudMergePromises = {};  // set_num -> in-flight cloud-merge promise
 var statusFilter = 'all';     // all | needed | done
 var colourFilter = 'all';     // all | any | family name
 
@@ -274,35 +275,45 @@ async function uploadAllParts(userSetId, setNum, counts) {
 // cloud already has rows for the set -> cloud counts win, adopt them.
 // cloud has no rows -> push the local counts up.
 async function ensureCloudSet(meta) {
-  if (!sb || !user || mergedThisSession[meta.set_num]) return;
-  mergedThisSession[meta.set_num] = true;
-  var ids = cloudIds();
-  var userSetId = meta.user_set_id || ids[meta.set_num] || null;
-  if (!userSetId) {
-    userSetId = await createCloudSet(meta);
-    if (!userSetId) return;
+  if (!sb || !user) return;
+  if (mergedThisSession[meta.set_num]) return;
+  // A merge may already be running in the background (openSet starts one).
+  // Await that same promise instead of starting a second merge or returning
+  // at once on the flag — otherwise a caller that merges on top (the old
+  // progress import) can race the late cloud adopt and lose its counts.
+  if (cloudMergePromises[meta.set_num]) return cloudMergePromises[meta.set_num];
+  cloudMergePromises[meta.set_num] = (async function () {
+    mergedThisSession[meta.set_num] = true;
+    var ids = cloudIds();
+    var userSetId = meta.user_set_id || ids[meta.set_num] || null;
+    if (!userSetId) {
+      userSetId = await createCloudSet(meta);
+      if (!userSetId) return;
+      meta.user_set_id = userSetId;
+      await uploadAllParts(userSetId, meta.set_num, remaining);
+      updateSyncStatus();
+      return;
+    }
     meta.user_set_id = userSetId;
-    await uploadAllParts(userSetId, meta.set_num, remaining);
+    var rows = await fetchCloudParts(userSetId);
+    if (rows === null) return; // fetch failed: keep local, retry next open
+    if (rows.length > 0) {
+      // Cloud wins.
+      var inv = getInventory(meta.set_num);
+      var map = {};
+      inv.items.forEach(function (it) { map[it.id] = it.qty; });
+      rows.forEach(function (r) {
+        if (map.hasOwnProperty(r.part_key)) map[r.part_key] = Math.max(0, r.qty_remaining);
+      });
+      remaining = map;
+      saveCounts(meta.set_num, remaining);
+    } else {
+      await uploadAllParts(userSetId, meta.set_num, remaining);
+    }
     updateSyncStatus();
-    return;
-  }
-  meta.user_set_id = userSetId;
-  var rows = await fetchCloudParts(userSetId);
-  if (rows === null) return; // fetch failed: keep local, retry next open
-  if (rows.length > 0) {
-    // Cloud wins.
-    var inv = getInventory(meta.set_num);
-    var map = {};
-    inv.items.forEach(function (it) { map[it.id] = it.qty; });
-    rows.forEach(function (r) {
-      if (map.hasOwnProperty(r.part_key)) map[r.part_key] = Math.max(0, r.qty_remaining);
-    });
-    remaining = map;
-    saveCounts(meta.set_num, remaining);
-  } else {
-    await uploadAllParts(userSetId, meta.set_num, remaining);
-  }
-  updateSyncStatus();
+  })();
+  try { await cloudMergePromises[meta.set_num]; }
+  finally { delete cloudMergePromises[meta.set_num]; }
 }
 
 // After login: every set known on this device gets a cloud home, and
@@ -694,6 +705,7 @@ function changeRemaining(item, delta) {
   saveCounts(activeSetKey, remaining);
   updateCardUI(item);
   renderProgress();
+  renderSets(); // sidebar "X of 430 found" must move on the same tap
   var meta = findSet(activeSetKey);
   if (meta) enqueuePartSync(meta, item);
 }
