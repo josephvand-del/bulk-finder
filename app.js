@@ -576,7 +576,8 @@ function unsubscribeLive() {
  * to global scope, which would kick every device — we never use it).
  * "Invalid login credentials" is Supabase's wrong-email-or-password
  * error; it is never caused by another device being logged in. */
-var recoveryMode = false; // true after a password-reset link is opened
+var pwSetMode = false; // true when the Log in button sets a new password:
+// entered from a password-reset link, or from Change password while logged in
 
 // The reset link lands here as #access_token=...&type=recovery. The
 // client fires PASSWORD_RECOVERY while it reads that hash — before
@@ -602,7 +603,7 @@ function clearUrlHash() {
 // Show the "Set new password" form (used by both the event handler
 // and the startup URL check).
 function enterRecoveryMode(msg) {
-  recoveryMode = true;
+  pwSetMode = true;
   $('authCard').hidden = false;
   renderAuth();
   setAuthMsg(msg || 'Choose a new password, then tap Set new password.', true);
@@ -631,12 +632,12 @@ async function doLogin() {
   var email = authEmail();
   var password = $('authPassword').value;
   if (!email || !password) { setAuthMsg('Enter an email and password.'); return; }
-  if (recoveryMode) {
-    // Came in from a password-reset email: set the new password.
+  if (pwSetMode) {
+    // Came in from a password-reset email or Change password: set the new password.
     setAuthMsg('Setting your new password…', true);
     var upd = await sb.auth.updateUser({ password: password });
     if (upd.error) { setAuthMsg(authErrorText(upd.error)); return; }
-    recoveryMode = false;
+    pwSetMode = false;
     clearUrlHash();
     renderAuth();
     setAuthMsg('Password updated — logged in.', true);
@@ -663,6 +664,14 @@ async function doSignup() {
     // Email confirmation is on: no session until they confirm.
     setAuthMsg('Check your email to confirm your account, then log in.', true);
   }
+}
+
+// "Change password" (logged in): set a new password right here, no
+// email involved — the bypass when the reset-email budget is spent.
+function startChangePassword() {
+  if (!user) return;
+  $('authPassword').value = '';
+  enterRecoveryMode('Choose a new password, then tap Set new password.');
 }
 
 // "Forgot password?" — emails a reset link that opens this app;
@@ -737,11 +746,13 @@ function renderAuth() {
   var loginBtn = $('loginBtn');
   var signupBtn = $('signupBtn');
   var forgotBtn = $('forgotBtn');
-  if (recoveryMode) {
+  var changePwBtn = $('changePwBtn');
+  if (pwSetMode) {
     card.hidden = false;
     toggle.hidden = true;
     logout.hidden = true;
     chip.hidden = true;
+    changePwBtn.hidden = true;
     loginBtn.textContent = 'Set new password';
     signupBtn.hidden = true;
     forgotBtn.hidden = true;
@@ -755,11 +766,13 @@ function renderAuth() {
     toggle.hidden = true;
     logout.hidden = false;
     chip.hidden = false;
+    changePwBtn.hidden = false;
     chip.textContent = user.email || 'Logged in';
   } else {
     toggle.hidden = false;
     logout.hidden = true;
     chip.hidden = true;
+    changePwBtn.hidden = true;
     card.hidden = !!LS.get('bf:guestDismissed', false);
   }
 }
@@ -1377,6 +1390,7 @@ function bindEvents() {
   $('loginBtn').addEventListener('click', doLogin);
   $('signupBtn').addEventListener('click', doSignup);
   $('logoutBtn').addEventListener('click', doLogout);
+  $('changePwBtn').addEventListener('click', startChangePassword);
   $('forgotBtn').addEventListener('click', doForgotPassword);
   $('pwToggleBtn').addEventListener('click', function () {
     var pw = $('authPassword');
