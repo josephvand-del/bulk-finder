@@ -30,13 +30,14 @@
   <p>Log in to save your sets to your account and see them on any device.
      Or keep going as a guest — everything still works, it just stays on
      this phone.</p>
-  <label>Email <input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com"></label>
-  <label>Password <input id="authPassword" type="password" autocomplete="current-password" placeholder="Password (6+ characters)"></label>
+  <label>Email <input id="authEmail" type="email" autocomplete="email" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="you@example.com"></label>
+  <label>Password <span class="pw-wrap"><input id="authPassword" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Password (6+ characters)"><button id="pwToggleBtn" type="button" class="btn btn-small btn-quiet">Show</button></span></label>
   <div class="auth-buttons">
     <button id="loginBtn" class="btn">Log in</button>
     <button id="signupBtn" class="btn">Sign up</button>
     <button id="guestBtn" class="btn btn-quiet">Continue as guest</button>
   </div>
+  <p class="auth-links"><button id="forgotBtn" type="button" class="link-btn">Forgot password?</button></p>
   <p id="authMsg" class="auth-msg" role="status"></p>
 </section>
 

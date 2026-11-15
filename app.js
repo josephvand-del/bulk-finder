@@ -1,11 +1,14 @@
-/* Bulk Finder v3.0 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.3 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
  * every tap saves to this device immediately (localStorage), then
  * syncs to Supabase in the background with a retry queue when the
  * user is logged in and online. A failed sync never wipes local
- * progress — the queue just retries later.
+ * progress — the queue just retries later. Live sync (v3.3): a
+ * logged-in device also listens for changes from other devices
+ * (Supabase Realtime) and re-pulls the open sets every 20s, so a tap
+ * on one device shows up on the other without a refresh.
  *
  * Tables (in the "bulk finder" Supabase project):
  *   public.user_sets — one row per set a user tracks
@@ -426,33 +429,203 @@ async function refreshSetsFromCloud() {
   await loadInventoriesForSets();
 }
 
-/* ---------- Auth ---------- */
+/* ---------- Live sync (v3.3): other devices, no refresh ----------
+ * Pulls only happen on login and set-open (ensureCloudSet) — so a tap
+ * on device A would sit invisible on device B until B reloaded. Two
+ * mechanisms close that gap:
+ *   1. Supabase Realtime: a channel on set_parts + user_sets. Needs
+ *      both tables in the `supabase_realtime` publication (migration
+ *      20261115_enable_realtime.sql) — without it, the channel
+ *      subscribes fine but never delivers an event (silent no-op).
+ *   2. Fallback pull: every 20s (and on tab-visible / back-online)
+ *      the open sets re-pull their cloud counts.
+ * A pull NEVER overwrites a lot this device changed but hasn't synced
+ * yet: lots with a pending outbox op keep their local value. Last
+ * writer wins only when both devices tapped the same lot while both
+ * were online — the later sync lands on top. */
+var liveChannel = null;
+var pulling = {}; // set_num -> true while a pull for that set is in flight
+
+function pendingOutboxKeys(userSetId) {
+  // Lots this device changed but hasn't synced yet. A bulk op (Reset
+  // all) covers every lot, so the whole pull is skipped for that set.
+  var keys = {};
+  var box = outbox();
+  for (var i = 0; i < box.length; i++) {
+    var op = box[i];
+    if (op.user_set_id !== userSetId) continue;
+    if (op.kind === 'bulk') return null;
+    if (op.kind === 'part' && op.row && op.row.part_key) keys[op.row.part_key] = true;
+  }
+  return keys;
+}
+
+// Pull one set's cloud counts and adopt them (except pending lots).
+// Returns true when something on screen changed.
+async function pullRemoteCounts(meta) {
+  if (!sb || !user || !meta || !meta.user_set_id) return false;
+  if (pulling[meta.set_num]) return false;
+  // Don't race the once-per-session cloud merge for the same set.
+  if (cloudMergePromises[meta.set_num]) {
+    try { await cloudMergePromises[meta.set_num]; } catch (e) { /* fall through */ }
+  }
+  pulling[meta.set_num] = true;
+  try {
+    var pending = pendingOutboxKeys(meta.user_set_id);
+    if (pending === null) return false; // a bulk sync is queued; it lands shortly
+    var rows = await fetchCloudParts(meta.user_set_id);
+    if (rows === null) return false;
+    var inv = getInventory(meta.set_num);
+    if (!inv) return false;
+    var current = remainingBySet[meta.set_num] || loadCounts(meta.set_num);
+    var map = {};
+    inv.items.forEach(function (it) { map[it.id] = it.qty; });
+    rows.forEach(function (r) {
+      if (map.hasOwnProperty(r.part_key) && !pending[r.part_key]) {
+        map[r.part_key] = Math.max(0, r.qty_remaining);
+      }
+    });
+    // Pending lots keep their local (unsynced) value — never the cloud
+    // value, and never the full qty the map started with.
+    Object.keys(pending).forEach(function (k) {
+      if (map.hasOwnProperty(k) && typeof current[k] === 'number') map[k] = current[k];
+    });
+    var changed = false;
+    inv.items.forEach(function (it) {
+      if (current[it.id] !== map[it.id]) changed = true;
+    });
+    if (!changed) return false;
+    remainingBySet[meta.set_num] = map;
+    saveCounts(meta.set_num, map);
+    if (selectedKeys.indexOf(meta.set_num) >= 0) {
+      renderSetView();
+      renderSets();
+    }
+    return true;
+  } finally {
+    delete pulling[meta.set_num];
+  }
+}
+
+// Pull every set currently on screen.
+async function pullSelectedRemote() {
+  if (!sb || !user) return;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+  for (var i = 0; i < selectedKeys.length; i++) {
+    var meta = findSet(selectedKeys[i]);
+    if (meta) await pullRemoteCounts(meta);
+  }
+}
+
+// Push what's queued, then pull what other devices changed.
+async function tickSync() {
+  await processOutbox();
+  await pullSelectedRemote();
+}
+
+// A part row changed somewhere: re-pull that set (the event itself
+// carries one row; a full re-pull is cheaper than trusting it, and it
+// picks up any other rows that changed with it).
+function onRemoteParts(payload) {
+  var row = (payload && payload.new) || (payload && payload.old) || {};
+  var userSetId = row.user_set_id;
+  if (!userSetId) return;
+  var meta = null;
+  for (var i = 0; i < sets.length; i++) {
+    if (sets[i].user_set_id === userSetId) { meta = sets[i]; break; }
+  }
+  if (meta) pullRemoteCounts(meta);
+}
+
+// A set was added or removed somewhere: rebuild the sidebar list.
+function onRemoteSets() {
+  refreshSetsFromCloud().then(function () {
+    renderSets();
+    if (activeSetKey && !findSet(activeSetKey)) {
+      if (sets.length) openSet(sets[0].key);
+      else { activeSetKey = null; showEmpty(); }
+    } else if (activeSetKey) {
+      renderSetView();
+    }
+  });
+}
+
+function subscribeLive() {
+  if (!sb || !user || liveChannel) return;
+  try {
+    liveChannel = sb.channel('bf-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'set_parts' }, onRemoteParts)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_sets' }, onRemoteSets)
+      .subscribe();
+  } catch (e) {
+    liveChannel = null;
+  }
+}
+
+function unsubscribeLive() {
+  if (!liveChannel) return;
+  try { if (sb) sb.removeChannel(liveChannel); } catch (e) { /* already gone */ }
+  liveChannel = null;
+}
+
+/* ---------- Auth ----------
+ * Multi-device: Supabase Auth issues a separate session per device
+ * (each device keeps its own token in its own localStorage), so two
+ * or more devices can be logged in at the same time. Nothing here
+ * revokes another device: log out is local-only (signOut defaults
+ * to global scope, which would kick every device — we never use it).
+ * "Invalid login credentials" is Supabase's wrong-email-or-password
+ * error; it is never caused by another device being logged in. */
+var recoveryMode = false; // true after a password-reset link is opened
+
 function setAuthMsg(msg, ok) {
   var n = $('authMsg');
   n.textContent = msg || '';
   n.className = 'auth-msg' + (ok ? ' ok' : '');
 }
 
+// Email as typed on a phone keyboard: trim stray spaces, lowercase
+// (a capital letter from autocapitalise must never fail a login).
+function authEmail() { return $('authEmail').value.trim().toLowerCase(); }
+
+function authErrorText(err) {
+  var m = (err && err.message) || 'Something went wrong signing in.';
+  if (/invalid login credentials/i.test(m)) {
+    return 'That email and password didn\u2019t match \u2014 check for a typo, a capital letter, or a password your phone filled in for you. Signing in on a second device doesn\u2019t sign the first one out.';
+  }
+  return m;
+}
+
 async function doLogin() {
   if (!sb) { setAuthMsg('Log in needs a connection — try again when you are online.'); return; }
-  var email = $('authEmail').value.trim();
+  var email = authEmail();
   var password = $('authPassword').value;
   if (!email || !password) { setAuthMsg('Enter an email and password.'); return; }
+  if (recoveryMode) {
+    // Came in from a password-reset email: set the new password.
+    setAuthMsg('Setting your new password…', true);
+    var upd = await sb.auth.updateUser({ password: password });
+    if (upd.error) { setAuthMsg(authErrorText(upd.error)); return; }
+    recoveryMode = false;
+    renderAuth();
+    setAuthMsg('Password updated — logged in.', true);
+    return;
+  }
   setAuthMsg('Logging in…', true);
   var res = await sb.auth.signInWithPassword({ email: email, password: password });
-  if (res.error) setAuthMsg(res.error.message);
+  if (res.error) setAuthMsg(authErrorText(res.error));
   else setAuthMsg('Logged in.', true);
 }
 
 async function doSignup() {
   if (!sb) { setAuthMsg('Sign up needs a connection — try again when you are online.'); return; }
-  var email = $('authEmail').value.trim();
+  var email = authEmail();
   var password = $('authPassword').value;
   if (!email || !password) { setAuthMsg('Enter an email and password.'); return; }
   if (password.length < 6) { setAuthMsg('Password needs at least 6 characters.'); return; }
   setAuthMsg('Creating your account…', true);
   var res = await sb.auth.signUp({ email: email, password: password });
-  if (res.error) { setAuthMsg(res.error.message); return; }
+  if (res.error) { setAuthMsg(authErrorText(res.error)); return; }
   if (res.data && res.data.session) {
     setAuthMsg('Account created — logged in.', true);
   } else {
@@ -461,8 +634,24 @@ async function doSignup() {
   }
 }
 
-async function doLogout() {
-  if (sb) await sb.auth.signOut();
+// "Forgot password?" — emails a reset link that opens this app;
+// the link fires a PASSWORD_RECOVERY event (see handleAuthChange),
+// which turns the log-in button into "Set new password".
+async function doForgotPassword() {
+  if (!sb) { setAuthMsg('Password reset needs a connection — try again when you are online.'); return; }
+  var email = authEmail();
+  if (!email) { setAuthMsg('Type your email above first, then tap Forgot password?'); return; }
+  setAuthMsg('Sending a reset link…', true);
+  var opts = {};
+  if (typeof window !== 'undefined' && window.location && window.location.href) {
+    opts.redirectTo = window.location.href.split('#')[0];
+  }
+  var res = await sb.auth.resetPasswordForEmail(email, opts);
+  if (res.error) setAuthMsg(authErrorText(res.error));
+  else setAuthMsg('Reset link sent to ' + email + ' — check your email.', true);
+}
+
+function applyLoggedOutUI() {
   user = null;
   mergedThisSession = {};
   sets = localSets();
@@ -477,16 +666,39 @@ async function doLogout() {
   updateSyncStatus();
 }
 
+async function doLogout() {
+  unsubscribeLive();
+  // Local scope only: logging out on this device must NOT sign out
+  // the user's other devices (the default global scope would).
+  if (sb) await sb.auth.signOut({ scope: 'local' });
+  applyLoggedOutUI();
+}
+
 async function handleAuthChange(event, session) {
-  user = (session && session.user) ? session.user : null;
-  if (user) {
-    await refreshSetsFromCloud();
+  if (event === 'PASSWORD_RECOVERY') {
+    // Opened a reset link: the log-in button becomes "Set new password".
+    recoveryMode = true;
+    user = (session && session.user) ? session.user : user;
+    $('authCard').hidden = false;
     renderAuth();
-    renderSets();
-    if (activeSetKey) openSet(activeSetKey);
-    else if (sets.length) openSet(sets[0].key);
-    updateSyncStatus();
+    setAuthMsg('Choose a new password, then tap Set new password.', true);
+    return;
   }
+  user = (session && session.user) ? session.user : null;
+  if (!user) {
+    // Signed out on this device (or the session expired): drop the
+    // live listener and show the logged-out UI.
+    unsubscribeLive();
+    applyLoggedOutUI();
+    return;
+  }
+  subscribeLive();
+  await refreshSetsFromCloud();
+  renderAuth();
+  renderSets();
+  if (activeSetKey) openSet(activeSetKey);
+  else if (sets.length) openSet(sets[0].key);
+  updateSyncStatus();
 }
 
 function renderAuth() {
@@ -494,6 +706,22 @@ function renderAuth() {
   var toggle = $('authToggleBtn');
   var logout = $('logoutBtn');
   var chip = $('userChip');
+  var loginBtn = $('loginBtn');
+  var signupBtn = $('signupBtn');
+  var forgotBtn = $('forgotBtn');
+  if (recoveryMode) {
+    card.hidden = false;
+    toggle.hidden = true;
+    logout.hidden = true;
+    chip.hidden = true;
+    loginBtn.textContent = 'Set new password';
+    signupBtn.hidden = true;
+    forgotBtn.hidden = true;
+    return;
+  }
+  loginBtn.textContent = 'Log in';
+  signupBtn.hidden = false;
+  forgotBtn.hidden = false;
   if (user) {
     card.hidden = true;
     toggle.hidden = true;
@@ -1121,6 +1349,13 @@ function bindEvents() {
   $('loginBtn').addEventListener('click', doLogin);
   $('signupBtn').addEventListener('click', doSignup);
   $('logoutBtn').addEventListener('click', doLogout);
+  $('forgotBtn').addEventListener('click', doForgotPassword);
+  $('pwToggleBtn').addEventListener('click', function () {
+    var pw = $('authPassword');
+    var show = pw.type === 'password';
+    pw.type = show ? 'text' : 'password';
+    $('pwToggleBtn').textContent = show ? 'Hide' : 'Show';
+  });
   $('authPassword').addEventListener('keydown', function (e) {
     if (e.key === 'Enter') doLogin();
   });
@@ -1165,12 +1400,13 @@ function bindEvents() {
     if (panel && !panel.hidden && picker && !picker.contains(e.target)) panel.hidden = true;
   });
   $('resetBtn').addEventListener('click', resetAll);
-  window.addEventListener('online', function () { updateSyncStatus(); processOutbox(); });
+  window.addEventListener('online', function () { updateSyncStatus(); tickSync(); });
   window.addEventListener('offline', updateSyncStatus);
   document.addEventListener('visibilitychange', function () {
-    if (!document.hidden) processOutbox();
+    if (!document.hidden) tickSync();
   });
-  setInterval(processOutbox, 20000); // retry the queue in the background
+  // Every 20s: push what's queued, then pull what other devices changed.
+  setInterval(tickSync, 20000);
 }
 
 async function init() {
@@ -1186,6 +1422,7 @@ async function init() {
       var sess = await sb.auth.getSession();
       if (sess.data && sess.data.session && sess.data.session.user) {
         user = sess.data.session.user;
+        subscribeLive();
         await refreshSetsFromCloud();
       }
       sb.auth.onAuthStateChange(handleAuthChange);
