@@ -11,6 +11,7 @@
 </head>
 <body>
 <header class="site-header">
+  <button id="menuBtn" class="menu-btn" aria-label="Open menu" aria-expanded="false">&#9776;</button>
   <div class="header-text">
     <h1>Bulk Finder</h1>
     <p class="tagline">Pick a set, hunt the bulk bins, tap each piece as it goes in the bag.</p>
@@ -42,8 +43,37 @@
   <p id="authMsg" class="auth-msg" role="status"></p>
 </section>
 
+<div id="drawerBackdrop" class="drawer-backdrop"></div>
+
 <div class="layout">
   <aside class="sidebar">
+        <!-- Sticky progress bar + filters, rendered per active set -->
+        <div id="progressWrap" class="progress-wrap" hidden>
+          <div class="progress-text">
+            <span id="progressFound">0 of 430 found</span>
+            <span id="progressLots">0 of 138 lots done</span>
+          </div>
+          <div class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
+          <div class="filters">
+            <div class="filter-group" role="group" aria-label="Status filter">
+              <button class="filter-btn active" data-filter="all">All</button>
+              <button class="filter-btn" data-filter="needed">Still needed</button>
+              <button class="filter-btn" data-filter="done">Done</button>
+            </div>
+            <select id="colourSelect" aria-label="Filter by colour"></select>
+            <select id="typeSelect" aria-label="Filter by piece type"></select>
+            <div class="set-picker" id="setPicker">
+              <button type="button" class="set-picker-btn" id="setPickerBtn" aria-haspopup="true">Sets: All</button>
+              <div class="set-picker-panel" id="setPickerPanel" hidden>
+                <label class="set-picker-row select-all"><input type="checkbox" id="setPickerAll"> Select all</label>
+                <div id="setPickerList"></div>
+              </div>
+            </div>
+            <button id="importBtn" class="btn btn-small" hidden>Import my old progress</button>
+            <button id="resetBtn" class="btn btn-small btn-danger">Reset all</button>
+          </div>
+          <p id="importMsg" class="auth-msg" role="status"></p>
+        </div>
     <h2>My sets</h2>
     <ul id="setList" class="set-list"></ul>
     <p id="noSetsMsg" class="muted">No sets yet — add the starter set below.</p>
@@ -74,33 +104,7 @@
   </aside>
 
   <main class="content">
-    <!-- Sticky progress bar + filters, rendered per active set -->
-    <div id="progressWrap" class="progress-wrap" hidden>
-      <div class="progress-text">
-        <span id="progressFound">0 of 430 found</span>
-        <span id="progressLots">0 of 138 lots done</span>
-      </div>
-      <div class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
-      <div class="filters">
-        <div class="filter-group" role="group" aria-label="Status filter">
-          <button class="filter-btn active" data-filter="all">All</button>
-          <button class="filter-btn" data-filter="needed">Still needed</button>
-          <button class="filter-btn" data-filter="done">Done</button>
-        </div>
-        <select id="colourSelect" aria-label="Filter by colour"></select>
-        <select id="typeSelect" aria-label="Filter by piece type"></select>
-        <div class="set-picker" id="setPicker">
-          <button type="button" class="set-picker-btn" id="setPickerBtn" aria-haspopup="true">Sets: All</button>
-          <div class="set-picker-panel" id="setPickerPanel" hidden>
-            <label class="set-picker-row select-all"><input type="checkbox" id="setPickerAll"> Select all</label>
-            <div id="setPickerList"></div>
-          </div>
-        </div>
-        <button id="importBtn" class="btn btn-small" hidden>Import my old progress</button>
-        <button id="resetBtn" class="btn btn-small btn-danger">Reset all</button>
-      </div>
-      <p id="importMsg" class="auth-msg" role="status"></p>
-    </div>
+
 
     <div id="setView"></div>
 

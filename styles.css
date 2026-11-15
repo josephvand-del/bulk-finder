@@ -22,6 +22,8 @@ body {
   border-bottom: 2px solid #222;
 }
 .site-header h1 { margin: 0; font-size: 28px; }
+.menu-btn { display: none; }
+.drawer-backdrop { display: none; }
 .tagline { margin: 2px 0 0; color: #555; }
 .header-auth { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .sync-status {
@@ -79,7 +81,7 @@ input, select {
 /* ---------- Layout ---------- */
 .layout { display: flex; align-items: flex-start; }
 .sidebar {
-  width: 260px;
+  width: 300px;
   flex-shrink: 0;
   padding: 16px;
   border-right: 1px solid #ddd;
@@ -118,6 +120,23 @@ input, select {
 }
 .add-set-preview-img { max-width: 100%; max-height: 120px; display: block; margin-bottom: 6px; }
 .add-set-preview-buttons { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+
+/* ---------- Progress + filters (in the sidebar, above My sets) ---------- */
+.sidebar .progress-wrap {
+  position: static;
+  border-bottom: 1px solid #ddd;
+  margin-bottom: 14px;
+  padding: 0 0 12px;
+}
+.sidebar .progress-text { font-size: 16px; }
+.sidebar .filters { flex-direction: column; align-items: stretch; }
+.sidebar .filter-group { width: 100%; }
+.sidebar .filter-btn { flex: 1; }
+.sidebar .filters select,
+.sidebar .filters .set-picker,
+.sidebar .filters .set-picker-btn,
+.sidebar .filters .btn { width: 100%; }
+.sidebar .set-picker-panel { min-width: 0; width: 100%; }
 
 /* ---------- Sticky progress + filters ---------- */
 .progress-wrap {
@@ -281,15 +300,56 @@ input, select {
 }
 @media (max-width: 700px) {
   .layout { flex-direction: column; }
-  .sidebar {
-    width: 100%;
-    position: static;
-    max-height: none;
-    border-right: none;
-    border-bottom: 1px solid #ddd;
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: #fff;
+    padding: 10px 12px;
   }
+  .menu-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 22px;
+    line-height: 1;
+    border: 2px solid #222;
+    border-radius: 8px;
+    background: #fff;
+    color: #222;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .site-header h1 { font-size: 22px; }
+  .tagline { display: none; }
+  .user-chip { display: none; }
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 300px;
+    max-width: 85vw;
+    max-height: none;
+    z-index: 40;
+    background: #fff;
+    border-right: 2px solid #222;
+    border-bottom: none;
+    transform: translateX(-105%);
+    transition: transform 0.2s ease;
+  }
+  body.drawer-open .sidebar { transform: none; }
+  .drawer-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 35;
+    background: rgba(0, 0, 0, 0.45);
+  }
+  body.drawer-open .drawer-backdrop { display: block; }
   .card-grid { grid-template-columns: repeat(2, 1fr); }
-  .site-header h1 { font-size: 24px; }
 }
 
 /* v3.3 — password visibility toggle + forgot-password link. */

@@ -1026,6 +1026,17 @@ function loadSelected() {
   renderSetPicker();
 }
 
+/* ---------- Mobile drawer: the sidebar slides out from the left ----------
+ * Desktop: the hamburger is hidden and the sidebar is always visible.
+ * Phone: the hamburger in the header opens it; picking a set, tapping
+ * the backdrop, or Escape closes it. */
+function setDrawer(open) {
+  document.body.classList.toggle('drawer-open', open);
+  $('menuBtn').setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+function toggleDrawer() { setDrawer(!document.body.classList.contains('drawer-open')); }
+function closeDrawer() { setDrawer(false); }
+
 // Pick exactly these sets (at least one) and show them together.
 function setSelected(keys) {
   var valid = keys.filter(function (k) { return findSet(k); });
@@ -1064,6 +1075,7 @@ function selectAllSets(select) {
 function openSet(key) {
   var meta = findSet(key);
   if (!meta) return;
+  closeDrawer();
   activeSetKey = key;
   LS.set('bf:activeSet', key);
   setSelected([key]);
@@ -1391,6 +1403,9 @@ function bindEvents() {
   $('signupBtn').addEventListener('click', doSignup);
   $('logoutBtn').addEventListener('click', doLogout);
   $('changePwBtn').addEventListener('click', startChangePassword);
+  $('menuBtn').addEventListener('click', toggleDrawer);
+  $('drawerBackdrop').addEventListener('click', closeDrawer);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeDrawer(); });
   $('forgotBtn').addEventListener('click', doForgotPassword);
   $('pwToggleBtn').addEventListener('click', function () {
     var pw = $('authPassword');
