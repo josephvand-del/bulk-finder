@@ -152,6 +152,48 @@ input, select {
 .filter-btn + .filter-btn { border-left-width: 0; }
 .filter-btn.active { background: #222; color: #fff; }
 
+/* ---------- Set picker (multi-set view) ---------- */
+.set-picker { position: relative; }
+.set-picker-btn {
+  min-height: 44px;
+  padding: 6px 12px;
+  font-size: 15px;
+  border: 2px solid #222;
+  border-radius: 8px;
+  background: #fff;
+  color: #222;
+  cursor: pointer;
+}
+.set-picker-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  min-width: 240px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: #fff;
+  border: 2px solid #222;
+  border-radius: 8px;
+  padding: 6px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+}
+.set-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 6px;
+  font-size: 15px;
+  cursor: pointer;
+}
+.set-picker-row:hover { background: #f0f0f0; }
+.set-picker-row input { width: 18px; height: 18px; flex-shrink: 0; }
+.set-picker-row.select-all { font-weight: 700; border-bottom: 1px solid #ddd; border-radius: 6px 6px 0 0; }
+.set-heading { font-size: 19px; margin: 20px 0 4px; }
+.set-heading:first-child { margin-top: 4px; }
+.card .set-tag { font-size: 12px; font-weight: 700; color: #555; }
+
 /* ---------- Tier banners ---------- */
 .tier-banner {
   color: #fff;
