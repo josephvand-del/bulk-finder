@@ -1418,7 +1418,8 @@ function renderSetView() {
   }
   if (selectedKeys.length > 1) {
     // Several sets open: one banner per tier across ALL sets, so TIER 2
-    // never repeats after TIER 3. Cards still carry their "Set NNNN-N" tag.
+    // never repeats after TIER 3. Cards carry no set tag — in a combined
+    // view the set a part came from is needless information.
     [1, 2, 3].forEach(function (tier) {
       appendTier(tier, items.filter(function (it) { return it.tier === tier && cardMatches(it); }));
     });
@@ -1441,6 +1442,32 @@ function renderSetView() {
   renderSets(); // sidebar progress numbers
 }
 
+// BrickLink colour ids for the display colours (from Rebrickable's
+// colour table — the BrickLink column). Used for the photo fallback:
+// when the primary image is dead, try BrickLink's photo of the same
+// part in the same colour. The colour here is the lot's exact colour
+// (item.colour), NOT the folded family — Trans-Red is 17, Red is 5.
+var BRICKLINK_COLOUR = {
+  'White': 1, 'Black': 11, 'Blue': 7, 'Red': 5, 'Dark Grey': 85,
+  'Light Grey': 86, 'Tan': 2, 'Orange': 4, 'Yellow': 3, 'Lime Green': 34,
+  'Clear': 12, 'Trans-Blue': 14, 'Trans-Brown': 13, 'Trans-Green': 20,
+  'Trans-Orange': 98, 'Trans-Red': 17
+};
+
+// The alternate photo for a card whose primary image is dead.
+// Sticker sheets live on BrickLink under the set's sheet number
+// (8960stk01), not the LEGO part number; everything else uses the
+// part number in the lot's colour. Returns '' when there is no
+// alternate to try (unknown colour).
+function fallbackImg(item) {
+  if (item.cat === 'Stickers') {
+    return 'https://img.bricklink.com/ItemImage/PN/0/' + String(item.setKey || '').split('-')[0] + 'stk01.png';
+  }
+  var bl = BRICKLINK_COLOUR[item.colour];
+  if (bl === undefined) return '';
+  return 'https://img.bricklink.com/ItemImage/PN/' + bl + '/' + partNumOf(item) + '.png';
+}
+
 function buildCard(item) {
   var rem = remOf(item);
   var card = el('article', 'card' + (rem === 0 ? ' done' : ''));
@@ -1451,10 +1478,18 @@ function buildCard(item) {
   img.src = item.img;
   img.alt = ''; // no part names anywhere, photos speak for themselves
   img.loading = 'lazy';
-  // A dead image (e.g. a plain-http link the browser blocks as mixed
-  // content — Part 85418's Peeron photo) leaves a blank white box; show
-  // the part number in its place instead.
+  // A dead image (LEGO has no 192x192 photo for that element — parts
+  // 2456, 43093, 6587, 3749, 48183 — or a plain-http link the browser
+  // blocks as mixed content, like part 85418's Peeron photo) leaves a
+  // blank white box. Try BrickLink's photo of the same part in the
+  // same colour first; only if that is dead too, show the part number
+  // in its place.
   img.addEventListener('error', function () {
+    if (!img.dataset.fbTried) {
+      img.dataset.fbTried = '1';
+      var fb = fallbackImg(item);
+      if (fb && img.src !== fb) { img.src = fb; return; }
+    }
     img.style.display = 'none';
     photo.appendChild(el('div', 'photo-fallback', 'Part ' + partNumOf(item)));
   });
@@ -1472,7 +1507,6 @@ function buildCard(item) {
     nm.title = item.name;
     card.appendChild(nm);
   }
-  if (selectedKeys.length > 1) card.appendChild(el('div', 'set-tag', 'Set ' + item.setKey));
 
   var counter = el('div', 'counter');
   var minus = el('button', null, '−');

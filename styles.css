@@ -247,7 +247,6 @@ input, select {
 .set-picker-row.select-all { font-weight: 700; border-bottom: 1px solid #ddd; border-radius: 6px 6px 0 0; }
 .set-heading { font-size: 19px; margin: 20px 0 4px; }
 .set-heading:first-child { margin-top: 4px; }
-.card .set-tag { font-size: 12px; font-weight: 700; color: #555; }
 
 /* ---------- Tier banners ---------- */
 .tier-banner {
