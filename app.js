@@ -41,9 +41,10 @@ if (window.supabase && window.supabase.createClient) {
 }
 
 /* ---------- Colour families ----------
- * The colour filter folds transparent variants into their base colour,
- * and matches both lots locked to a colour AND any-colour lots pictured
- * in it (the photo colour is the 3rd segment of the lot id). */
+ * The colour filter folds transparent variants into their base colour.
+ * Every lot shows its colour family on its card; lots that used to be
+ * "any colour" show the colour pictured in the photo (the 3rd segment
+ * of the lot id). */
 var TRANS_FAMILY = {
   'Trans-Orange': 'Orange',
   'Trans-Blue': 'Blue',
@@ -70,6 +71,10 @@ function familyOf(item) {
   if (!item.any) return TRANS_FAMILY[item.colour] || item.colour;
   return picturedColour(item);
 }
+
+/* The colour printed on the card: the lot's colour family — for lots that
+ * used to be "any colour", the colour pictured in the photo. */
+function displayColour(item) { return familyOf(item); }
 
 /* Piece type: Rebrickable part category, one per lot. Two app-level merges
  * (decided with Joseph, 2026-11-15): Tiles fold into Plates ("anything
@@ -113,7 +118,7 @@ var remaining = {};           // partKey -> pieces still to find (active set)
 var mergedThisSession = {};   // set_num -> true once cloud merge ran
 var cloudMergePromises = {};  // set_num -> in-flight cloud-merge promise
 var statusFilter = 'all';     // all | needed | done
-var colourFilter = 'all';     // all | any | family name
+var colourFilter = 'all';     // all | family name
 var typeFilter = 'all';       // Rebrickable category name, or 'all'
 
 var SEED_SET = {
@@ -595,7 +600,6 @@ function cardMatches(item) {
   var rem = remaining[item.id] === undefined ? item.qty : remaining[item.id];
   if (statusFilter === 'needed' && rem === 0) return false;
   if (statusFilter === 'done' && rem !== 0) return false;
-  if (colourFilter === 'any') return !!item.any;
   if (colourFilter !== 'all' && familyOf(item) !== colourFilter) return false;
   if (typeFilter !== 'all' && itemCat(item) !== typeFilter) return false;
   return true;
@@ -604,20 +608,13 @@ function cardMatches(item) {
 function rebuildColourSelect() {
   var sel = $('colourSelect');
   var current = sel.value || 'all';
-  // Remaining pieces per family (locked + folded trans + pictured any).
+  // Remaining pieces per family (trans variants folded into base colours;
+  // lots that used to be "any colour" count under their pictured colour).
   var famLeft = {};
-  var anyLeft = 0;
   items.forEach(function (it) {
     var rem = remaining[it.id] === undefined ? it.qty : remaining[it.id];
-    if (it.any) { anyLeft += rem; return; }
     var fam = familyOf(it);
     famLeft[fam] = (famLeft[fam] || 0) + rem;
-  });
-  // Any-colour lots pictured in a colour also count toward that family.
-  items.forEach(function (it) {
-    if (!it.any) return;
-    var fam = familyOf(it);
-    famLeft[fam] = (famLeft[fam] || 0) + (remaining[it.id] === undefined ? it.qty : remaining[it.id]);
   });
   var fams = Object.keys(famLeft).sort(function (a, b) {
     if (famLeft[b] !== famLeft[a]) return famLeft[b] - famLeft[a];
@@ -627,16 +624,13 @@ function rebuildColourSelect() {
   var optAll = el('option', null, 'All colours');
   optAll.value = 'all';
   sel.appendChild(optAll);
-  var optAny = el('option', null, '★ Any Colour · ' + anyLeft + ' left');
-  optAny.value = 'any';
-  sel.appendChild(optAny);
   fams.forEach(function (fam) {
     var o = el('option', null, fam + ' · ' + famLeft[fam] + ' left');
     o.value = fam;
     sel.appendChild(o);
   });
   // Keep the previous selection if it still exists.
-  sel.value = (current === 'all' || current === 'any' || famLeft.hasOwnProperty(current)) ? current : 'all';
+  sel.value = (current === 'all' || famLeft.hasOwnProperty(current)) ? current : 'all';
   colourFilter = sel.value;
 }
 
@@ -719,7 +713,7 @@ function renderSetView() {
 
 function buildCard(item) {
   var rem = remaining[item.id] === undefined ? item.qty : remaining[item.id];
-  var card = el('article', 'card' + (item.any ? ' any' : '') + (rem === 0 ? ' done' : ''));
+  var card = el('article', 'card' + (rem === 0 ? ' done' : ''));
   card.dataset.key = item.id;
 
   var photo = el('div', 'photo');
@@ -732,11 +726,7 @@ function buildCard(item) {
 
   card.appendChild(el('div', 'qty', '×' + item.qty));
   card.appendChild(el('div', 'dim', item.dim));
-  if (item.any) {
-    card.appendChild(el('div', 'any-label', '★ ANY COLOUR'));
-  } else {
-    card.appendChild(el('div', 'colour', item.colour));
-  }
+  card.appendChild(el('div', 'colour', displayColour(item)));
   card.appendChild(el('div', 'partnum', 'Part ' + partNumOf(item)));
 
   var counter = el('div', 'counter');
