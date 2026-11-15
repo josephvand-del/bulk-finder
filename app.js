@@ -578,6 +578,36 @@ function unsubscribeLive() {
  * error; it is never caused by another device being logged in. */
 var recoveryMode = false; // true after a password-reset link is opened
 
+// The reset link lands here as #access_token=...&type=recovery. The
+// client fires PASSWORD_RECOVERY while it reads that hash — before
+// init() has registered its listener — so the event alone can't be
+// trusted. Spot the token in the URL at startup instead.
+function isRecoveryUrl() {
+  try {
+    var h = (window.location && window.location.hash) || '';
+    return /(^|&)type=recovery(&|$)/.test(h.replace(/^#/, ''));
+  } catch (e) { return false; }
+}
+
+// Drop the #access_token=... fragment once it's been used, so a reload
+// doesn't re-enter recovery mode.
+function clearUrlHash() {
+  try {
+    if (window.history && window.history.replaceState && window.location) {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+  } catch (e) { /* leaving the hash is harmless */ }
+}
+
+// Show the "Set new password" form (used by both the event handler
+// and the startup URL check).
+function enterRecoveryMode(msg) {
+  recoveryMode = true;
+  $('authCard').hidden = false;
+  renderAuth();
+  setAuthMsg(msg || 'Choose a new password, then tap Set new password.', true);
+}
+
 function setAuthMsg(msg, ok) {
   var n = $('authMsg');
   n.textContent = msg || '';
@@ -607,6 +637,7 @@ async function doLogin() {
     var upd = await sb.auth.updateUser({ password: password });
     if (upd.error) { setAuthMsg(authErrorText(upd.error)); return; }
     recoveryMode = false;
+    clearUrlHash();
     renderAuth();
     setAuthMsg('Password updated — logged in.', true);
     return;
@@ -677,11 +708,8 @@ async function doLogout() {
 async function handleAuthChange(event, session) {
   if (event === 'PASSWORD_RECOVERY') {
     // Opened a reset link: the log-in button becomes "Set new password".
-    recoveryMode = true;
     user = (session && session.user) ? session.user : user;
-    $('authCard').hidden = false;
-    renderAuth();
-    setAuthMsg('Choose a new password, then tap Set new password.', true);
+    enterRecoveryMode();
     return;
   }
   user = (session && session.user) ? session.user : null;
@@ -1428,6 +1456,20 @@ async function init() {
       sb.auth.onAuthStateChange(handleAuthChange);
     } catch (e) {
       console.warn('auth check failed, continuing as guest', e);
+    }
+  }
+  // A password-reset link lands here with #...&type=recovery in the URL.
+  // The recovery session is already in place (getSession above); show
+  // the "Set new password" form. Without a session the link is spent
+  // or expired — say so and clear it.
+  if (sb && isRecoveryUrl()) {
+    if (user) {
+      enterRecoveryMode();
+    } else {
+      renderAuth();
+      $('authCard').hidden = false;
+      setAuthMsg('That reset link didn’t work or has expired — type your email above and tap Forgot password? for a new one.');
+      clearUrlHash();
     }
   }
   // Guest path (or a set added on another device): load every set's
