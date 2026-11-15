@@ -193,12 +193,6 @@ input, select {
 .card .dim { font-size: 13px; color: #555; }
 .card .colour { font-size: 14px; font-weight: 600; }
 .card .partnum { font-size: 13px; color: #555; }
-/* Any-colour cards: hot pink, white bold text — same as the PDF. */
-.card.any { background: #ff006e; border-color: #ff006e; color: #fff; }
-.card.any .photo { background: #fff; }
-.card.any .dim { color: #ffe3ee; }
-.card.any .partnum { color: #ffe3ee; }
-.card.any .any-label { font-size: 15px; font-weight: 800; color: #fff; }
 /* Done state at 0 remaining. */
 .card.done { opacity: 0.75; border-color: #1b5e20; }
 .card.done .left { color: #1b5e20; font-weight: 700; }
@@ -223,7 +217,6 @@ input, select {
   cursor: pointer;
   flex-shrink: 0;
 }
-.card.any .counter button { border-color: #fff; }
 .counter button:disabled { opacity: 0.35; cursor: default; }
 .counter .left { font-size: 14px; flex: 1; }
 
