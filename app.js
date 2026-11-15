@@ -96,6 +96,7 @@ function partNumOf(item) { var parts = String(item.id || '').split('-'); return 
  * bf:cloudIds        — { setNum: user_sets.id } for cloud sets
  * bf:outbox          — pending sync ops (retried until they land)
  * bf:activeSet       — last opened set
+ * bf:selectedSets    — set keys shown together in the combined view
  * bf:guestDismissed  — auth card dismissed for this session's guest */
 var LS = {
   get: function (k, fallback) {
@@ -112,9 +113,16 @@ var LS = {
 /* ---------- State ---------- */
 var user = null;              // Supabase auth user, or null = guest
 var sets = [];                // [{ key, set_num, set_name, total_parts, total_lots, user_set_id }]
-var activeSetKey = null;      // set_num of the open set
-var items = [];               // inventory items of the active set
-var remaining = {};           // partKey -> pieces still to find (active set)
+var activeSetKey = null;      // set_num of the set the sidebar last opened
+var selectedKeys = [];        // set keys shown together in the combined view
+var items = [];               // combined inventory of the selected sets (each item carries setKey)
+var remainingBySet = {};      // setKey -> { partKey -> pieces still to find }
+// Pieces still to find for one combined-view item (its own set's map).
+function remOf(item) {
+  var map = remainingBySet[item.setKey];
+  if (!map) return item.qty;
+  return map[item.id] === undefined ? item.qty : map[item.id];
+}
 var mergedThisSession = {};   // set_num -> true once cloud merge ran
 var cloudMergePromises = {};  // set_num -> in-flight cloud-merge promise
 var statusFilter = 'all';     // all | needed | done
@@ -184,13 +192,18 @@ function enqueueSync(op) {
 // One upsert for a single changed lot.
 function enqueuePartSync(setMeta, item) {
   if (!setMeta.user_set_id) return; // no cloud row yet; bulk upload on next open covers it
-  enqueueSync({ kind: 'part', user_set_id: setMeta.user_set_id, row: partRow(setMeta.user_set_id, item, remaining[item.id]) });
+  enqueueSync({ kind: 'part', user_set_id: setMeta.user_set_id, row: partRow(setMeta.user_set_id, item, remOf(item)) });
 }
 
 // One upsert carrying every lot of a set (used after Reset all).
 function enqueueBulkSync(setMeta) {
   if (!setMeta.user_set_id) return;
-  var rows = items.map(function (it) { return partRow(setMeta.user_set_id, it, remaining[it.id]); });
+  var inv = getInventory(setMeta.set_num);
+  if (!inv) return;
+  var map = remainingBySet[setMeta.set_num] || {};
+  var rows = inv.items.map(function (it) {
+    return partRow(setMeta.user_set_id, it, map[it.id] === undefined ? it.qty : map[it.id]);
+  });
   enqueueSync({ kind: 'bulk', user_set_id: setMeta.user_set_id, rows: rows });
 }
 
@@ -310,7 +323,7 @@ async function ensureCloudSet(meta) {
       userSetId = await createCloudSet(meta);
       if (!userSetId) return;
       meta.user_set_id = userSetId;
-      await uploadAllParts(userSetId, meta.set_num, remaining);
+      await uploadAllParts(userSetId, meta.set_num, remainingBySet[meta.set_num] || loadCounts(meta.set_num));
       updateSyncStatus();
       return;
     }
@@ -325,10 +338,10 @@ async function ensureCloudSet(meta) {
       rows.forEach(function (r) {
         if (map.hasOwnProperty(r.part_key)) map[r.part_key] = Math.max(0, r.qty_remaining);
       });
-      remaining = map;
-      saveCounts(meta.set_num, remaining);
+      remainingBySet[meta.set_num] = map;
+      saveCounts(meta.set_num, map);
     } else {
-      await uploadAllParts(userSetId, meta.set_num, remaining);
+      await uploadAllParts(userSetId, meta.set_num, remainingBySet[meta.set_num] || loadCounts(meta.set_num));
     }
     updateSyncStatus();
   })();
@@ -527,22 +540,16 @@ async function importOldProgress() {
     return;
   }
   // Set exists: open it (cloud merge settles first), then merge on top.
-  activeSetKey = '8961-1';
-  LS.set('bf:activeSet', '8961-1');
-  items = getInventory('8961-1').items.slice();
-  remaining = loadCounts('8961-1');
-  $('emptyState').hidden = true;
-  $('progressWrap').hidden = false;
-  renderSets();
-  renderSetView();
+  openSet('8961-1');
   await ensureCloudSet(meta);
+  var map = remainingBySet['8961-1'];
   var added = 0;
-  items.forEach(function (it) {
-    var cur = (remaining[it.id] === undefined) ? it.qty : remaining[it.id];
+  getInventory('8961-1').items.forEach(function (it) {
+    var cur = (map[it.id] === undefined) ? it.qty : map[it.id];
     var next = Math.min(cur, imported[it.id]);
-    if (next < cur) { remaining[it.id] = next; added += (cur - next); }
+    if (next < cur) { map[it.id] = next; added += (cur - next); }
   });
-  saveCounts(meta.set_num, remaining);
+  saveCounts(meta.set_num, map);
   markImported('8961-1');
   renderSetView();
   if (meta.user_set_id) enqueueBulkSync(meta);
@@ -554,18 +561,75 @@ async function importOldProgress() {
 }
 
 
+// The sets the combined view shows. Saved on this device.
+function loadSelectedKeys() { return LS.get('bf:selectedSets', null); }
+function saveSelectedKeys() { LS.set('bf:selectedSets', selectedKeys); }
+
+// Rebuild the combined view from selectedKeys: per-set counts + items
+// tagged with their set (copies — the shared inventory is never mutated).
+function loadSelected() {
+  items = [];
+  remainingBySet = {};
+  selectedKeys.forEach(function (key) {
+    var inv = getInventory(key);
+    if (!inv) return;
+    remainingBySet[key] = loadCounts(key);
+    inv.items.forEach(function (it) {
+      var copy = {};
+      for (var k in it) copy[k] = it[k];
+      copy.setKey = key;
+      items.push(copy);
+    });
+  });
+  $('emptyState').hidden = items.length > 0;
+  $('progressWrap').hidden = items.length === 0;
+  renderSets();
+  renderSetView();
+  renderSetPicker();
+}
+
+// Pick exactly these sets (at least one) and show them together.
+function setSelected(keys) {
+  var valid = keys.filter(function (k) { return findSet(k); });
+  if (!valid.length) return;
+  selectedKeys = valid;
+  saveSelectedKeys();
+  loadSelected();
+}
+
+// Picker toggle for one set. The last selected set stays checked —
+// the view always shows at least one set.
+function toggleSet(key) {
+  var i = selectedKeys.indexOf(key);
+  if (i >= 0) {
+    if (selectedKeys.length === 1) return;
+    selectedKeys.splice(i, 1);
+  } else {
+    selectedKeys.push(key);
+  }
+  saveSelectedKeys();
+  loadSelected();
+}
+
+// The "Select all" box: check -> every set; uncheck -> just the first set.
+function selectAllSets(select) {
+  if (select) {
+    selectedKeys = sets.map(function (s) { return s.key; });
+  } else {
+    selectedKeys = [sets.length ? sets[0].key : activeSetKey].filter(Boolean);
+  }
+  saveSelectedKeys();
+  loadSelected();
+}
+
+// Sidebar click: show just this set. The picker can add more sets on top.
 function openSet(key) {
   var meta = findSet(key);
   if (!meta) return;
   activeSetKey = key;
   LS.set('bf:activeSet', key);
-  items = getInventory(key) ? getInventory(key).items.slice() : [];
-  remaining = loadCounts(key);
-  $('emptyState').hidden = true;
-  $('progressWrap').hidden = false;
+  setSelected([key]);
   var im = $('importMsg'); if (im) im.textContent = '';
-  renderSets();
-  renderSetView();
   if (user && sb) {
     // Cloud merge in the background; re-render if it changed counts.
     ensureCloudSet(meta).then(function () { renderSetView(); updateSyncStatus(); });
@@ -581,15 +645,17 @@ function showEmpty() {
 
 /* ---------- Set view: grid, filters, counters ---------- */
 function setTitle() {
-  var meta = findSet(activeSetKey);
-  if (!meta) return '';
-  return meta.set_num + ' — ' + meta.set_name;
+  if (selectedKeys.length === 1) {
+    var meta = findSet(selectedKeys[0]);
+    return meta ? meta.set_num + ' — ' + meta.set_name : '';
+  }
+  return selectedKeys.length + ' sets — ' + selectedKeys.join(', ');
 }
 
 function totals() {
   var found = 0, done = 0;
   items.forEach(function (it) {
-    var rem = remaining[it.id] === undefined ? it.qty : remaining[it.id];
+    var rem = remOf(it);
     found += (it.qty - rem);
     if (rem === 0) done++;
   });
@@ -597,7 +663,7 @@ function totals() {
 }
 
 function cardMatches(item) {
-  var rem = remaining[item.id] === undefined ? item.qty : remaining[item.id];
+  var rem = remOf(item);
   if (statusFilter === 'needed' && rem === 0) return false;
   if (statusFilter === 'done' && rem !== 0) return false;
   if (colourFilter !== 'all' && familyOf(item) !== colourFilter) return false;
@@ -612,7 +678,7 @@ function rebuildColourSelect() {
   // lots that used to be "any colour" count under their pictured colour).
   var famLeft = {};
   items.forEach(function (it) {
-    var rem = remaining[it.id] === undefined ? it.qty : remaining[it.id];
+    var rem = remOf(it);
     var fam = familyOf(it);
     famLeft[fam] = (famLeft[fam] || 0) + rem;
   });
@@ -641,7 +707,7 @@ function rebuildTypeSelect() {
   // Remaining pieces per category, from the lots actually in this set.
   var catLeft = {};
   items.forEach(function (it) {
-    var rem = remaining[it.id] === undefined ? it.qty : remaining[it.id];
+    var rem = remOf(it);
     var c = itemCat(it);
     catLeft[c] = (catLeft[c] || 0) + rem;
   });
@@ -673,7 +739,7 @@ function renderProgress() {
 function renderSetView() {
   var view = $('setView');
   view.innerHTML = '';
-  if (!activeSetKey || !items.length) { showEmpty(); return; }
+  if (!selectedKeys.length || !items.length) { showEmpty(); return; }
   $('emptyState').hidden = true;
   $('progressWrap').hidden = false;
 
@@ -681,30 +747,40 @@ function renderSetView() {
   h.style.margin = '4px 0 12px';
   view.appendChild(h);
 
-  var inv = getInventory(activeSetKey);
-  var tierNames = inv ? inv.tiers : { 1: 'MOST LIKELY IN BULK', 2: 'MEDIUM — WORTH A DIG', 3: 'LEAST LIKELY IN BULK' };
   var tierNotes = {
     1: 'Common bricks and plates — the bulk bins are full of these.',
     2: 'Worth digging for — less common, still in the bins.',
     3: 'Rare in bulk — check the sorted cases and minifig wall too.'
   };
 
-  var shownTiers = 0;
-  [1, 2, 3].forEach(function (tier) {
-    var tierItems = items.filter(function (it) { return it.tier === tier && cardMatches(it); });
-    if (!tierItems.length) return;
-    shownTiers++;
-    var banner = el('h3', 'tier-banner tier-' + tier, 'TIER ' + tier + ' — ' + tierNames[String(tier)]);
-    view.appendChild(banner);
-    view.appendChild(el('p', 'tier-note', tierNotes[tier]));
-    var grid = el('div', 'card-grid');
-    tierItems.forEach(function (it) { grid.appendChild(buildCard(it)); });
-    view.appendChild(grid);
+  var shown = 0;
+  selectedKeys.forEach(function (key) {
+    var meta = findSet(key);
+    if (!meta) return;
+    var setItems = items.filter(function (it) { return it.setKey === key; });
+    if (!setItems.length) return;
+    var inv = getInventory(key);
+    var tierNames = inv ? inv.tiers : { 1: 'MOST LIKELY IN BULK', 2: 'MEDIUM — WORTH A DIG', 3: 'LEAST LIKELY IN BULK' };
+    // With several sets open, each set gets its own heading.
+    if (selectedKeys.length > 1) {
+      view.appendChild(el('h3', 'set-heading', meta.set_num + ' — ' + meta.set_name));
+    }
+    [1, 2, 3].forEach(function (tier) {
+      var tierItems = setItems.filter(function (it) { return it.tier === tier && cardMatches(it); });
+      if (!tierItems.length) return;
+      shown++;
+      var banner = el('h3', 'tier-banner tier-' + tier, 'TIER ' + tier + ' — ' + tierNames[String(tier)]);
+      view.appendChild(banner);
+      view.appendChild(el('p', 'tier-note', tierNotes[tier]));
+      var grid = el('div', 'card-grid');
+      tierItems.forEach(function (it) { grid.appendChild(buildCard(it)); });
+      view.appendChild(grid);
+    });
   });
-  if (!shownTiers) view.appendChild(el('p', 'muted', 'No pieces match these filters — try widening the type or colour.'));
+  if (!shown) view.appendChild(el('p', 'muted', 'No pieces match these filters — try widening the type or colour.'));
 
   var impBtn = $('importBtn');
-  if (impBtn) impBtn.hidden = (activeSetKey !== '8961-1');
+  if (impBtn) impBtn.hidden = selectedKeys.indexOf('8961-1') < 0;
   rebuildColourSelect();
   rebuildTypeSelect();
   renderProgress();
@@ -712,9 +788,9 @@ function renderSetView() {
 }
 
 function buildCard(item) {
-  var rem = remaining[item.id] === undefined ? item.qty : remaining[item.id];
+  var rem = remOf(item);
   var card = el('article', 'card' + (rem === 0 ? ' done' : ''));
-  card.dataset.key = item.id;
+  card.dataset.key = item.setKey + '|' + item.id;
 
   var photo = el('div', 'photo');
   var img = document.createElement('img');
@@ -728,6 +804,7 @@ function buildCard(item) {
   card.appendChild(el('div', 'dim', item.dim));
   card.appendChild(el('div', 'colour', displayColour(item)));
   card.appendChild(el('div', 'partnum', 'Part ' + partNumOf(item)));
+  if (selectedKeys.length > 1) card.appendChild(el('div', 'set-tag', 'Set ' + item.setKey));
 
   var counter = el('div', 'counter');
   var minus = el('button', null, '−');
@@ -754,21 +831,21 @@ function leftText(item, rem) {
 
 // One tap: device first, cloud second. Never wipes local on sync failure.
 function changeRemaining(item, delta) {
-  var rem = remaining[item.id] === undefined ? item.qty : remaining[item.id];
+  var rem = remOf(item);
   var next = Math.max(0, Math.min(item.qty, rem + delta));
   if (next === rem) return;
-  remaining[item.id] = next;
-  saveCounts(activeSetKey, remaining);
+  remainingBySet[item.setKey][item.id] = next;
+  saveCounts(item.setKey, remainingBySet[item.setKey]);
   updateCardUI(item);
   renderProgress();
   renderSets(); // sidebar "X of 430 found" must move on the same tap
-  var meta = findSet(activeSetKey);
+  var meta = findSet(item.setKey);
   if (meta) enqueuePartSync(meta, item);
 }
 
 function updateCardUI(item) {
-  var rem = remaining[item.id];
-  var card = document.querySelector('.card[data-key="' + CSS.escape(item.id) + '"]');
+  var rem = remOf(item);
+  var card = document.querySelector('.card[data-key="' + CSS.escape(item.setKey + '|' + item.id) + '"]');
   if (!card) return; // card hidden by the current filter; progress still updated
   card.classList.toggle('done', rem === 0);
   var left = card.querySelector('.left');
@@ -784,12 +861,18 @@ function updateCardUI(item) {
 
 function resetAll() {
   if (!items.length) return;
-  if (!window.confirm('Reset every lot in this set back to its full count? Your found pieces will be cleared.')) return;
-  items.forEach(function (it) { remaining[it.id] = it.qty; });
-  saveCounts(activeSetKey, remaining);
+  var names = selectedKeys.join(', ');
+  if (!window.confirm('Reset every lot in ' + names + ' back to its full count? Your found pieces in ' + (selectedKeys.length > 1 ? 'these sets' : 'this set') + ' will be cleared.')) return;
+  selectedKeys.forEach(function (key) {
+    var map = remainingBySet[key];
+    var inv = getInventory(key);
+    if (!map || !inv) return;
+    inv.items.forEach(function (it) { map[it.id] = it.qty; });
+    saveCounts(key, map);
+    var meta = findSet(key);
+    if (meta) enqueueBulkSync(meta);
+  });
   renderSetView();
-  var meta = findSet(activeSetKey);
-  if (meta) enqueueBulkSync(meta);
   updateSyncStatus();
 }
 
@@ -813,12 +896,37 @@ function renderSets() {
   $('seedBtn').style.display = findSet('8961-1') ? 'none' : '';
   refreshImportButtons();
   sets.forEach(function (s) {
-    var li = el('li', s.key === activeSetKey ? 'active' : '');
+    var li = el('li', selectedKeys.indexOf(s.key) >= 0 ? 'active' : '');
     li.appendChild(el('div', 'set-name', s.set_name));
     li.appendChild(el('div', 'set-num', s.set_num));
     li.appendChild(el('div', 'set-progress', setProgress(s)));
     li.addEventListener('click', function () { openSet(s.key); });
     list.appendChild(li);
+  });
+  renderSetPicker();
+}
+
+/* ---------- Set picker: checkboxes + Select all in the filters row ---------- */
+function renderSetPicker() {
+  var btn = $('setPickerBtn');
+  var list = $('setPickerList');
+  var allBox = $('setPickerAll');
+  if (!btn || !list) return;
+  if (!sets.length) btn.textContent = 'Sets';
+  else if (selectedKeys.length === sets.length) btn.textContent = 'Sets: All';
+  else if (selectedKeys.length === 1) btn.textContent = 'Sets: ' + selectedKeys[0];
+  else btn.textContent = 'Sets: ' + selectedKeys.length + ' of ' + sets.length;
+  if (allBox) allBox.checked = sets.length > 0 && selectedKeys.length === sets.length;
+  list.innerHTML = '';
+  sets.forEach(function (s) {
+    var label = el('label', 'set-picker-row');
+    var box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = selectedKeys.indexOf(s.key) >= 0;
+    box.addEventListener('change', function () { toggleSet(s.key); });
+    label.appendChild(box);
+    label.appendChild(el('span', null, s.set_num + ' — ' + s.set_name));
+    list.appendChild(label);
   });
 }
 
@@ -865,6 +973,19 @@ function bindEvents() {
     typeFilter = e.target.value;
     renderSetView();
   });
+  $('setPickerBtn').addEventListener('click', function (e) {
+    e.stopPropagation();
+    var panel = $('setPickerPanel');
+    panel.hidden = !panel.hidden;
+  });
+  $('setPickerAll').addEventListener('change', function (e) {
+    selectAllSets(e.target.checked);
+  });
+  document.addEventListener('click', function (e) {
+    var picker = $('setPicker');
+    var panel = $('setPickerPanel');
+    if (panel && !panel.hidden && picker && !picker.contains(e.target)) panel.hidden = true;
+  });
   $('resetBtn').addEventListener('click', resetAll);
   window.addEventListener('online', function () { updateSyncStatus(); processOutbox(); });
   window.addEventListener('offline', updateSyncStatus);
@@ -897,7 +1018,12 @@ async function init() {
   renderAuth();
   renderSets();
   var last = LS.get('bf:activeSet', null);
-  if (last && findSet(last)) openSet(last);
+  var savedSel = loadSelectedKeys();
+  if (savedSel && savedSel.length && savedSel.every(function (k) { return findSet(k); })) {
+    selectedKeys = savedSel;
+    activeSetKey = (last && selectedKeys.indexOf(last) >= 0) ? last : selectedKeys[0];
+    loadSelected();
+  } else if (last && findSet(last)) openSet(last);
   else if (sets.length) openSet(sets[0].key);
   else showEmpty();
   updateSyncStatus();
