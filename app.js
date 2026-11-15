@@ -1196,6 +1196,7 @@ function openSet(key) {
 
 function showEmpty() {
   $('progressWrap').hidden = true;
+  $('resetBtn').hidden = true;
   $('setView').innerHTML = '';
   $('emptyState').hidden = false;
 }
@@ -1300,6 +1301,7 @@ function renderSetView() {
   if (!selectedKeys.length || !items.length) { showEmpty(); return; }
   $('emptyState').hidden = true;
   $('progressWrap').hidden = false;
+  $('resetBtn').hidden = false;
 
   var h = el('h2', null, setTitle());
   h.style.margin = '4px 0 12px';

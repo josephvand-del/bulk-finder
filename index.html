@@ -17,11 +17,7 @@
     <p class="tagline">Pick a set, hunt the bulk bins, tap each piece as it goes in the bag.</p>
   </div>
   <div class="header-auth">
-    <span id="syncStatus" class="sync-status">Saved on this phone</span>
-    <span id="userChip" class="user-chip" hidden></span>
     <button id="authToggleBtn" class="btn btn-small">Log in / Sign up</button>
-    <button id="logoutBtn" class="btn btn-small" hidden>Log out</button>
-    <button id="changePwBtn" class="btn btn-small" hidden>Change password</button>
   </div>
 </header>
 
@@ -70,14 +66,9 @@
               </div>
             </div>
             <button id="importBtn" class="btn btn-small" hidden>Import my old progress</button>
-            <button id="resetBtn" class="btn btn-small btn-danger">Reset all</button>
           </div>
           <p id="importMsg" class="auth-msg" role="status"></p>
         </div>
-    <h2>My sets</h2>
-    <ul id="setList" class="set-list"></ul>
-    <p id="noSetsMsg" class="muted">No sets yet — add the starter set below.</p>
-
     <h3>Add a set</h3>
     <div class="add-set">
       <input id="setNumInput" type="text" placeholder="Set number or name, e.g. 8961-1 or Crystal King" aria-label="Set number or name">
@@ -101,6 +92,21 @@
     <div id="importSeedWrap">
       <button id="importSeedBtn" class="btn btn-wide">Add it with my old progress</button>
       <p class="muted small">Same set, but starts with the 340 pieces you already found in the old tracker. Log in first — it saves to your account.</p>
+    </div>
+
+    <h2>My sets</h2>
+    <ul id="setList" class="set-list"></ul>
+    <p id="noSetsMsg" class="muted">No sets yet — add one above, or use the starter set.</p>
+
+    <div class="reset-wrap">
+      <button id="resetBtn" class="btn btn-small btn-danger" hidden>Reset all</button>
+    </div>
+
+    <div class="sidebar-footer">
+      <span id="syncStatus" class="sync-status">Saved on this phone</span>
+      <span id="userChip" class="user-chip" hidden></span>
+      <button id="logoutBtn" class="btn btn-small" hidden>Log out</button>
+      <button id="changePwBtn" class="btn btn-small" hidden>Change password</button>
     </div>
   </aside>
 
