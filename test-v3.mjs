@@ -937,6 +937,17 @@ async function main() {
   $("soundToggleBtn").listeners.click[0]();
   check("minikit: toggle back on", sandbox.soundOn, true);
 
+  // v3.20 — the set picker shows titles only; the number stays in
+  // the My sets list below (see the v3.6 rows checks).
+  sandbox.renderSetPicker();
+  const pickerLabels = [...$("setPickerList").children].map((row) => row.children[1].textContent);
+  check("picker: rows show their set's title", pickerLabels, sandbox.sets.map((s) => s.set_name || s.set_num));
+  check("picker: no row shows a set number", pickerLabels.some((t) => /^\d{4,5}-\d$/.test(t)), false);
+  sandbox.setSelected(["8961-1"]);
+  check("picker: button shows the title for one set", $("setPickerBtn").textContent, "Sets: Crystal Sweeper");
+  sandbox.setSelected(["8961-1", "10294-1", "10305-1", "test-2"]);
+  check("picker: button still says All for all sets", $("setPickerBtn").textContent, "Sets: All");
+
   console.log(failures === 0 ? "\nALL PASS" : "\n" + failures + " FAILURES");
   process.exit(failures === 0 ? 0 : 1);
 }

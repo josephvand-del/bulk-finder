@@ -1,4 +1,4 @@
-/* Bulk Finder v3.19 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.20 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -1874,7 +1874,10 @@ function renderSetPicker() {
   if (!btn || !list) return;
   if (!sets.length) btn.textContent = 'Sets';
   else if (selectedKeys.length === sets.length) btn.textContent = 'Sets: All';
-  else if (selectedKeys.length === 1) btn.textContent = 'Sets: ' + selectedKeys[0];
+  else if (selectedKeys.length === 1) {
+    var only = findSet(selectedKeys[0]);
+    btn.textContent = 'Sets: ' + (only && only.set_name ? only.set_name : selectedKeys[0]);
+  }
   else btn.textContent = 'Sets: ' + selectedKeys.length + ' of ' + sets.length;
   if (allBox) allBox.checked = sets.length > 0 && selectedKeys.length === sets.length;
   list.innerHTML = '';
@@ -1885,7 +1888,8 @@ function renderSetPicker() {
     box.checked = selectedKeys.indexOf(s.key) >= 0;
     box.addEventListener('change', function () { toggleSet(s.key); });
     label.appendChild(box);
-    label.appendChild(el('span', null, s.set_num + ' — ' + s.set_name));
+    // Titles only — the set number lives in the My sets list below.
+    label.appendChild(el('span', null, s.set_name || s.set_num));
     list.appendChild(label);
   });
 }
