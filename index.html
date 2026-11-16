@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Bulk Finder — LEGO bulk hunt tracker</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#ffffff">
 <link rel="stylesheet" href="styles.css">
 <!-- Supabase JS v2 (CDN). Auth + database live here; the app still works
      as a guest if this fails to load (local-only mode). -->
@@ -160,5 +162,13 @@
 </div>
 
 <script src="app.js"></script>
+<script>
+// Installable app (PWA): register the service worker if the browser
+// has one. No service worker, no problem — the site still works as a
+// normal page.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(function () {});
+}
+</script>
 </body>
 </html>
