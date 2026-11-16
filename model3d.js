@@ -172,10 +172,27 @@ function ensureLoader() {
 // (64786) has no standard equivalent, so it stays "no model yet".
 // Two more files (64727, 4736) exist in the repo but jsDelivr answers
 // 403 for them, so they are fetched from GitHub raw instead.
+// Printed minifig parts (v3.23): LDraw models a print as a separate
+// file with a "p" suffix, and the p-number can't be derived from the
+// element ID — it needs a lookup. Verified Nov 15 (full-library greps
+// + mirror curls): the two 8961-1 torsos have printed files; the heads
+// (64881/64882), the legs (85107) and the rock-monster body (64786)
+// have none anywhere, so they keep the plain component / photo.
+// Keyed by ELEMENT id (the first field of the item id), because the
+// print belongs to the element, not the design number: both torso lots
+// are design 76382, but Rex (4542545) wears 973pau and Brains
+// (4542547) wears 973pas. The files are torso-only (no arms) — the
+// with-arms shortcuts 76382pau/76382pas are 2025 files, not in the
+// Jan 2023 mirror (404) — so the plain-torso shape mapping still
+// applies; only the print changes.
+var PRINTED_DAT = { '4542545': '973pau', '4542547': '973pas' };
 var MINIFIG_DAT = { '64881': '3626', '64882': '3626', '76382': '973', '85107': '970' };
 var RAW_FALLBACK = { '64727': 1, '4736': 1 };
 var LIB_RAW = 'https://raw.githubusercontent.com/gkjohnson/ldraw-parts-library/master/complete/ldraw/';
-function datPartFor(partNum) { return MINIFIG_DAT[partNum] || partNum; }
+function datPartFor(partNum, element) {
+  if (element && PRINTED_DAT[element]) return PRINTED_DAT[element];
+  return MINIFIG_DAT[partNum] || partNum;
+}
 function fetchDat(partNum) {
   var url = (RAW_FALLBACK[partNum] ? LIB_RAW : LIB) + 'parts/' + partNum + '.dat';
   return fetch(url).then(function (resp) {
@@ -188,11 +205,14 @@ function fetchDat(partNum) {
 // Fetch one part's geometry and parse it into the cache. Resolves
 // with the group, or null when the part has no model. Rejects only on
 // a network failure, or 'nodat' when the .dat file itself is missing.
-function loadModel(partNum, colourCode) {
-  var key = partNum + ':' + colourCode;
+function loadModel(partNum, colourCode, element) {
+  var datPart = datPartFor(partNum, element);
+  // The cache key is the resolved .dat file, not the design number:
+  // a printed torso (973pau) and a plain one (973) are different
+  // geometry and must never share an entry.
+  var key = datPart + ':' + colourCode;
   if (cache.has(key)) return Promise.resolve(cache.get(key));
   ensureLoader();
-  var datPart = datPartFor(partNum);
   return fetchDat(datPart).then(function (resp) {
     if (!resp.ok) throw new Error('nodat');
     return ensureMaterials();
@@ -260,7 +280,7 @@ function swapGroup(group, key) {
   status('Drag to spin · scroll or pinch to zoom');
 }
 
-function show(partNum, colourCode, imgUrl, fallbackUrl) {
+function show(partNum, colourCode, imgUrl, fallbackUrl, element) {
   if (!ensureRenderer()) {
     // No WebGL on this device — the photo is the whole viewer.
     if (imgUrl) showPhoto(imgUrl, fallbackUrl);
@@ -268,7 +288,7 @@ function show(partNum, colourCode, imgUrl, fallbackUrl) {
   }
   resize();
   startLoop();
-  var key = partNum + ':' + colourCode;
+  var key = datPartFor(partNum, element) + ':' + colourCode;
   pendingKey = key;
   clearPhoto(); // a photo from the last part must not linger under the new one
   if (currentKey === key && currentGroup) {
@@ -282,7 +302,7 @@ function show(partNum, colourCode, imgUrl, fallbackUrl) {
   status(preloadRunning
     ? 'Still downloading the 3D models — this one will pop in when it’s ready.'
     : 'Loading 3D model…');
-  loadModel(partNum, colourCode).then(function (group) {
+  loadModel(partNum, colourCode, element).then(function (group) {
     if (pendingKey !== key) return; // a newer tap already won
     if (!group) {
       if (!showPhoto(imgUrl, fallbackUrl)) status('No 3D model for this part yet — the photo on the card is the reference.');
@@ -319,9 +339,17 @@ function queuePreload(items, onProgress) {
   var added = 0;
   items.forEach(function (it) {
     var key = it.part + ':' + it.colour;
-    if (preloadQueued[key] || cache.has(key)) return;
+    // The queue key stays part:colour (it is also the ready-tracking
+    // key the app stores). The geometry cache is keyed by the resolved
+    // .dat file instead, so check that — a printed torso already
+    // cached as 973pau must not re-queue as plain 76382.
+    // Note: two lots with the same design + colour but different
+    // elements (different prints) would share one queue entry; that
+    // doesn't occur in 8961-1/8960-1/8962-1 (the two 76382 lots differ
+    // in colour), so it is left as a known limit, not a bug.
+    if (preloadQueued[key] || cache.has(datPartFor(it.part, it.element) + ':' + it.colour)) return;
     preloadQueued[key] = true;
-    preloadQueue.push({ part: it.part, colour: it.colour, key: key, setKey: it.setKey || null });
+    preloadQueue.push({ part: it.part, colour: it.colour, element: it.element || '', key: key, setKey: it.setKey || null });
     added++;
   });
   preloadTotal = preloadDone + preloadQueue.length;
@@ -334,7 +362,7 @@ async function runPreload() {
   preloadRunning = true;
   while (preloadQueue.length) {
     var it = preloadQueue.shift();
-    try { await loadModel(it.part, it.colour); } catch (e) { /* no model or no network: counted, not retried this session */ }
+    try { await loadModel(it.part, it.colour, it.element); } catch (e) { /* no model or no network: counted, not retried this session */ }
     preloadDone++;
     if (preloadCb) preloadCb(preloadDone, preloadTotal, true, it.key, it.setKey);
   }
@@ -369,5 +397,5 @@ if (typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'functi
 if (window.__bfPending3D) {
   var p = window.__bfPending3D;
   window.__bfPending3D = null;
-  show(p.part, p.colour, p.img, p.fallback);
+  show(p.part, p.colour, p.img, p.fallback, p.element);
 }

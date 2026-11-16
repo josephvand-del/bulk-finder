@@ -1,4 +1,4 @@
-/* Bulk Finder v3.21 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.23 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -1603,13 +1603,17 @@ function show3DModel(item) {
   // BrickLink's photo of the same part+colour if that one is dead.
   var photo = item.img || '';
   var photoFallback = fallbackImg(item);
+  // The element id (first field of the item id) rides along too: the
+  // print belongs to the element, not the design number (v3.23) — the
+  // two 76382 torsos wear different prints, 973pau vs 973pas.
+  var element = (item.id || '').split('-')[0];
   if (typeof window !== 'undefined' && window.BulkFinder3D) {
-    window.BulkFinder3D.show(part, code, photo, photoFallback);
+    window.BulkFinder3D.show(part, code, photo, photoFallback, element);
     return;
   }
   if (typeof window === 'undefined') return;
   // The 3D module loads in the background; it picks this up when ready.
-  window.__bfPending3D = { part: part, colour: code, img: photo, fallback: photoFallback };
+  window.__bfPending3D = { part: part, colour: code, img: photo, fallback: photoFallback, element: element };
   if (viewer3DTimeout) clearTimeout(viewer3DTimeout);
   viewer3DTimeout = setTimeout(function () {
     if (!window.BulkFinder3D && viewerItem === item && statusEl) {
@@ -1622,6 +1626,32 @@ function hide3DModel() {
   if (typeof window !== 'undefined') window.__bfPending3D = null;
   if (viewer3DTimeout) { clearTimeout(viewer3DTimeout); viewer3DTimeout = null; }
   if (typeof window !== 'undefined' && window.BulkFinder3D) window.BulkFinder3D.hide();
+}
+
+/* ---------- Instructions viewer (v3.22) ---------- */
+// The viewer itself lives in instructions.js (pdf.js rendering, lazy
+// pages, scroll resume). It loads in the background; if a set is tapped
+// before it arrives, the request waits in window.__bfPendingInstr and
+// the module picks it up on load.
+// Scroll position, per set — the viewer restores it on reopen.
+function instrPosKey(setNum) { return 'bf:instrPos:' + setNum; }
+// A LEGO instruction PDF, through the get-instructions proxy (LEGO's
+// CDN blocks direct browser fetches and framing — see that function).
+function instrPdfUrl(legoUrl) {
+  return SUPABASE_URL + '/functions/v1/get-instructions?pdf=' + encodeURIComponent(legoUrl);
+}
+// LEGO's own instructions page for a set — the fallback when the
+// in-app viewer can't load the PDFs.
+function legoInstructionsUrl(setNum) {
+  return 'https://www.lego.com/en-us/service/building-instructions/' + setNum;
+}
+function openInstructions(setNum, setName) {
+  if (typeof window !== 'undefined' && window.BulkFinderInstructions) {
+    window.BulkFinderInstructions.open(setNum, setName || setNum);
+    return;
+  }
+  if (typeof window === 'undefined') return;
+  window.__bfPendingInstr = { set: setNum, name: setName || setNum };
 }
 
 function closeViewer() {
@@ -1678,7 +1708,9 @@ function start3DPreload(setKey) {
     var key = part + ':' + code;
     if (seen[key] || ready[key]) return;
     seen[key] = true;
-    items.push({ part: part, colour: code, key: key, setKey: setKey });
+    // The element rides along so the background download fetches the
+    // printed file (973pau/973pas) for the torsos, not the plain one.
+    items.push({ part: part, colour: code, key: key, setKey: setKey, element: (it.id || '').split('-')[0] });
   });
   if (!items.length) { updatePreloadStatus(); return; }
   if (typeof window === 'undefined' || !window.BulkFinder3D || !window.BulkFinder3D.queuePreload) {
@@ -1855,6 +1887,15 @@ function renderSets() {
     text.appendChild(el('div', 'set-name', s.set_name));
     text.appendChild(el('div', 'set-num', s.set_num));
     text.appendChild(el('div', 'set-progress', setPercent(s)));
+    // Small Instructions button in the middle of the row, between the
+    // stats and the thumbnail — opens the set's booklets in the viewer.
+    var instrBtn = el('button', 'instr-btn', 'Instructions');
+    instrBtn.type = 'button';
+    instrBtn.addEventListener('click', function (e) {
+      e.stopPropagation(); // don't also open the set
+      openInstructions(s.set_num, s.set_name);
+    });
+    text.appendChild(instrBtn);
     li.appendChild(text);
     var imgUrl = setImageUrl(s);
     if (imgUrl) {

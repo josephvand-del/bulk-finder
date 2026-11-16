@@ -967,6 +967,64 @@ async function main() {
   const css3 = fs.readFileSync("styles.css", "utf8");
   check("photo: big-photo CSS keeps the picture inside the box", css3.includes(".model3d-photo") && css3.includes("object-fit: contain"), true);
 
+  // v3.22 — Instructions button on every My sets row; tapping it opens
+  // the set's booklets in the viewer (pdf.js, one long scroll, resume).
+  // The rendering itself lives in instructions.js (no pdf.js in the
+  // harness) — here the button, the open call, the pending path, and
+  // the URL/key helpers are asserted; the module is syntax-checked
+  // separately with node --check, and the Edge Function's parser is
+  // tested against real Brickset HTML with Deno.
+  sandbox.renderSets();
+  const row8961b = $("setList").children.filter((li) => li.children[0].children[1].textContent === "8961-1")[0];
+  const instrBtn = row8961b.children[0].children.find((c) => c.className === "instr-btn");
+  check("instr: button on the row", !!instrBtn, true);
+  check("instr: button says Instructions", instrBtn.textContent, "Instructions");
+  let lastInstr = null;
+  sandbox.BulkFinderInstructions = { open(s, n) { lastInstr = [s, n]; }, close() {} };
+  instrBtn.listeners.click[0]({ stopPropagation() {} });
+  check("instr: tap opens the viewer for that set", lastInstr, ["8961-1", "Crystal Sweeper"]);
+  sandbox.BulkFinderInstructions = undefined;
+  sandbox.__bfPendingInstr = null;
+  instrBtn.listeners.click[0]({ stopPropagation() {} });
+  check("instr: pending request carries the set", [sandbox.__bfPendingInstr.set, sandbox.__bfPendingInstr.name], ["8961-1", "Crystal Sweeper"]);
+  check("instr: resume key is per set", sandbox.instrPosKey("8961-1"), "bf:instrPos:8961-1");
+  check("instr: PDF goes through the proxy", sandbox.instrPdfUrl("https://www.lego.com/cdn/product-assets/product.bi.core.pdf/4549565.pdf"), "https://xwekulsnfarjibawqqih.supabase.co/functions/v1/get-instructions?pdf=" + encodeURIComponent("https://www.lego.com/cdn/product-assets/product.bi.core.pdf/4549565.pdf"));
+  check("instr: LEGO page fallback URL", sandbox.legoInstructionsUrl("8961-1"), "https://www.lego.com/en-us/service/building-instructions/8961-1");
+
+  // v3.23 — printed minifig torsos: the print belongs to the element,
+  // not the design number, so the element rides along to the 3D module
+  // (show + pending + background preload). Rex (4542545) wears
+  // 973pau, Brains (4542547) wears 973pas — both mirror 200, verified
+  // by curl. The heads, legs and rock-monster body have no printed
+  // LDraw file anywhere (full-library greps), so they keep the plain
+  // component / photo. The printed-file lookup itself lives in
+  // model3d.js (no WebGL in the harness) — here the element
+  // passthrough is asserted; the module is syntax-checked separately.
+  const torsoRex = sandbox.INVENTORY_8961.items.find((it) => it.id.indexOf('4542545-') === 0);
+  const torsoBrains = sandbox.INVENTORY_8961.items.find((it) => it.id.indexOf('4542547-') === 0);
+  check("prints: Rex torso is design 76382", torsoRex.id.split('-')[1], '76382');
+  check("prints: Brains torso is design 76382 too", torsoBrains.id.split('-')[1], '76382');
+  let lastShow3 = null;
+  sandbox.BulkFinder3D = { show(p, c, img, fb, el) { lastShow3 = [p, c, img, fb, el]; }, hide() {}, queuePreload(items, cb) { return 0; }, preloadState() { return { running: false, done: 0, total: 0 }; } };
+  sandbox.show3DModel(torsoRex);
+  check("prints: show gets the element for the print lookup", lastShow3[4], '4542545');
+  check("prints: show still asks for design 76382", lastShow3[0], '76382');
+  check("prints: show asks for the lot colour", lastShow3[1], sandbox.LDRAW_COLOUR[torsoRex.colour]);
+  sandbox.BulkFinder3D = undefined;
+  sandbox.__bfPending3D = null;
+  sandbox.show3DModel(torsoBrains);
+  check("prints: pending request carries the element", sandbox.__bfPending3D.element, '4542547');
+  sandbox.closeViewer();
+  // Background preload fetches the printed file, not the plain one.
+  const preloadCalls3 = [];
+  sandbox.BulkFinder3D = { queuePreload(items, cb) { preloadCalls3.push(items); return items.length; }, preloadState() { return { running: false, done: 0, total: 0 }; } };
+  sandbox.INVENTORIES['test-3'] = { items: [
+    { id: '4542545-76382-Medium_Stone_Grey', qty: 1, colour: 'Light Grey', cat: 'Minifig / Accessories' },
+    { id: '4542547-76382-White', qty: 1, colour: 'White', cat: 'Minifig / Accessories' },
+  ] };
+  sandbox.start3DPreload('test-3');
+  check("prints: preload carries the element", preloadCalls3[0].map((i) => i.element), ['4542545', '4542547']);
+
   console.log(failures === 0 ? "\nALL PASS" : "\n" + failures + " FAILURES");
   process.exit(failures === 0 ? 0 : 1);
 }
