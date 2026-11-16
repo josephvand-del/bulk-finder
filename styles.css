@@ -110,6 +110,25 @@ input, select {
   align-items: flex-start;
 }
 .sidebar-footer .btn { width: 100%; }
+
+/* ---------- "Displayed" columns control (v3.24) ----------
+ * Sidebar footer, above Log out: how many cards across the grid shows.
+ * The number is typeable and has - / + buttons; it is a saved
+ * preference per device type (phone vs computer). */
+.displayed-wrap { display: flex; align-items: center; gap: 6px; width: 100%; }
+.displayed-label { font-size: 14px; font-weight: 700; }
+.cols-step-btn {
+  width: 32px; height: 32px; flex: none;
+  font-size: 18px; line-height: 1;
+  border: 2px solid #999; border-radius: 8px; background: #fff;
+  cursor: pointer;
+}
+.cols-step-btn:disabled { opacity: 0.35; cursor: default; }
+.cols-input {
+  width: 46px; height: 32px; padding: 0;
+  text-align: center; font-size: 16px; font-weight: 700;
+  border: 2px solid #999; border-radius: 8px;
+}
 .sidebar h2 { margin: 4px 0 10px; font-size: 20px; }
 .sidebar h3 { margin: 20px 0 8px; font-size: 16px; }
 .content { flex: 1; min-width: 0; padding: 16px 20px 40px; }
@@ -274,7 +293,11 @@ input, select {
  * max-width: 100% / max-height: 110px then sizes it inside the card. */
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  /* --bf-cols is set from JS (the "Displayed" control): the grid's
+   * column count is a saved preference, not a fixed number. The
+   * fallback is the old default for that width, used only if JS
+   * hasn't set the variable. */
+  grid-template-columns: repeat(var(--bf-cols, 5), minmax(0, 1fr));
   gap: 10px;
 }
 .card {
@@ -363,7 +386,7 @@ input, select {
 
 /* ---------- Small screens ---------- */
 @media (max-width: 900px) {
-  .card-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .card-grid { grid-template-columns: repeat(var(--bf-cols, 3), minmax(0, 1fr)); }
 }
 @media (max-width: 700px) {
   .layout { flex-direction: column; }
@@ -416,7 +439,7 @@ input, select {
     background: rgba(0, 0, 0, 0.45);
   }
   body.drawer-open .drawer-backdrop { display: block; }
-  .card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .card-grid { grid-template-columns: repeat(var(--bf-cols, 2), minmax(0, 1fr)); }
 }
 
 /* v3.3 — password visibility toggle + forgot-password link. */

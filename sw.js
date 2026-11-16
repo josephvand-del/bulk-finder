@@ -3,7 +3,7 @@
 // fallback for when the phone is offline.
 // Scope: this file lives at /bulk-finder/sw.js, so it controls
 // /bulk-finder/ and nothing else.
-var CACHE = 'bulk-finder-v1';
+var CACHE = 'bulk-finder-v2';
 var APP_FILES = [
   './',
   'index.html',

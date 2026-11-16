@@ -1,4 +1,4 @@
-/* Bulk Finder v3.23 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.24 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -204,6 +204,57 @@ function setSoundOn(on) {
     btn.setAttribute('aria-label', soundOn ? 'Sound on' : 'Sound off');
     btn.title = soundOn ? 'Sound on — tap to mute' : 'Sound off — tap to unmute';
   }
+}
+
+/* ---------- Columns across ("Displayed", v3.24) ----------
+ * Two saved values, one per device type, each remembered on this device
+ * (same localStorage pattern as the sound toggle — bf:cols:phone /
+ * bf:cols:desktop, NOT synced to the account, so the phone's number
+ * stays on the phone and the laptop's stays on the laptop):
+ * phone (viewport <= 700px): 2-4 across, default 2; computer: 2-5
+ * across, default 5 (the view it already had). The grid reads the CSS
+ * variable --bf-cols, so a re-render picks a change up with no extra
+ * work. The sidebar control always edits the setting for the device in
+ * hand — resizing across the phone/laptop boundary switches which
+ * value it shows and which value it saves. */
+var COLS_PHONE = { key: 'bf:cols:phone', min: 2, max: 4, def: 2 };
+var COLS_DESKTOP = { key: 'bf:cols:desktop', min: 2, max: 5, def: 5 };
+function colsBand() {
+  return (typeof window !== 'undefined' && window.innerWidth <= 700) ? COLS_PHONE : COLS_DESKTOP;
+}
+function colsClamp(n, band) {
+  n = parseInt(n, 10);
+  if (isNaN(n)) return band.def;
+  return Math.max(band.min, Math.min(band.max, n));
+}
+function getCols(band) {
+  return colsClamp(LS.get(band.key, band.def), band);
+}
+function setCols(n, band) {
+  band = band || colsBand();
+  var v = colsClamp(n, band);
+  LS.set(band.key, v);
+  applyCols();
+  return v;
+}
+// Push the current band's saved value into the grid + the control.
+function applyCols() {
+  var band = colsBand();
+  var n = getCols(band);
+  if (typeof document !== 'undefined' && document.documentElement && document.documentElement.style && document.documentElement.style.setProperty) {
+    document.documentElement.style.setProperty('--bf-cols', String(n));
+  }
+  var input = $('colsInput');
+  if (input) {
+    input.value = String(n);
+    input.min = String(band.min);
+    input.max = String(band.max);
+  }
+  var minus = $('colsMinusBtn');
+  if (minus) minus.disabled = n <= band.min;
+  var plus = $('colsPlusBtn');
+  if (plus) plus.disabled = n >= band.max;
+  return n;
 }
 
 /* ---------- State ---------- */
@@ -1956,6 +2007,14 @@ function bindEvents() {
   $('logoutBtn').addEventListener('click', doLogout);
   $('changePwBtn').addEventListener('click', startChangePassword);
   $('soundToggleBtn').addEventListener('click', function () { setSoundOn(!soundOn); });
+  // "Displayed" columns control (sidebar footer): - / + buttons and a
+  // typeable number; always edits the setting for the device in hand.
+  $('colsMinusBtn').addEventListener('click', function () { setCols(getCols(colsBand()) - 1); });
+  $('colsPlusBtn').addEventListener('click', function () { setCols(getCols(colsBand()) + 1); });
+  $('colsInput').addEventListener('change', function (e) { setCols(e.target.value); });
+  // Resizing across the phone/laptop boundary switches which saved
+  // value the grid (and the control) shows.
+  window.addEventListener('resize', applyCols);
   $('menuBtn').addEventListener('click', toggleDrawer);
   $('drawerBackdrop').addEventListener('click', closeDrawer);
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeDrawer(); });
@@ -2057,6 +2116,7 @@ function bindEvents() {
 async function init() {
   bindEvents();
   setSoundOn(soundOn);
+  applyCols();
   sets = localSets();
   if (!sb) {
     // Supabase CDN failed (offline on first load): guest mode still works.

@@ -169,6 +169,10 @@ class StubAudio {
 }
 
 const doc = new StubDocument();
+// <html> stub with a CSS-variable store, so applyCols() (v3.24) can be verified.
+doc.documentElement = new StubEl("html");
+doc.documentElement.style.setProperty = function (k, v) { this[k] = v; };
+doc.documentElement.style.getPropertyValue = function (k) { return this[k] || ""; };
 const sandbox = {
   console,
   setInterval: () => 0,
@@ -196,6 +200,40 @@ async function main() {
   await doc.listeners["DOMContentLoaded"][0]();
   check("boot: user logged in", sandbox.user && sandbox.user.email, "josephvand@gmail.com");
   check("boot: 8961-1 inventory embedded", sandbox.getInventory("8961-1").lots, 138);
+
+  // v3.24 "Displayed" columns control: desktop default 5, phone default 2,
+  // each saved separately on this device, resize switches bands.
+  check("cols: desktop default 5", sandbox.applyCols(), 5);
+  check("cols: --bf-cols is 5 on desktop", doc.documentElement.style["--bf-cols"], "5");
+  check("cols: input shows 5", $("colsInput").value, "5");
+  sandbox.setCols(3);
+  check("cols: set to 3", sandbox.getCols(sandbox.COLS_DESKTOP), 3);
+  check("cols: --bf-cols is 3", doc.documentElement.style["--bf-cols"], "3");
+  check("cols: saved to localStorage", JSON.parse(sandbox.localStorage.getItem("bf:cols:desktop")), 3);
+  sandbox.setCols(9);
+  check("cols: clamps to max 5", sandbox.getCols(sandbox.COLS_DESKTOP), 5);
+  sandbox.setCols(1);
+  check("cols: clamps to min 2", sandbox.getCols(sandbox.COLS_DESKTOP), 2);
+  $("colsPlusBtn").listeners.click[0]();
+  check("cols: + button steps 2 -> 3", doc.documentElement.style["--bf-cols"], "3");
+  $("colsMinusBtn").listeners.click[0]();
+  check("cols: - button steps 3 -> 2", doc.documentElement.style["--bf-cols"], "2");
+  $("colsInput").value = "4";
+  $("colsInput").listeners.change[0]({ target: $("colsInput") });
+  check("cols: typing 4 sets 4", doc.documentElement.style["--bf-cols"], "4");
+  sandbox.innerWidth = 390;
+  sandbox.applyCols();
+  check("cols: phone default 2", doc.documentElement.style["--bf-cols"], "2");
+  sandbox.setCols(3);
+  check("cols: phone set to 3", doc.documentElement.style["--bf-cols"], "3");
+  sandbox.setCols(9);
+  check("cols: phone clamps to max 4", doc.documentElement.style["--bf-cols"], "4");
+  sandbox.innerWidth = 1280;
+  sandbox._winListeners.resize();
+  check("cols: resize back to desktop restores 4", doc.documentElement.style["--bf-cols"], "4");
+  check("cols: phone value kept separately", JSON.parse(sandbox.localStorage.getItem("bf:cols:phone")), 4);
+  check("cols: desktop value kept separately", JSON.parse(sandbox.localStorage.getItem("bf:cols:desktop")), 4);
+  sandbox.innerWidth = undefined;
 
   // Seed the starter set (as the sidebar button does).
   await sandbox.addSeedSet();
@@ -652,9 +690,9 @@ async function main() {
 
   // v3.10 — grid columns use minmax(0, 1fr) so a 500px part photo can't
   // stretch its column and run the grid off the right edge (tier 2).
-  check("grid: 5 columns use minmax(0, 1fr)", css.includes("repeat(5, minmax(0, 1fr))"), true);
-  check("grid: 3 columns use minmax(0, 1fr)", css.includes("repeat(3, minmax(0, 1fr))"), true);
-  check("grid: 2 columns use minmax(0, 1fr)", css.includes("repeat(2, minmax(0, 1fr))"), true);
+  check("grid: 5 columns use minmax(0, 1fr)", css.includes("repeat(var(--bf-cols, 5), minmax(0, 1fr))"), true);
+  check("grid: 3 columns use minmax(0, 1fr)", css.includes("repeat(var(--bf-cols, 3), minmax(0, 1fr))"), true);
+  check("grid: 2 columns use minmax(0, 1fr)", css.includes("repeat(var(--bf-cols, 2), minmax(0, 1fr))"), true);
   check("grid: no bare 5-column 1fr left", css.includes("repeat(5, 1fr)"), false);
   check("grid: no bare 3-column 1fr left", css.includes("repeat(3, 1fr)"), false);
   check("grid: no bare 2-column 1fr left", css.includes("repeat(2, 1fr)"), false);

@@ -115,6 +115,12 @@
     </div>
 
     <div class="sidebar-footer">
+      <div class="displayed-wrap">
+        <span class="displayed-label">Displayed</span>
+        <button id="colsMinusBtn" class="cols-step-btn" type="button" aria-label="Show fewer columns across">−</button>
+        <input id="colsInput" class="cols-input" type="number" min="2" max="5" step="1" value="5" inputmode="numeric" aria-label="Columns across">
+        <button id="colsPlusBtn" class="cols-step-btn" type="button" aria-label="Show more columns across">+</button>
+      </div>
       <span id="syncStatus" class="sync-status" hidden>Saved on this phone</span>
       <span id="preloadStatus" class="preload-status" hidden></span>
       <span id="userChip" class="user-chip" hidden></span>
