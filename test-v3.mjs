@@ -529,25 +529,25 @@ async function main() {
   sandbox.document.listeners.keydown[0]({ key: "Escape" });
   check("drawer: Escape closes it", sandbox.document.body.classList.contains("drawer-open"), false);
 
-  // v3.7 — sidebar order: Add a set above My sets, Reset all below the
-  // sets, account controls in a footer at the very bottom.
+  // v3.7 — sidebar order: Add a set above My sets, account controls
+  // in a footer at the very bottom. v3.18 — the Reset all button is
+  // gone (nobody uses it; it only risked wiping found pieces).
   const html = fs.readFileSync("index.html", "utf8");
+  const appJsEarly = fs.readFileSync("app.js", "utf8");
   const header = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
   check("layout: header holds no account controls", ["syncStatus", "logoutBtn", "changePwBtn", "userChip"].some((id) => header.includes(id)), false);
   check("layout: add-a-set above my sets", html.indexOf('id="addSetResults"') < html.indexOf('id="setList"'), true);
-  check("layout: reset below the sets", html.indexOf('id="setList"') < html.indexOf('id="resetBtn"'), true);
-  check("layout: account footer at the very bottom", html.indexOf('id="resetBtn"') < html.indexOf('sidebar-footer') && html.indexOf('sidebar-footer') < html.indexOf('id="syncStatus"'), true);
-  check("layout: reset starts hidden", html.includes('id="resetBtn" class="btn btn-small btn-danger" hidden'), true);
+  check("layout: reset button is gone", html.includes('id="resetBtn"'), false);
+  check("layout: no resetAll wiring left", appJsEarly.includes("resetAll"), false);
+  check("layout: account footer at the very bottom", html.indexOf('id="setList"') < html.indexOf('sidebar-footer') && html.indexOf('sidebar-footer') < html.indexOf('id="syncStatus"'), true);
+  // v3.18 — the sync pill stays in the DOM (hidden) so the status
+  // writer keeps working, but nothing shows it in the sidebar.
+  check("layout: sync pill is hidden, not removed", html.includes('id="syncStatus"') && html.includes('id="syncStatus" class="sync-status" hidden'), true);
+  check("layout: sync still writes status", sandbox.updateSyncStatus(), undefined);
   const css = fs.readFileSync("styles.css", "utf8");
-  const appJs = fs.readFileSync("app.js", "utf8");
   check("layout: sidebar is a flex column", css.includes("display: flex;\n  flex-direction: column;"), true);
   check("layout: footer pins to the bottom", css.includes(".sidebar-footer") && css.includes("margin-top: auto;"), true);
 
-  // Reset hides with an empty view and shows once a set is open.
-  sandbox.showEmpty();
-  check("layout: reset hidden with no set open", $("resetBtn").hidden, true);
-  sandbox.renderSetView();
-  check("layout: reset shown with a set open", $("resetBtn").hidden, false);
 
   // v3.8 — stud-pickup sound: toggle in the header, plays on found only.
   check("sound: on by default", sandbox.soundOn, true);
@@ -716,7 +716,7 @@ async function main() {
   sandbox.setSelected(["8961-1", "10294-1"]);
   const card0 = sandbox.buildCard(sandbox.items[0]);
   check("tag: no set tag on a combined-view card", card0.children.some((c) => c.className && c.className.split(" ").includes("set-tag")), false);
-  check("tag: set-tag code is gone", appJs.includes("set-tag"), false);
+  check("tag: set-tag code is gone", appJsEarly.includes("set-tag"), false);
 
   // v3.13 — a sign-in / session restore must not collapse the view.
   // This was the real refresh bug: init() restored the view, then the
@@ -829,6 +829,113 @@ async function main() {
   sandbox.BulkFinder3D = { queuePreload(items, cb) { return 0; }, preloadState() { return { running: false, done: 0, total: 0 }; } };
   sandbox.updatePreloadStatus();
   check("preload: sidebar line hides with nothing to show", sandbox.$('preloadStatus').hidden, true);
+
+  // v3.18 — tiers for imported sets: the import function stores
+  // tier 2 on every lot, so 8960-1/8962-1 had no Tier 1 or Tier 3.
+  // deriveTier re-tiers those sets at load; 8961-1's hand tiers stay.
+  check("tiers: crystal 30385 is tier 2 (his audit call)", sandbox.deriveTier({ id: "x-30385-Trans-Blue", cat: "Minifig / Accessories", colour: "Trans-Blue" }), 2);
+  check("tiers: rock monster 64786 is tier 3", sandbox.deriveTier({ id: "x-64786-Trans-Blue", cat: "Minifig / Accessories", colour: "Trans-Blue" }), 3);
+  check("tiers: minifig head 64881 is tier 3", sandbox.deriveTier({ id: "x-64881-Yellow", cat: "Minifig / Accessories", colour: "Yellow" }), 3);
+  check("tiers: drill-arm joint 48169 is tier 3", sandbox.deriveTier({ id: "x-48169-Dark_Stone_Grey", cat: "Technic Bricks", colour: "Dark Grey" }), 3);
+  check("tiers: sticker sheet is tier 3", sandbox.deriveTier({ id: "x-84682-White", cat: "Stickers", colour: "" }), 3);
+  check("tiers: plain brick in a bulk colour is tier 1", sandbox.deriveTier({ id: "x-3001-Black", cat: "Bricks", colour: "Black" }), 1);
+  check("tiers: plate in a bulk colour is tier 1", sandbox.deriveTier({ id: "x-3020-White", cat: "Plates", colour: "White" }), 1);
+  check("tiers: odd Technic part stays tier 2", sandbox.deriveTier({ id: "x-32018-Black", cat: "Technic Bricks", colour: "Black" }), 3);
+  check("tiers: 8961-1 has real tiers, untouched", sandbox.inventoryHasRealTiers(sandbox.getInventory("8961-1")), true);
+  const allTier2 = { set: "test-2", lots: 2, pieces: 3, items: [
+    { id: "a-3001-Black", qty: 2, tier: 2, cat: "Bricks", colour: "Black" },
+    { id: "b-64786-Trans-Blue", qty: 1, tier: 2, cat: "Minifig / Accessories", colour: "Trans-Blue" },
+  ] };
+  check("tiers: all-tier-2 set counts as un-tiered", sandbox.inventoryHasRealTiers(allTier2), false);
+  sandbox.INVENTORIES["test-2"] = allTier2;
+  sandbox.sets.push({ key: "test-2", set_num: "test-2", name: "Test 2", total_parts: 3, total_lots: 2 });
+  sandbox.setSelected(["test-2"]);
+  check("tiers: imported brick re-tiered to 1", sandbox.items.find((it) => it.id === "a-3001-Black").tier, 1);
+  check("tiers: imported rock monster re-tiered to 3", sandbox.items.find((it) => it.id === "b-64786-Trans-Blue").tier, 3);
+  sandbox.setSelected(["8961-1"]);
+  check("tiers: 8961-1 hand tier kept (3001 stays 1)", sandbox.items.find((it) => it.id === "300126-3001-Black").tier, 1);
+  check("tiers: 8961-1 hand tier kept (41669 stays 3)", sandbox.items.find((it) => it.id === "4281515-41669-Bright_Orange").tier, 3);
+
+  // v3.18 — phone back button: opening the viewer pushes a history
+  // entry; closing pops it; a popstate with the viewer open closes it.
+  // The viewer calls BulkFinder3D.show, so stub it here (the v3.16
+  // stubs above only carry queuePreload/preloadState).
+  sandbox.BulkFinder3D = { show() {}, hide() {}, queuePreload(items, cb) { return 0; }, preloadState() { return { running: false, done: 0, total: 0 }; } };
+  const histCalls = [];
+  sandbox.window.history = { pushState(s) { histCalls.push(["push", s]); }, back() { histCalls.push(["back"]); }, replaceState(state, title, url) { replacedUrl = url; } };
+  sandbox.openViewer(item2456);
+  check("back: opening the viewer pushes a history entry", histCalls.some((c) => c[0] === "push" && c[1] && c[1].bf3d === true), true);
+  sandbox.closeViewer();
+  check("back: closing the viewer pops the entry", histCalls.some((c) => c[0] === "back"), true);
+  sandbox.openViewer(item2456);
+  const backsBeforePop = histCalls.filter((c) => c[0] === "back").length;
+  sandbox._winListeners.popstate();
+  check("back: popstate closes the viewer", sandbox.$("lightbox").hidden, true);
+  check("back: popstate clears the viewer state", sandbox.viewerItem, null);
+  check("back: popstate does not go back a second time", histCalls.filter((c) => c[0] === "back").length, backsBeforePop);
+
+  // v3.18 — backdrop: a tap on the dark area closes the viewer, but
+  // a tap on the model box (orbit) or on a button does not.
+  const lb = sandbox.$("lightbox");
+  const backdropHandler = lb.listeners.click[0];
+  const modelBox = sandbox.$("model3d");
+  const canvas = new StubEl("canvas");
+  modelBox.children.push(canvas);
+  // StubEl has no DOM contains(); the app guards on it, so stub it here.
+  modelBox.contains = function (el) { return el === canvas; };
+  sandbox.openViewer(item2456);
+  backdropHandler({ target: lb });
+  check("backdrop: tap on the dark frame closes", sandbox.$("lightbox").hidden, true);
+  sandbox.openViewer(item2456);
+  backdropHandler({ target: canvas });
+  check("backdrop: tap on the model box stays open", sandbox.$("lightbox").hidden, false);
+  const presetBtn = new StubEl("button");
+  backdropHandler({ target: presetBtn });
+  check("backdrop: tap on a preset button stays open", sandbox.$("lightbox").hidden, false);
+  sandbox.closeViewer();
+  // The X is red now, so it reads as the way out.
+  const css2 = fs.readFileSync("styles.css", "utf8");
+  check("backdrop: close button is red", css2.includes(".lightbox-close") && css2.includes("background: #d32f2f;"), true);
+
+  // v3.18 — minifig fallback (model3d.js): the Power Miners heads /
+  // torso / legs have no .dat of their own, so they render as the
+  // standard minifig component in the lot's colour.
+  const m3d = fs.readFileSync("model3d.js", "utf8");
+  check("minifig: head 64881 falls back to standard head 3626", m3d.includes("'64881': '3626'"), true);
+  check("minifig: torso 76382 falls back to standard torso 973", m3d.includes("'76382': '973'"), true);
+  check("minifig: legs 85107 fall back to standard legs 970", m3d.includes("'85107': '970'"), true);
+  check("minifig: rock monster 64786 has no fallback (no equivalent)", m3d.includes("'64786'"), false);
+  check("minifig: jsDelivr-blocked files fall back to GitHub raw", m3d.includes("LIB_RAW"), true);
+
+  // v3.19 — minikit jingle: the tap that finishes a lot (1 left -> 0)
+  // plays the jingle instead of the stud tick; undo plays nothing;
+  // the same header toggle silences it. Completion is per lot in its
+  // own set — the same part need not be finished in the other sets.
+  check("minikit: clip is the bundled base64 audio", sandbox.minikitSound && sandbox.minikitSound.src.indexOf("data:audio/mpeg;base64,") === 0, true);
+  const lotA = sandbox.items.filter((it) => sandbox.remOf(it) > 1).sort((a, b) => sandbox.remOf(a) - sandbox.remOf(b))[0] || sandbox.items.find((it) => sandbox.remOf(it) === 1);
+  check("minikit: a finishable lot exists", !!lotA, true);
+  while (sandbox.remOf(lotA) > 1) sandbox.changeRemaining(lotA, -1); // stud ticks on the way down
+  const studBefore = sandbox.studSound.playCount;
+  const miniBefore = sandbox.minikitSound.playCount;
+  sandbox.changeRemaining(lotA, -1); // the finishing tap: 1 -> 0
+  check("minikit: finishing a lot plays the jingle", sandbox.minikitSound.playCount, miniBefore + 1);
+  check("minikit: finishing tap skips the stud tick", sandbox.studSound.playCount, studBefore);
+  check("minikit: lot is done", sandbox.remOf(lotA), 0);
+  sandbox.changeRemaining(lotA, +1); // undo: back to 1 left
+  check("minikit: undo plays no jingle", sandbox.minikitSound.playCount, miniBefore + 1);
+  check("minikit: undo plays no stud either", sandbox.studSound.playCount, studBefore);
+  sandbox.changeRemaining(lotA, -1); // finish it again
+  check("minikit: finishing again plays the jingle again", sandbox.minikitSound.playCount, miniBefore + 2);
+  // Muted: the same toggle silences the jingle too.
+  $("soundToggleBtn").listeners.click[0]();
+  const lotB = sandbox.items.filter((it) => it !== lotA && sandbox.remOf(it) > 1).sort((a, b) => sandbox.remOf(a) - sandbox.remOf(b))[0] || sandbox.items.find((it) => it !== lotA && sandbox.remOf(it) === 1);
+  check("minikit: a second finishable lot exists", !!lotB, true);
+  while (sandbox.remOf(lotB) > 1) sandbox.changeRemaining(lotB, -1);
+  const miniMutedBefore = sandbox.minikitSound.playCount;
+  sandbox.changeRemaining(lotB, -1);
+  check("minikit: muted finishing tap plays nothing", sandbox.minikitSound.playCount, miniMutedBefore);
+  $("soundToggleBtn").listeners.click[0]();
+  check("minikit: toggle back on", sandbox.soundOn, true);
 
   console.log(failures === 0 ? "\nALL PASS" : "\n" + failures + " FAILURES");
   process.exit(failures === 0 ? 0 : 1);

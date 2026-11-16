@@ -124,6 +124,29 @@ function ensureLoader() {
   return loader;
 }
 
+// Minifig parts with no LDraw model of their own (v3.18): LDraw
+// models the UNPRINTED base component, not every printed variant, so
+// a Power Miners head / torso / legs has no .dat under its own
+// number — verified 404 in the mirror AND in the official library
+// (64881, 64882, 76382, 85107). Fall back to the standard component
+// so the part still renders as the right shape in the lot's colour:
+// a head reads as a head, a torso as a torso. The rock-monster body
+// (64786) has no standard equivalent, so it stays "no model yet".
+// Two more files (64727, 4736) exist in the repo but jsDelivr answers
+// 403 for them, so they are fetched from GitHub raw instead.
+var MINIFIG_DAT = { '64881': '3626', '64882': '3626', '76382': '973', '85107': '970' };
+var RAW_FALLBACK = { '64727': 1, '4736': 1 };
+var LIB_RAW = 'https://raw.githubusercontent.com/gkjohnson/ldraw-parts-library/master/complete/ldraw/';
+function datPartFor(partNum) { return MINIFIG_DAT[partNum] || partNum; }
+function fetchDat(partNum) {
+  var url = (RAW_FALLBACK[partNum] ? LIB_RAW : LIB) + 'parts/' + partNum + '.dat';
+  return fetch(url).then(function (resp) {
+    if (resp.ok || RAW_FALLBACK[partNum]) return resp;
+    // jsDelivr blocked it (403) but the file may exist in the repo.
+    return fetch(LIB_RAW + 'parts/' + partNum + '.dat');
+  });
+}
+
 // Fetch one part's geometry and parse it into the cache. Resolves
 // with the group, or null when the part has no model. Rejects only on
 // a network failure, or 'nodat' when the .dat file itself is missing.
@@ -131,13 +154,14 @@ function loadModel(partNum, colourCode) {
   var key = partNum + ':' + colourCode;
   if (cache.has(key)) return Promise.resolve(cache.get(key));
   ensureLoader();
-  return fetch(LIB + 'parts/' + partNum + '.dat').then(function (resp) {
+  var datPart = datPartFor(partNum);
+  return fetchDat(datPart).then(function (resp) {
     if (!resp.ok) throw new Error('nodat');
     return ensureMaterials();
   }).then(function () {
     return new Promise(function (resolve) {
       // A one-line LDraw model: this part, in this colour.
-      var text = '1 ' + colourCode + ' 0 0 0 1 0 0 0 1 0 0 0 1 ' + partNum + '.dat';
+      var text = '1 ' + colourCode + ' 0 0 0 1 0 0 0 1 0 0 0 1 ' + datPart + '.dat';
       loader.parse(text, function (group) {
         if (!group || !group.children || !group.children.length) { resolve(null); return; }
         // LDraw's Y axis points DOWN — a brick's top is y=0, its bottom

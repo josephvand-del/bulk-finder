@@ -1,4 +1,4 @@
-/* Bulk Finder v3.3 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.19 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -157,8 +157,9 @@ var LS = {
   }
 };
 
-/* ---------- Stud-pickup sound ---------- */
-// Plays when a piece is found (the counter's minus button). The toggle
+/* ---------- Sounds ---------- */
+// Stud tick when a piece is found (the counter's minus button); the
+// minikit jingle when a tap finishes a lot (1 left -> 0). The toggle
 // lives in the header; the choice is remembered on this device.
 var soundOn = LS.get('bf:soundOn', true);
 // The clip as base64 (the 24 KB mp3 is ~32 KB of text). The push tool
@@ -168,11 +169,28 @@ var STUD_SOUND_B64 = 'SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjYyLjEyLjEwMgAAAAAAAAAAAA
 var studSound = (typeof Audio !== 'undefined') ? new Audio('data:audio/mpeg;base64,' + STUD_SOUND_B64) : null;
 if (studSound) studSound.preload = 'auto';
 
+// The minikit-collect jingle (LEGO Star Wars), 1.1 s, 5 KB. Same
+// embedding as the stud clip: base64 in app.js because the push tool
+// only handles UTF-8 files. Regenerate with:
+// base64 -w0 sounds/minikit-collect.mp3
+var MINIKIT_SOUND_B64 = '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';
+var minikitSound = (typeof Audio !== 'undefined') ? new Audio('data:audio/mpeg;base64,' + MINIKIT_SOUND_B64) : null;
+if (minikitSound) minikitSound.preload = 'auto';
+
 function playStudSound() {
   if (!soundOn || !studSound) return;
   try {
     studSound.currentTime = 0;
     var p = studSound.play();
+    if (p && p.catch) p.catch(function () {});
+  } catch (e) {}
+}
+
+function playMinikitSound() {
+  if (!soundOn || !minikitSound) return;
+  try {
+    minikitSound.currentTime = 0;
+    var p = minikitSound.play();
     if (p && p.catch) p.catch(function () {});
   } catch (e) {}
 }
@@ -335,7 +353,7 @@ function enqueuePartSync(setMeta, item) {
   enqueueSync({ kind: 'part', user_set_id: setMeta.user_set_id, row: partRow(setMeta.user_set_id, item, remOf(item)) });
 }
 
-// One upsert carrying every lot of a set (used after Reset all).
+// One upsert carrying every lot of a set (used when a set is added).
 function enqueueBulkSync(setMeta) {
   if (!setMeta.user_set_id) return;
   var inv = getInventory(setMeta.set_num);
@@ -484,7 +502,7 @@ async function ensureCloudSet(meta) {
       // First contact = this device never saved this set's cloud row
       // (no bf:cloudIds entry). Merge best-of-both per lot and push the
       // merged counts back up, so neither device's progress is lost.
-      // Already-synced devices keep cloud-wins (Reset propagates).
+      // Already-synced devices keep cloud-wins.
       var firstContact = !ids[meta.set_num];
       rows.forEach(function (r) {
         if (map.hasOwnProperty(r.part_key)) {
@@ -570,8 +588,9 @@ var liveChannel = null;
 var pulling = {}; // set_num -> true while a pull for that set is in flight
 
 function pendingOutboxKeys(userSetId) {
-  // Lots this device changed but hasn't synced yet. A bulk op (Reset
-  // all) covers every lot, so the whole pull is skipped for that set.
+  // Lots this device changed but hasn't synced yet. A bulk op (a
+  // whole-set upload, e.g. when a set is added) covers every lot, so
+  // the whole pull is skipped for that set.
   var keys = {};
   var box = outbox();
   for (var i = 0; i < box.length; i++) {
@@ -1205,6 +1224,50 @@ function saveSelectedKeys() { LS.set('bf:selectedSets', selectedKeys); }
 
 // Rebuild the combined view from selectedKeys: per-set counts + items
 // tagged with their set (copies — the shared inventory is never mutated).
+// ---------- tiers for imported sets (v3.18) ----------
+// 8961-1 carries hand-audited tiers (his v2.1 audit). Every set that
+// arrives through the import function stores tier 2 on every lot —
+// there is no bulk-likelihood data for a new set — so on its own the
+// three-tier system vanished for 8960-1/8962-1: one big Tier 2 list,
+// no Tier 1, no Tier 3. These rules re-tier those sets at load time,
+// fitted against his 8961-1 audit (86% of its 138 lots agree; the
+// only tier-3 misses are two one-off parts, 64713 and 2634, that no
+// category rule catches). Tier 3 = the parts that are rare by
+// identity: the crystal/rock-monster parts, minifig heads, torsos and
+// legs, the part numbers he already called tier 3 in the audit (they
+// stay tier 3 in any set), stickers, constraction parts, and the
+// one-off categories that never show up in bulk. Tier 1 = the plain
+// bulk-bin workhorses. Everything else stays Tier 2. A set is only
+// re-tiered when it has no real tiers at all (every lot tier 2);
+// 8961-1's hand tiers are never touched.
+var TIER3_PARTS = {
+  '64786': 1, '64881': 1, '64882': 1, '76382': 1, '85107': 1,
+  '32018': 1, '64450': 1, '3837': 1, '73587': 1, '30300': 1,
+  '48169': 1, '48171': 1, '41669': 1
+};
+var TIER3_CATS = { 'Stickers': 1, 'Transportation - Land': 1 };
+var TIER1_CATS = {
+  'Bricks': 1, 'Plates': 1, 'Sloped Bricks': 1, 'Small pieces': 1,
+  'Technic Pins / Bushes': 1, 'Technic Axles': 1
+};
+var TIER1_COLOURS = {
+  'Black': 1, 'White': 1, 'Dark Grey': 1, 'Light Grey': 1, 'Red': 1,
+  'Blue': 1, 'Yellow': 1, 'Tan': 1, 'Orange': 1, 'Lime Green': 1, '': 1
+};
+function deriveTier(item) {
+  var pn = partNumOf(item);
+  if (TIER3_PARTS[pn]) return 3;
+  var cat = item.cat || '';
+  if (cat.indexOf('Bionicle') === 0) return 3;
+  if (TIER3_CATS[cat]) return 3;
+  if (TIER1_CATS[cat] && TIER1_COLOURS[item.colour || '']) return 1;
+  return 2;
+}
+function inventoryHasRealTiers(inv) {
+  if (!inv || !inv.items || !inv.items.length) return false;
+  return inv.items.some(function (it) { return it.tier === 1 || it.tier === 3; });
+}
+
 function loadSelected() {
   items = [];
   remainingBySet = {};
@@ -1212,10 +1275,12 @@ function loadSelected() {
     var inv = getInventory(key);
     if (!inv) return;
     remainingBySet[key] = loadCounts(key);
+    var reTier = !inventoryHasRealTiers(inv);
     inv.items.forEach(function (it) {
       var copy = {};
       for (var k in it) copy[k] = it[k];
       copy.setKey = key;
+      if (reTier) copy.tier = deriveTier(it);
       items.push(copy);
     });
   });
@@ -1294,7 +1359,6 @@ function openSet(key) {
 
 function showEmpty() {
   $('progressWrap').hidden = true;
-  $('resetBtn').hidden = true;
   $('setView').innerHTML = '';
   $('emptyState').hidden = false;
 }
@@ -1403,7 +1467,6 @@ function renderSetView() {
   if (!selectedKeys.length || !items.length) { showEmpty(); return; }
   $('emptyState').hidden = true;
   $('progressWrap').hidden = false;
-  $('resetBtn').hidden = false;
 
   var h = el('h2', null, setTitle());
   h.style.margin = '4px 0 12px';
@@ -1511,11 +1574,19 @@ var viewerPart = null; // the part number the model was asked for
 var viewerColourCode = null; // the LDraw code the model was asked for
 var viewer3DTimeout = null;
 
+// The phone back button (v3.18): opening the 3D view pushes a
+// history entry, so Back closes the view instead of leaving the site.
+// Closing with X / tap-outside / Escape pops that entry back off
+// (history.back), and a popstate while the view is open closes it.
+var viewerHistoryPushed = false;
 function openViewer(item) {
   viewerItem = item;
   $('lightboxLabel').textContent = 'Part ' + partNumOf(item) + ' — ' + displayColour(item);
   $('lightbox').hidden = false;
   document.body.style.overflow = 'hidden';
+  if (typeof window !== 'undefined' && window.history && window.history.pushState) {
+    try { window.history.pushState({ bf3d: true }, ''); viewerHistoryPushed = true; } catch (e) { viewerHistoryPushed = false; }
+  }
   show3DModel(item);
 }
 
@@ -1555,6 +1626,12 @@ function closeViewer() {
   hide3DModel();
   $('lightbox').hidden = true;
   document.body.style.overflow = '';
+  if (viewerHistoryPushed) {
+    viewerHistoryPushed = false;
+    if (typeof window !== 'undefined' && window.history && window.history.back) {
+      try { window.history.back(); } catch (e) {}
+    }
+  }
 }
 
 // ---------- background 3D preload (v3.16) ----------
@@ -1709,7 +1786,11 @@ function changeRemaining(item, delta) {
   var rem = remOf(item);
   var next = Math.max(0, Math.min(item.qty, rem + delta));
   if (next === rem) return;
-  if (delta < 0) playStudSound();
+  // A find plays the stud tick — except the tap that finishes the lot,
+  // which plays the minikit jingle instead, so the two never overlap.
+  // Completion is per lot in its own set: the same part does not need
+  // to be finished in the other sets.
+  if (delta < 0) { if (next === 0) playMinikitSound(); else playStudSound(); }
   if (!remainingBySet[item.setKey]) remainingBySet[item.setKey] = {};
   remainingBySet[item.setKey][item.id] = next;
   saveCounts(item.setKey, remainingBySet[item.setKey]);
@@ -1735,24 +1816,6 @@ function updateCardUI(item) {
   if (!cardMatches(item)) card.style.display = 'none';
   rebuildColourSelect();
   rebuildTypeSelect();
-}
-
-function resetAll() {
-  if (!items.length) return;
-  var names = selectedKeys.join(', ');
-  if (!window.confirm('Reset every lot in ' + names + ' back to its full count? Your found pieces in ' + (selectedKeys.length > 1 ? 'these sets' : 'this set') + ' will be cleared.')) return;
-  selectedKeys.forEach(function (key) {
-    var map = remainingBySet[key];
-    var inv = getInventory(key);
-    if (!map || !inv) return;
-    inv.items.forEach(function (it) { map[it.id] = it.qty; });
-    saveCounts(key, map);
-    var meta = findSet(key);
-    if (meta) enqueueBulkSync(meta);
-  });
-  rebuildCatCounts(); // a reset reopens every section
-  renderSetView();
-  updateSyncStatus();
 }
 
 /* ---------- Sidebar ---------- */
@@ -1900,15 +1963,38 @@ function bindEvents() {
     var panel = $('setPickerPanel');
     if (panel && !panel.hidden && picker && !picker.contains(e.target)) panel.hidden = true;
   });
-  $('resetBtn').addEventListener('click', resetAll);
   // 3D viewer: close with the X or by tapping the dark area outside
   // the model, Escape also closes it.
   $('lightboxClose').addEventListener('click', closeViewer);
-  $('lightbox').addEventListener('click', function (e) { if (e.target === $('lightbox')) closeViewer(); });
+  // Tap the dark area around the white model box to close — on phone
+  // or computer. The old check (e.target === lightbox) only fired on
+  // the thin frame: the preset bar and caption sit INSIDE the
+  // .lightbox-3d box, so a tap on that dark area landed on those
+  // elements, not the lightbox, and nothing closed. Now anything
+  // outside the model box closes, except the buttons (X closes on its
+  // own handler; Top/Front/... switch views) and the model box itself
+  // (dragging there orbits the part).
+  $('lightbox').addEventListener('click', function (e) {
+    var model = $('model3d');
+    if (model && model.contains && model.contains(e.target)) return;
+    if (e.target && e.target.tagName === 'BUTTON') return;
+    closeViewer();
+  });
   document.addEventListener('keydown', function (e) {
     if (!$('lightbox') || $('lightbox').hidden) return;
     if (e.key === 'Escape') closeViewer();
   });
+  // Phone back button: a popstate while the 3D view is open closes
+  // the view instead of leaving the site (openViewer pushes the
+  // history entry; closeViewer pops it back off).
+  if (typeof window !== 'undefined' && window.addEventListener) {
+    window.addEventListener('popstate', function () {
+      // The browser already popped our pushed entry to fire this event,
+      // so clear the flag first — closeViewer must not call history.back()
+      // a second time and leave the site.
+      if (viewerItem) { viewerHistoryPushed = false; closeViewer(); }
+    });
+  }
   window.addEventListener('online', function () { updateSyncStatus(); tickSync(); });
   window.addEventListener('offline', updateSyncStatus);
   document.addEventListener('visibilitychange', function () {
