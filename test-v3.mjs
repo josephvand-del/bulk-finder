@@ -948,6 +948,25 @@ async function main() {
   sandbox.setSelected(["8961-1", "10294-1", "10305-1", "test-2"]);
   check("picker: button still says All for all sets", $("setPickerBtn").textContent, "Sets: All");
 
+  // v3.21 — no 3D model, no problem: the popup shows the part's photo
+  // big instead of the "no model" text. The photo rides along with the
+  // show() call (primary photo + BrickLink fallback), and with the
+  // pending request when the 3D module hasn't loaded yet. The photo
+  // itself lives in model3d.js (no WebGL in the harness), so the CSS
+  // rule it relies on is asserted here and the module is syntax-
+  // checked separately with node --check.
+  let lastShow = null;
+  sandbox.BulkFinder3D = { show(p, c, img, fb) { lastShow = [p, c, img, fb]; }, hide() {}, queuePreload(items, cb) { return 0; }, preloadState() { return { running: false, done: 0, total: 0 }; } };
+  sandbox.openViewer(item2456);
+  check("photo: show gets the part photo", lastShow, ["2456", 15, item2456.img, sandbox.fallbackImg(item2456)]);
+  sandbox.closeViewer();
+  sandbox.BulkFinder3D = undefined;
+  sandbox.openViewer(item2456);
+  check("photo: pending request carries the photo", [sandbox.__bfPending3D.img, sandbox.__bfPending3D.fallback], [item2456.img, sandbox.fallbackImg(item2456)]);
+  sandbox.closeViewer();
+  const css3 = fs.readFileSync("styles.css", "utf8");
+  check("photo: big-photo CSS keeps the picture inside the box", css3.includes(".model3d-photo") && css3.includes("object-fit: contain"), true);
+
   console.log(failures === 0 ? "\nALL PASS" : "\n" + failures + " FAILURES");
   process.exit(failures === 0 ? 0 : 1);
 }

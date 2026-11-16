@@ -1,4 +1,4 @@
-/* Bulk Finder v3.20 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.21 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -1598,13 +1598,18 @@ function show3DModel(item) {
   viewerColourCode = code;
   var statusEl = $('model3dStatus');
   if (statusEl) statusEl.textContent = 'Loading 3D viewer…';
+  // The photo rides along so a part with no 3D model can show its
+  // picture big in the popup instead (v3.21) — primary photo first,
+  // BrickLink's photo of the same part+colour if that one is dead.
+  var photo = item.img || '';
+  var photoFallback = fallbackImg(item);
   if (typeof window !== 'undefined' && window.BulkFinder3D) {
-    window.BulkFinder3D.show(part, code);
+    window.BulkFinder3D.show(part, code, photo, photoFallback);
     return;
   }
   if (typeof window === 'undefined') return;
   // The 3D module loads in the background; it picks this up when ready.
-  window.__bfPending3D = { part: part, colour: code };
+  window.__bfPending3D = { part: part, colour: code, img: photo, fallback: photoFallback };
   if (viewer3DTimeout) clearTimeout(viewer3DTimeout);
   viewer3DTimeout = setTimeout(function () {
     if (!window.BulkFinder3D && viewerItem === item && statusEl) {

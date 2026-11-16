@@ -6,8 +6,9 @@
 // the underside is the angle no photo source has.
 // Limits: the mirror is a Jan 2023 snapshot, so parts introduced after
 // that have no model; prints and stickers don't show; transparent and
-// chrome render as plain approximations. A part with no model shows a
-// plain message instead — the photo on the card stays the reference.
+// chrome render as plain approximations. A part with no model shows
+// its photo big in the same popup instead (v3.21) — same image as the
+// card, just larger, with the Top/Front/Side buttons hidden.
 import * as THREE from 'three';
 import { LDrawLoader } from 'three/addons/loaders/LDrawLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -24,8 +25,45 @@ var frame = null; // { distance } — the part is centred on the origin
 var cache = new Map();
 var rafId = null, running = false;
 var webglFailed = false;
+var photoEl = null; // the big-photo fallback <img> inside #model3d (v3.21)
 
 function status(msg) { if (statusEl) statusEl.textContent = msg; }
+
+// The big-photo fallback (v3.21): when a part has no 3D model — or
+// this device can't do WebGL — the popup shows the part's photo big
+// instead of the "no model" text. Same image as the card, just larger.
+// The Top/Front/Side buttons mean nothing for a photo, so they hide
+// until a real model loads. Returns true when a photo was shown.
+function showPhoto(imgUrl, fallbackUrl) {
+  if (!container || !imgUrl) return false;
+  clearPhoto();
+  stopLoop(); // nothing to spin; saves battery
+  if (renderer) renderer.domElement.style.display = 'none';
+  var presets = document.getElementById('model3dPresets');
+  if (presets) presets.style.display = 'none';
+  photoEl = document.createElement('img');
+  photoEl.className = 'model3d-photo';
+  photoEl.alt = 'Part photo';
+  photoEl.addEventListener('error', function () {
+    // Primary photo is dead too (the card already fell back to
+    // BrickLink for those) — try the BrickLink photo once, then give
+    // up with the plain message.
+    if (fallbackUrl && photoEl.src !== fallbackUrl) { photoEl.src = fallbackUrl; return; }
+    clearPhoto();
+    status('No 3D model for this part yet — the photo on the card is the reference.');
+  });
+  photoEl.src = imgUrl;
+  container.appendChild(photoEl);
+  status('No 3D model for this part yet — showing the photo instead.');
+  return true;
+}
+
+function clearPhoto() {
+  if (photoEl) { photoEl.remove(); photoEl = null; }
+  if (renderer) renderer.domElement.style.display = 'block';
+  var presets = document.getElementById('model3dPresets');
+  if (presets) presets.style.display = '';
+}
 
 function ensureRenderer() {
   if (renderer) return true;
@@ -213,6 +251,7 @@ function setView(name) {
 }
 
 function swapGroup(group, key) {
+  clearPhoto();
   if (currentGroup) scene.remove(currentGroup);
   currentGroup = group;
   currentKey = key;
@@ -221,12 +260,17 @@ function swapGroup(group, key) {
   status('Drag to spin · scroll or pinch to zoom');
 }
 
-function show(partNum, colourCode) {
-  if (!ensureRenderer()) return;
+function show(partNum, colourCode, imgUrl, fallbackUrl) {
+  if (!ensureRenderer()) {
+    // No WebGL on this device — the photo is the whole viewer.
+    if (imgUrl) showPhoto(imgUrl, fallbackUrl);
+    return;
+  }
   resize();
   startLoop();
   var key = partNum + ':' + colourCode;
   pendingKey = key;
+  clearPhoto(); // a photo from the last part must not linger under the new one
   if (currentKey === key && currentGroup) {
     frameGroup(currentGroup);
     status('Drag to spin · scroll or pinch to zoom');
@@ -241,15 +285,15 @@ function show(partNum, colourCode) {
   loadModel(partNum, colourCode).then(function (group) {
     if (pendingKey !== key) return; // a newer tap already won
     if (!group) {
-      status('No 3D model for this part yet — the photo on the card is the reference.');
+      if (!showPhoto(imgUrl, fallbackUrl)) status('No 3D model for this part yet — the photo on the card is the reference.');
       return;
     }
     swapGroup(group, key);
   }).catch(function (err) {
     if (pendingKey !== key) return;
     if (err && err.message === 'nodat') {
-      status('No 3D model for this part yet — the photo on the card is the reference.');
-    } else {
+      if (!showPhoto(imgUrl, fallbackUrl)) status('No 3D model for this part yet — the photo on the card is the reference.');
+    } else if (!showPhoto(imgUrl, fallbackUrl)) {
       status('Couldn’t load the 3D library — check connection and try again.');
     }
   });
@@ -305,6 +349,7 @@ function preloadState() {
 function hide() {
   pendingKey = null;
   stopLoop();
+  clearPhoto();
   if (currentGroup && scene) scene.remove(currentGroup);
   currentGroup = null;
   currentKey = null;
@@ -324,5 +369,5 @@ if (typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'functi
 if (window.__bfPending3D) {
   var p = window.__bfPending3D;
   window.__bfPending3D = null;
-  show(p.part, p.colour);
+  show(p.part, p.colour, p.img, p.fallback);
 }

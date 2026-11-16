@@ -309,6 +309,7 @@ input, select {
 .lightbox-3d { width: min(96vw, 1600px); height: min(92vh, 1100px); display: flex; flex-direction: column; }
 .model3d { flex: 1; min-height: 0; background: #ececec; border-radius: 8px; overflow: hidden; }
 .model3d canvas { display: block; width: 100%; height: 100%; }
+.model3d-photo { display: block; width: 100%; height: 100%; object-fit: contain; background: #ececec; }
 .model3d-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
 .model3d-status { color: #ddd; font-size: 14px; }
 .model3d-presets { display: flex; gap: 8px; }
