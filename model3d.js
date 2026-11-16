@@ -1,4 +1,4 @@
-// 3D part viewer (v3.15) — tap a card photo and the part pops up as a
+// 3D part viewer (v3.15, orientation fixed v3.17) — tap a card photo and the part pops up as a
 // live 3D model. Free, no key, no account: the part's real geometry
 // comes from the LDraw parts library (gkjohnson mirror on jsDelivr),
 // rendered with Three.js LDrawLoader. Drag to spin, scroll or pinch to
@@ -140,6 +140,17 @@ function loadModel(partNum, colourCode) {
       var text = '1 ' + colourCode + ' 0 0 0 1 0 0 0 1 0 0 0 1 ' + partNum + '.dat';
       loader.parse(text, function (group) {
         if (!group || !group.children || !group.children.length) { resolve(null); return; }
+        // LDraw's Y axis points DOWN — a brick's top is y=0, its bottom
+        // y=24, studs stick out toward -Y (verified in 3001.dat) — and
+        // the loader passes those coordinates straight through (its
+        // getVector reads x,y,z as-is, no flip anywhere). So in
+        // three.js, where Y points up, every part came out upside down:
+        // studs down, hollow underside up. A half-turn about X maps
+        // LDraw's axes onto three.js's exactly (a proper rotation, so
+        // faces stay wound the right way), restoring each part to the
+        // orientation it was authored in — inverted parts included,
+        // whose studs point down by design.
+        group.rotation.x = Math.PI;
         cache.set(key, group);
         resolve(group);
       });
