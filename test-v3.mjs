@@ -786,6 +786,50 @@ async function main() {
   check("viewer: minus tap found one piece", sandbox.remOf(item2456), item2456.qty - 1);
   sandbox.changeRemaining(item2456, +1); // restore
 
+  // v3.16 — background 3D preload: after a set is added, every part's
+  // geometry downloads behind the scenes so tapping a photo is instant
+  // later. The parts list shows at once; the 3D catches up. A tap
+  // while it's still downloading says so in the popup — that line lives
+  // in model3d.js (no WebGL in this harness, verified by reading it).
+  const preloadCalls = [];
+  sandbox.BulkFinder3D = {
+    queuePreload(items, cb) { preloadCalls.push({ items, cb }); return items.length; },
+    preloadState() { return { running: true, done: 3, total: 10 }; },
+  };
+  sandbox.INVENTORIES['test-1'] = { items: [
+    { id: '300126-3001-Black', qty: 2, colour: 'Black', cat: 'Bricks' },
+    { id: '300127-3001-Black', qty: 1, colour: 'Black', cat: 'Bricks' }, // same part+colour: queued once
+    { id: '300128-3001-Red', qty: 1, colour: 'Red', cat: 'Bricks' }, // same part, other colour: queued
+    { id: '300129-3004-Magenta', qty: 1, colour: 'Magenta', cat: 'Bricks' }, // unknown colour -> 72
+  ] };
+  sandbox.start3DPreload('test-1');
+  check("preload: queues one job per set", preloadCalls.length, 1);
+  check("preload: dedupes the same part+colour", preloadCalls[0].items.length, 3);
+  check("preload: same part in another colour is a second job", preloadCalls[0].items.filter((i) => i.part === '3001').length, 2);
+  check("preload: unknown colour falls back to dark grey", preloadCalls[0].items.find((i) => i.part === '3004').colour, 72);
+  // Progress marks the part ready and updates the sidebar line.
+  preloadCalls[0].cb(3, 10, true, '3001:0', 'test-1');
+  check("preload: progress marks the part ready", sandbox.ready3DKeys('test-1'), ['3001:0']);
+  check("preload: sidebar shows the download count", sandbox.$('preloadStatus').textContent, '3D models downloading: 3/10');
+  check("preload: sidebar line is visible while downloading", sandbox.$('preloadStatus').hidden, false);
+  // A part already marked ready is skipped on the next run.
+  preloadCalls.length = 0;
+  sandbox.start3DPreload('test-1');
+  check("preload: ready parts are not queued again", preloadCalls[0].items.length, 2);
+  check("preload: ready part is not in the queue", preloadCalls[0].items.some((i) => i.part === '3001' && i.colour === 0), false);
+  // When the 3D module is not loaded yet, the set waits instead of failing.
+  delete sandbox.BulkFinder3D;
+  preloadCalls.length = 0;
+  sandbox.start3DPreload('test-1');
+  check("preload: waits for the 3D module instead of failing", preloadCalls.length, 0);
+  // Done state: the line says ready, and hides when there is nothing to show.
+  sandbox.BulkFinder3D = { queuePreload(items, cb) { preloadCalls.push({ items, cb }); return items.length; }, preloadState() { return { running: false, done: 10, total: 10 }; } };
+  sandbox.updatePreloadStatus();
+  check("preload: sidebar says ready when done", sandbox.$('preloadStatus').textContent, '3D models ready: 10/10');
+  sandbox.BulkFinder3D = { queuePreload(items, cb) { return 0; }, preloadState() { return { running: false, done: 0, total: 0 }; } };
+  sandbox.updatePreloadStatus();
+  check("preload: sidebar line hides with nothing to show", sandbox.$('preloadStatus').hidden, true);
+
   console.log(failures === 0 ? "\nALL PASS" : "\n" + failures + " FAILURES");
   process.exit(failures === 0 ? 0 : 1);
 }

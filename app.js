@@ -1289,6 +1289,7 @@ function openSet(key) {
     ensureCloudSet(meta).then(function () { renderSetView(); updateSyncStatus(); });
   }
   updateSyncStatus();
+  start3DPreload(key);
 }
 
 function showEmpty() {
@@ -1554,6 +1555,86 @@ function closeViewer() {
   hide3DModel();
   $('lightbox').hidden = true;
   document.body.style.overflow = '';
+}
+
+// ---------- background 3D preload (v3.16) ----------
+// After a set is added, its parts' geometry downloads in the
+// background so tapping a photo is instant later — the parts list
+// shows at once and the 3D catches up behind it. The geometry is the
+// public LDraw library (the same file for everyone), so it is cached
+// in this browser, not uploaded to the account; the account holds the
+// set and the counts. Progress is kept per device in bf:3dready so a
+// refresh resumes where it left off instead of starting over.
+var pendingPreloadSets = []; // set keys waiting on the 3D module to load
+
+function ready3DKeys(setKey) {
+  var all = LS.get('bf:3dready', {}) || {};
+  return all[setKey] || [];
+}
+
+function mark3DReady(setKey, key) {
+  var all = LS.get('bf:3dready', {}) || {};
+  var list = all[setKey] || [];
+  if (list.indexOf(key) === -1) {
+    list.push(key);
+    all[setKey] = list;
+    LS.set('bf:3dready', all);
+  }
+}
+
+function start3DPreload(setKey) {
+  var inv = INVENTORIES[setKey];
+  if (!inv || !inv.items) return;
+  var ready = {};
+  ready3DKeys(setKey).forEach(function (k) { ready[k] = true; });
+  var items = [];
+  var seen = {};
+  inv.items.forEach(function (it) {
+    var part = partNumOf(it);
+    var code = LDRAW_COLOUR[it.colour];
+    if (code === undefined) code = 72; // any-colour lot: shape matters, not shade
+    var key = part + ':' + code;
+    if (seen[key] || ready[key]) return;
+    seen[key] = true;
+    items.push({ part: part, colour: code, key: key, setKey: setKey });
+  });
+  if (!items.length) { updatePreloadStatus(); return; }
+  if (typeof window === 'undefined' || !window.BulkFinder3D || !window.BulkFinder3D.queuePreload) {
+    // The 3D module loads after this file; it fires bf3dready when it
+    // arrives, and the listener below flushes these.
+    if (pendingPreloadSets.indexOf(setKey) === -1) pendingPreloadSets.push(setKey);
+    updatePreloadStatus();
+    return;
+  }
+  window.BulkFinder3D.queuePreload(items, on3DProgress);
+  updatePreloadStatus();
+}
+
+function flushPendingPreloads() {
+  var keys = pendingPreloadSets.slice();
+  pendingPreloadSets = [];
+  keys.forEach(function (k) { start3DPreload(k); });
+}
+
+function on3DProgress(done, total, running, key, setKey) {
+  if (key && setKey) mark3DReady(setKey, key);
+  updatePreloadStatus();
+}
+
+function updatePreloadStatus() {
+  var el = $('preloadStatus');
+  if (!el) return;
+  var st = (typeof window !== 'undefined' && window.BulkFinder3D && window.BulkFinder3D.preloadState)
+    ? window.BulkFinder3D.preloadState() : null;
+  if (!st || !st.total) { el.hidden = true; el.textContent = ''; return; }
+  el.hidden = false;
+  el.textContent = st.running
+    ? '3D models downloading: ' + st.done + '/' + st.total
+    : '3D models ready: ' + st.done + '/' + st.total;
+}
+
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('bf3dready', flushPendingPreloads);
 }
 
 function buildCard(item) {

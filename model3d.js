@@ -59,8 +59,7 @@ function ensureRenderer() {
   controls.enablePan = false;
   controls.minDistance = 10;
   controls.maxDistance = 2000;
-  loader = new LDrawLoader();
-  loader.setPartsLibraryPath(LIB);
+  ensureLoader();
   if (window.ResizeObserver) {
     new ResizeObserver(function () { resize(); }).observe(container);
   }
@@ -115,6 +114,39 @@ function ensureMaterials() {
   return materialsReady;
 }
 
+// The loader is just a parser — no WebGL needed — so the background
+// preload can build it without opening the viewer.
+function ensureLoader() {
+  if (!loader) {
+    loader = new LDrawLoader();
+    loader.setPartsLibraryPath(LIB);
+  }
+  return loader;
+}
+
+// Fetch one part's geometry and parse it into the cache. Resolves
+// with the group, or null when the part has no model. Rejects only on
+// a network failure, or 'nodat' when the .dat file itself is missing.
+function loadModel(partNum, colourCode) {
+  var key = partNum + ':' + colourCode;
+  if (cache.has(key)) return Promise.resolve(cache.get(key));
+  ensureLoader();
+  return fetch(LIB + 'parts/' + partNum + '.dat').then(function (resp) {
+    if (!resp.ok) throw new Error('nodat');
+    return ensureMaterials();
+  }).then(function () {
+    return new Promise(function (resolve) {
+      // A one-line LDraw model: this part, in this colour.
+      var text = '1 ' + colourCode + ' 0 0 0 1 0 0 0 1 0 0 0 1 ' + partNum + '.dat';
+      loader.parse(text, function (group) {
+        if (!group || !group.children || !group.children.length) { resolve(null); return; }
+        cache.set(key, group);
+        resolve(group);
+      });
+    });
+  });
+}
+
 // Centre the part on the origin so it spins in place, and put the
 // camera far enough out to see the whole thing.
 function frameGroup(group) {
@@ -156,7 +188,6 @@ function swapGroup(group, key) {
 
 function show(partNum, colourCode) {
   if (!ensureRenderer()) return;
-  status('Loading 3D model…');
   resize();
   startLoop();
   var key = partNum + ':' + colourCode;
@@ -167,25 +198,18 @@ function show(partNum, colourCode) {
     return;
   }
   if (cache.has(key)) { swapGroup(cache.get(key), key); return; }
-  // The loader has no error callback on parse(), so check the part
-  // file exists first — otherwise a missing part hangs on "Loading…".
-  fetch(LIB + 'parts/' + partNum + '.dat').then(function (resp) {
+  // Not ready yet: say why. If the background download is still
+  // running, the model is on its way; otherwise it loads right now.
+  status(preloadRunning
+    ? 'Still downloading the 3D models — this one will pop in when it’s ready.'
+    : 'Loading 3D model…');
+  loadModel(partNum, colourCode).then(function (group) {
     if (pendingKey !== key) return; // a newer tap already won
-    if (!resp.ok) throw new Error('nodat');
-    return ensureMaterials();
-  }).then(function () {
-    if (pendingKey !== key) return;
-    // A one-line LDraw model: this part, in this colour.
-    var text = '1 ' + colourCode + ' 0 0 0 1 0 0 0 1 0 0 0 1 ' + partNum + '.dat';
-    loader.parse(text, function (group) {
-      if (pendingKey !== key) return;
-      if (!group || !group.children || !group.children.length) {
-        status('No 3D model for this part yet — the photo on the card is the reference.');
-        return;
-      }
-      cache.set(key, group);
-      swapGroup(group, key);
-    });
+    if (!group) {
+      status('No 3D model for this part yet — the photo on the card is the reference.');
+      return;
+    }
+    swapGroup(group, key);
   }).catch(function (err) {
     if (pendingKey !== key) return;
     if (err && err.message === 'nodat') {
@@ -194,6 +218,53 @@ function show(partNum, colourCode) {
       status('Couldn’t load the 3D library — check connection and try again.');
     }
   });
+}
+
+// ---------- background 3D preload (v3.16) ----------
+// After a set is added, every part's geometry downloads in the
+// background so tapping a photo is instant later. One job at a time,
+// in display order; a part already in the cache or already queued is
+// never fetched twice. The geometry is the public LDraw library —
+// the same file for everyone — so it lives in this browser's cache,
+// not in the user's account; the account holds the set and the
+// counts, the CDN holds the geometry. Progress is reported through
+// the callback so the app can show it (and remember what's done).
+var preloadRunning = false;
+var preloadQueue = []; // { part, colour, key, setKey }
+var preloadQueued = {}; // key -> true (queued, done, or failed — checked once)
+var preloadDone = 0, preloadTotal = 0;
+var preloadCb = null;
+
+function queuePreload(items, onProgress) {
+  if (onProgress) preloadCb = onProgress;
+  var added = 0;
+  items.forEach(function (it) {
+    var key = it.part + ':' + it.colour;
+    if (preloadQueued[key] || cache.has(key)) return;
+    preloadQueued[key] = true;
+    preloadQueue.push({ part: it.part, colour: it.colour, key: key, setKey: it.setKey || null });
+    added++;
+  });
+  preloadTotal = preloadDone + preloadQueue.length;
+  if (added && !preloadRunning) runPreload();
+  else if (preloadCb) preloadCb(preloadDone, preloadTotal, preloadRunning, null, null);
+  return added;
+}
+
+async function runPreload() {
+  preloadRunning = true;
+  while (preloadQueue.length) {
+    var it = preloadQueue.shift();
+    try { await loadModel(it.part, it.colour); } catch (e) { /* no model or no network: counted, not retried this session */ }
+    preloadDone++;
+    if (preloadCb) preloadCb(preloadDone, preloadTotal, true, it.key, it.setKey);
+  }
+  preloadRunning = false;
+  if (preloadCb) preloadCb(preloadDone, preloadTotal, false, null, null);
+}
+
+function preloadState() {
+  return { running: preloadRunning, done: preloadDone, total: preloadTotal };
 }
 
 function hide() {
@@ -205,7 +276,13 @@ function hide() {
   frame = null;
 }
 
-window.BulkFinder3D = { show: show, hide: hide };
+window.BulkFinder3D = { show: show, hide: hide, queuePreload: queuePreload, preloadState: preloadState };
+
+// Tell the app the 3D module is ready, so it can start the
+// background download for the sets it already has.
+if (typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+  window.dispatchEvent(new CustomEvent('bf3dready'));
+}
 
 // The app may have opened the viewer before this module finished
 // loading — it leaves the request here for us to pick up.
