@@ -246,6 +246,10 @@ function syncFilterButtons() {
     b.classList.toggle('active', b.dataset.filter === statusFilter);
   });
 }
+// Set once init() has restored the saved view (filters + selection).
+// handleAuthChange must not open a set before this is true — it would
+// overwrite the saved selection before init has read it.
+var viewRestored = false;
 
 var SEED_SET = {
   key: '8961-1',
@@ -852,8 +856,20 @@ async function handleAuthChange(event, session) {
   await refreshSetsFromCloud();
   renderAuth();
   renderSets();
-  if (activeSetKey) openSet(activeSetKey);
-  else if (sets.length) openSet(sets[0].key);
+  // Keep whatever view is already open. init() restored it (same-day
+  // filters + selection, or a new day's Still-needed + all sets), and a
+  // sign-in / session-restore fires after init — it must not collapse
+  // a combined view to one set. If init hasn't restored yet, it will
+  // do so in a moment, so open nothing here either. Only open a set
+  // when init is done and nothing is open.
+  if (viewRestored) {
+    if (!selectedKeys.length) {
+      if (activeSetKey) openSet(activeSetKey);
+      else if (sets.length) openSet(sets[0].key);
+    } else {
+      loadSelected(); // re-render with the merged cloud counts
+    }
+  }
   updateSyncStatus();
 }
 
@@ -1793,6 +1809,7 @@ async function init() {
   } else if (last && findSet(last)) openSet(last);
   else if (sets.length) openSet(sets[0].key);
   else showEmpty();
+  viewRestored = true;
   updateSyncStatus();
 }
 
