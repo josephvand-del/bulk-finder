@@ -1,4 +1,4 @@
-/* Bulk Finder v3.24 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.25 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -1119,6 +1119,38 @@ function importErrorText(res) {
   return 'Lookup failed — try again.';
 }
 
+// Structured import errors that a retry cannot fix (v3.25): a bad
+// number, a set Rebrickable doesn't have, a missing key, no login, or a
+// rate limit the function already waited out. Everything else — a
+// thrown network error, or a gateway failure with no error body (the
+// 75419-1 import died exactly like that once at the edge after ~35s
+// and worked on a manual retry) — gets ONE automatic retry.
+var IMPORT_NO_RETRY = { set_not_found: 1, bad_set_num: 1, unauthorized: 1, no_api_key: 1, rate_limited: 1 };
+async function invokeImportSet(body, onRetry) {
+  var lastRes = null;
+  for (var attempt = 0; attempt < 2; attempt++) {
+    var res;
+    try {
+      res = await sb.functions.invoke('import-set', { body: body });
+    } catch (e) {
+      if (attempt === 0) { if (onRetry) onRetry(); continue; }
+      throw e;
+    }
+    lastRes = res;
+    var payload = (res && res.data) || null;
+    if (payload && payload.ok) return res;
+    var code = (payload && payload.error) || null;
+    if (!code) {
+      var ctx = (res && res.error && res.error.context) || null;
+      code = (ctx && ctx.error) || null;
+    }
+    if (code && IMPORT_NO_RETRY[code]) return res;
+    if (attempt === 0) { if (onRetry) onRetry(); continue; }
+    return res;
+  }
+  return lastRes;
+}
+
 function showAddSetPreview(p) {
   var wrap = $('addSetPreview');
   if (!wrap) return;
@@ -1208,7 +1240,12 @@ async function lookupSet() {
   say('Looking up ' + num + '…');
   var res;
   try {
-    res = await sb.functions.invoke('import-set', { body: { set_num: num } });
+    // One automatic retry on a transport/gateway failure (see
+    // invokeImportSet) — big sets take ~30s to fetch and the edge
+    // killed the first 75419-1 attempt; the retry worked.
+    res = await invokeImportSet({ set_num: num }, function () {
+      say('Still looking — that one is taking a while, trying once more…');
+    });
   } catch (e) {
     say('Lookup failed — check your connection and try again.');
     return;

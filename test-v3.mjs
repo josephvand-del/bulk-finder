@@ -391,6 +391,44 @@ async function main() {
   await sandbox.lookupSet();
   check("err: no_api_key message", $("addSetMsg").textContent.includes("Rebrickable key"), true);
 
+  // v3.25 — one automatic retry on a gateway failure (no error body):
+  // the 75419-1 import died once at the edge after ~35s and worked on
+  // a manual retry. First call 502s, second succeeds -> preview.
+  let retryCalls = 0;
+  invokeHandler = async () => {
+    retryCalls++;
+    if (retryCalls === 1) return { data: null, error: { message: "Edge Function returned a non-2xx status code" } };
+    return { data: { ok: true, cached: false, set: { set_num: "10297-1", name: "Retry Ship", year: 2022, num_parts: 10, set_img_url: "https://example.test/set.jpg" }, inventory: fixtureInv10294, lots: 3, pieces: 10 }, error: null };
+  };
+  $("setNumInput").value = "10297";
+  await sandbox.lookupSet();
+  check("retry: gateway 502 retried once", retryCalls, 2);
+  check("retry: preview shown after retry", $("addSetPreview").hidden, false);
+  check("retry: preview is the retried set", sandbox.pendingImport && sandbox.pendingImport.set_num, "10297-1");
+
+  // A thrown network error also retries once.
+  retryCalls = 0;
+  invokeHandler = async () => {
+    retryCalls++;
+    if (retryCalls === 1) throw new Error("network down");
+    return { data: { ok: true, cached: false, set: { set_num: "10298-1", name: "Retry Ship 2", year: 2022, num_parts: 10, set_img_url: "https://example.test/set.jpg" }, inventory: fixtureInv10294, lots: 3, pieces: 10 }, error: null };
+  };
+  $("setNumInput").value = "10298";
+  await sandbox.lookupSet();
+  check("retry: thrown error retried once", retryCalls, 2);
+  check("retry: preview shown after throw-retry", sandbox.pendingImport && sandbox.pendingImport.set_num, "10298-1");
+
+  // Structured errors are NOT retried: set_not_found calls invoke once.
+  retryCalls = 0;
+  invokeHandler = async () => {
+    retryCalls++;
+    return { data: null, error: { message: "FunctionsHttpError", context: { ok: false, error: "set_not_found", message: "Rebrickable has no set 99998-1." } } };
+  };
+  $("setNumInput").value = "99998";
+  await sandbox.lookupSet();
+  check("retry: set_not_found not retried", retryCalls, 1);
+  check("retry: set_not_found message kept", $("addSetMsg").textContent.includes("no set 99998-1"), true);
+
   // Guest cannot look up.
   sandbox.user = null;
   $("setNumInput").value = "10296";
