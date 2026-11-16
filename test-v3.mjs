@@ -735,58 +735,55 @@ async function main() {
   await sandbox.handleAuthChange('SIGNED_IN', { user: sandbox.user });
   check("auth: session restore opens a set when none is open", sandbox.selectedKeys, [sandbox.activeSetKey]);
 
-  // v3.14 — photo carousel: tap a photo for a big view of that part.
-  // No free photo catalogue has several angles of one part+colour, so
-  // the slides are the distinct renders that do exist: the card's own
-  // photo, Rebrickable's LDraw render (a different, more top-down
-  // view), and BrickLink's photo of the same part in the same colour.
-  // The true multi-angle view (top/front/side/underside) only exists
-  // as a live 3D render of the part's LDraw geometry — that is the
-  // next step, not this carousel.
+  // v3.15 — the popup is a 3D model, not a carousel. Tap a photo and
+  // the part pops up as a live LDraw model (Three.js), most of the
+  // screen, so a piece he doesn't recognise yet can be spun around
+  // and studied. The photo on the card is the reference, the popup is
+  // the model. The model itself lives in model3d.js — here the real
+  // show3DModel runs (no WebGL in the harness: window is absent, so
+  // it resolves the part + colour and stops), and the viewer state is
+  // what the checks read.
   // The combined view is rebuilt by setSelected; the v3.13 test above
   // just left it on 8961-1 + 10294-1, so re-select 8961-1 first.
   sandbox.setSelected(["8961-1"]);
   const item2456 = { setKey: '8960-1', cat: 'Bricks', colour: 'White', dim: 'Brick 2 x 6', qty: 3, id: '6552122-2456-White', img: 'https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/6552122.jpg' };
-  check("carousel: 2456 White has three slides", sandbox.carouselImgs(item2456), ['https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/6552122.jpg', 'https://cdn.rebrickable.com/media/parts/ldraw/15/2456.png', 'https://img.bricklink.com/ItemImage/PN/1/2456.png']);
-  check("carousel: 2456 is Brick 2 x 6, not 1 x 6 x 5", item2456.dim, 'Brick 2 x 6');
-  const item30008 = { setKey: '8961-1', cat: 'Minifig / Accessories', colour: 'Trans-Red', dim: 'Rock 1 x 1 Crystal 5 Point', qty: 2, id: '3000841-30008-Transparent_Red', img: 'https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/3000841.jpg' };
-  check("carousel: Trans-Red uses Rebrickable colour 36, not BrickLink 17", sandbox.carouselImgs(item30008)[1], 'https://cdn.rebrickable.com/media/parts/ldraw/36/30008.png');
-  // Trans-Blue is Rebrickable's Trans-Dark Blue, id 33 (LEGO "Tr. Blue").
-  // 43 is Trans-Very Lt Blue — the map had it wrong until now.
-  const itemTransBlue = { setKey: '8961-1', cat: 'Bricks', colour: 'Trans-Blue', dim: 'Brick 2 x 4', qty: 1, id: 'x-3001-Trans_Blue', img: 'https://example.com/3001.jpg' };
-  check("carousel: Trans-Blue uses Rebrickable colour 33, not 43", sandbox.carouselImgs(itemTransBlue)[1], 'https://cdn.rebrickable.com/media/parts/ldraw/33/3001.png');
-  check("carousel: no duplicate slides", new Set(sandbox.carouselImgs(item2456)).size, sandbox.carouselImgs(item2456).length);
-  check("carousel: unknown colour still gets the card photo + BrickLink", sandbox.carouselImgs({ setKey: '8961-1', cat: 'Bricks', colour: 'Magenta', id: 'x-1234-Magenta', img: 'https://example.com/1234.jpg' }).length, 1);
-  // Open / step / close the lightbox.
-  sandbox.openCarousel(item2456);
-  check("carousel: opens on the first photo", sandbox.$('lightboxImg').src, sandbox.carouselImgs(item2456)[0]);
-  check("carousel: lightbox unhidden", sandbox.$('lightbox').hidden, false);
-  check("carousel: count reads 1 / 3", sandbox.$('lightboxCount').textContent, '1 / 3');
-  check("carousel: arrows shown with several photos", sandbox.$('lightboxPrev').hidden, false);
-  sandbox.carouselStep(1);
-  check("carousel: step forward shows the second photo", sandbox.$('lightboxImg').src, sandbox.carouselImgs(item2456)[1]);
-  check("carousel: count reads 2 / 3", sandbox.$('lightboxCount').textContent, '2 / 3');
-  sandbox.carouselStep(1);
-  sandbox.carouselStep(1);
-  check("carousel: stepping past the end wraps to the first photo", sandbox.$('lightboxImg').src, sandbox.carouselImgs(item2456)[0]);
-  sandbox.carouselStep(-1);
-  check("carousel: stepping back from the first wraps to the last", sandbox.$('lightboxImg').src, sandbox.carouselImgs(item2456)[2]);
-  sandbox.closeCarousel();
-  check("carousel: close hides the lightbox", sandbox.$('lightbox').hidden, true);
-  check("carousel: close clears the state", sandbox.carouselState, null);
-  // The photo opens the carousel; the counter buttons do not.
+  check("viewer: 2456 is Brick 2 x 6, not 1 x 6 x 5", item2456.dim, 'Brick 2 x 6');
+  // Colour codes are LDraw's own (from ldcfgalt.ldr, the file the 3D
+  // loader reads) — not the Rebrickable ids: Trans-Orange is 57, not
+  // 182; the greys are the bluish greys, 71/72.
+  check("viewer: LDraw colour White is 15", sandbox.LDRAW_COLOUR['White'], 15);
+  check("viewer: LDraw colour Trans-Blue is 33", sandbox.LDRAW_COLOUR['Trans-Blue'], 33);
+  check("viewer: LDraw colour Trans-Orange is 57, not Rebrickable 182", sandbox.LDRAW_COLOUR['Trans-Orange'], 57);
+  check("viewer: LDraw colour Dark Grey is 72, the bluish grey", sandbox.LDRAW_COLOUR['Dark Grey'], 72);
+  check("viewer: LDraw colour Trans-Brown is 40 (Trans_Black)", sandbox.LDRAW_COLOUR['Trans-Brown'], 40);
+  sandbox.openViewer(item2456);
+  check("viewer: opens with the part label", sandbox.$('lightboxLabel').textContent, 'Part 2456 — White');
+  check("viewer: lightbox unhidden", sandbox.$('lightbox').hidden, false);
+  check("viewer: model asked for part 2456", sandbox.viewerPart, '2456');
+  check("viewer: model asked for in White (LDraw 15)", sandbox.viewerColourCode, 15);
+  sandbox.closeViewer();
+  check("viewer: close hides the lightbox", sandbox.$('lightbox').hidden, true);
+  check("viewer: close clears the state", sandbox.viewerItem, null);
+  check("viewer: close clears the part", sandbox.viewerPart, null);
+  // An unknown colour falls back to dark grey (72) — shape, not shade.
+  const itemUnknown = { setKey: '8961-1', cat: 'Bricks', colour: 'Magenta', dim: 'Brick 2 x 4', qty: 1, id: 'x-3001-Magenta', img: 'https://example.com/3001.jpg' };
+  sandbox.openViewer(itemUnknown);
+  check("viewer: unknown colour falls back to dark grey", sandbox.viewerColourCode, 72);
+  sandbox.closeViewer();
+  // The photo opens the viewer; the counter buttons do not.
   const card2456 = sandbox.buildCard(item2456);
   const photo2456 = card2456.children.find((n) => n.className === 'photo');
-  check("carousel: card photo is clickable", photo2456.listeners.click && photo2456.listeners.click.length, 1);
+  check("viewer: card photo is clickable", photo2456.listeners.click && photo2456.listeners.click.length, 1);
   photo2456.listeners.click[0]();
-  check("carousel: tapping the photo opens it", sandbox.$('lightbox').hidden, false);
-  sandbox.closeCarousel();
+  check("viewer: tapping the photo opens it", sandbox.$('lightbox').hidden, false);
+  check("viewer: tapping the photo asked for part 2456", sandbox.viewerPart, '2456');
+  sandbox.closeViewer();
   const counter2456 = card2456.children.find((n) => n.className === 'counter');
   const minus2456 = counter2456.children[0];
-  check("carousel: counter minus still changes the count, not the carousel", sandbox.remOf(item2456), item2456.qty);
+  check("viewer: counter minus still changes the count, not the viewer", sandbox.remOf(item2456), item2456.qty);
   minus2456.listeners.click[0]();
-  check("carousel: minus tap did not open the carousel", sandbox.$('lightbox').hidden, true);
-  check("carousel: minus tap found one piece", sandbox.remOf(item2456), item2456.qty - 1);
+  check("viewer: minus tap did not open the viewer", sandbox.$('lightbox').hidden, true);
+  check("viewer: minus tap found one piece", sandbox.remOf(item2456), item2456.qty - 1);
   sandbox.changeRemaining(item2456, +1); // restore
 
   console.log(failures === 0 ? "\nALL PASS" : "\n" + failures + " FAILURES");

@@ -1484,77 +1484,74 @@ function fallbackImg(item) {
   return 'https://img.bricklink.com/ItemImage/PN/' + bl + '/' + partNumOf(item) + '.png';
 }
 
-// Rebrickable colour ids for the display colours (from Rebrickable's
-// colour table — the Rebrickable ID column). Same numbers as LDraw for
-// these colours (Red 4, White 15); the BrickLink ids differ (Red 5,
-// White 1) — do not mix them up. Used for the LDraw-render slide in
-// the photo carousel.
-var REBRICKABLE_COLOUR = {
+// LDraw colour codes for the display colours (from the LDraw library's
+// own colour table, ldcfgalt.ldr — the file the 3D loader reads, so
+// these are the codes the loader accepts). These are NOT the
+// Rebrickable ids: Trans-Orange is 57 here, not Rebrickable 182; the
+// greys are the bluish greys, 71/72; Trans-Brown is LDraw's
+// Trans_Black (40). Unknown colours fall back to dark grey (72) — the
+// shape is what matters for an any-colour lot.
+var LDRAW_COLOUR = {
   'White': 15, 'Black': 0, 'Blue': 1, 'Red': 4, 'Dark Grey': 72,
   'Light Grey': 71, 'Tan': 19, 'Orange': 25, 'Yellow': 14, 'Lime Green': 27,
   'Clear': 47, 'Trans-Blue': 33, 'Trans-Brown': 40, 'Trans-Green': 34,
-  'Trans-Orange': 182, 'Trans-Red': 36
+  'Trans-Orange': 57, 'Trans-Red': 36
 };
 
-// Every reference photo for a card, in carousel order. No free photo
-// catalogue has several angles of one part+colour — each source has
-// exactly one image per part+colour — so the carousel is built from
-// the distinct renders that do exist:
-//   1. the card's own photo (LEGO element photo, or Rebrickable's
-//      LDraw render when there is no element photo),
-//   2. Rebrickable's LDraw render (a different, more top-down view),
-//   3. BrickLink's photo of the same part in the same colour.
-// The true multi-angle view (top / front / side / underside) only
-// exists as a live 3D render of the part's LDraw geometry — that is
-// the next step, not this carousel.
-function carouselImgs(item) {
-  var out = [];
-  function push(u) { if (u && out.indexOf(u) < 0) out.push(u); }
-  push(item.img);
-  var rb = REBRICKABLE_COLOUR[item.colour];
-  if (rb !== undefined) push('https://cdn.rebrickable.com/media/parts/ldraw/' + rb + '/' + partNumOf(item) + '.png');
-  push(fallbackImg(item));
-  return out;
-}
+// ---------- 3D part viewer (v3.15) ----------
+// Tap a card photo and the part pops up as a live 3D model — drag to
+// spin it, scroll or pinch to zoom, Top / Front / Side / Underside
+// buttons for the flat views. No carousel: the photo on the card is
+// the reference, the popup is the model. The model itself lives in
+// model3d.js (Three.js + LDrawLoader); this file only asks for it, so
+// the harness can stub show3DModel/hide3DModel without WebGL.
+var viewerItem = null; // the lot the popup is showing
+var viewerPart = null; // the part number the model was asked for
+var viewerColourCode = null; // the LDraw code the model was asked for
+var viewer3DTimeout = null;
 
-// ---------- Photo carousel (v3.14) ----------
-// Tap a card photo to open a big view of that part, swipe (or tap the
-// arrows) through its reference photos, close with the X or by tapping
-// outside the photo. The counter buttons still work — only the photo
-// itself opens the carousel.
-var carouselState = null; // { urls, idx, label }
-
-function openCarousel(item) {
-  var urls = carouselImgs(item);
-  if (!urls.length) return;
-  carouselState = { urls: urls, idx: 0, label: 'Part ' + partNumOf(item) + ' — ' + displayColour(item) };
-  renderCarousel();
+function openViewer(item) {
+  viewerItem = item;
+  $('lightboxLabel').textContent = 'Part ' + partNumOf(item) + ' — ' + displayColour(item);
   $('lightbox').hidden = false;
   document.body.style.overflow = 'hidden';
+  show3DModel(item);
 }
 
-function renderCarousel() {
-  var st = carouselState;
-  if (!st) return;
-  var img = $('lightboxImg');
-  img.src = st.urls[st.idx];
-  img.alt = st.label;
-  $('lightboxLabel').textContent = st.label;
-  $('lightboxCount').textContent = (st.idx + 1) + ' / ' + st.urls.length;
-  var multi = st.urls.length > 1;
-  $('lightboxPrev').hidden = !multi;
-  $('lightboxNext').hidden = !multi;
+function show3DModel(item) {
+  var part = partNumOf(item);
+  var code = LDRAW_COLOUR[item.colour];
+  if (code === undefined) code = 72; // any-colour lot: shape matters, not shade
+  viewerPart = part;
+  viewerColourCode = code;
+  var statusEl = $('model3dStatus');
+  if (statusEl) statusEl.textContent = 'Loading 3D viewer…';
+  if (typeof window !== 'undefined' && window.BulkFinder3D) {
+    window.BulkFinder3D.show(part, code);
+    return;
+  }
+  if (typeof window === 'undefined') return;
+  // The 3D module loads in the background; it picks this up when ready.
+  window.__bfPending3D = { part: part, colour: code };
+  if (viewer3DTimeout) clearTimeout(viewer3DTimeout);
+  viewer3DTimeout = setTimeout(function () {
+    if (!window.BulkFinder3D && viewerItem === item && statusEl) {
+      statusEl.textContent = '3D viewer still loading — check connection and tap the photo again.';
+    }
+  }, 8000);
 }
 
-function carouselStep(d) {
-  var st = carouselState;
-  if (!st) return;
-  st.idx = (st.idx + d + st.urls.length) % st.urls.length;
-  renderCarousel();
+function hide3DModel() {
+  if (typeof window !== 'undefined') window.__bfPending3D = null;
+  if (viewer3DTimeout) { clearTimeout(viewer3DTimeout); viewer3DTimeout = null; }
+  if (typeof window !== 'undefined' && window.BulkFinder3D) window.BulkFinder3D.hide();
 }
 
-function closeCarousel() {
-  carouselState = null;
+function closeViewer() {
+  viewerItem = null;
+  viewerPart = null;
+  viewerColourCode = null;
+  hide3DModel();
   $('lightbox').hidden = true;
   document.body.style.overflow = '';
 }
@@ -1587,7 +1584,7 @@ function buildCard(item) {
   // Tap the photo (not the counter) to open the carousel of reference
   // photos for this part.
   photo.style.cursor = 'pointer';
-  photo.addEventListener('click', function () { openCarousel(item); });
+  photo.addEventListener('click', function () { openViewer(item); });
   photo.appendChild(img);
   card.appendChild(photo);
 
@@ -1823,26 +1820,13 @@ function bindEvents() {
     if (panel && !panel.hidden && picker && !picker.contains(e.target)) panel.hidden = true;
   });
   $('resetBtn').addEventListener('click', resetAll);
-  // Photo carousel: close with the X or by tapping the dark area
-  // outside the photo, swipe left/right (or use the arrows) to move
-  // between a part's reference photos, Escape also closes it.
-  $('lightboxClose').addEventListener('click', closeCarousel);
-  $('lightboxPrev').addEventListener('click', function (e) { e.stopPropagation(); carouselStep(-1); });
-  $('lightboxNext').addEventListener('click', function (e) { e.stopPropagation(); carouselStep(1); });
-  $('lightbox').addEventListener('click', function (e) { if (e.target === $('lightbox')) closeCarousel(); });
-  var touchX = null;
-  $('lightbox').addEventListener('touchstart', function (e) { touchX = e.changedTouches[0].clientX; }, { passive: true });
-  $('lightbox').addEventListener('touchend', function (e) {
-    if (touchX === null) return;
-    var dx = e.changedTouches[0].clientX - touchX;
-    touchX = null;
-    if (Math.abs(dx) > 40) carouselStep(dx < 0 ? 1 : -1);
-  }, { passive: true });
+  // 3D viewer: close with the X or by tapping the dark area outside
+  // the model, Escape also closes it.
+  $('lightboxClose').addEventListener('click', closeViewer);
+  $('lightbox').addEventListener('click', function (e) { if (e.target === $('lightbox')) closeViewer(); });
   document.addEventListener('keydown', function (e) {
     if (!$('lightbox') || $('lightbox').hidden) return;
-    if (e.key === 'Escape') closeCarousel();
-    if (e.key === 'ArrowLeft') carouselStep(-1);
-    if (e.key === 'ArrowRight') carouselStep(1);
+    if (e.key === 'Escape') closeViewer();
   });
   window.addEventListener('online', function () { updateSyncStatus(); tickSync(); });
   window.addEventListener('offline', updateSyncStatus);
