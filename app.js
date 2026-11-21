@@ -1,4 +1,4 @@
-/* Bulk Finder v3.25 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.26 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -97,11 +97,12 @@ function displayColour(item) { return familyOf(item); }
  * their own part_cat_id, so this dropdown works for any set with no
  * hand-mapping.
  *
- * Display rule (Joseph's audit, 2026-11-15): a raw category keeps its own
- * section only while 3 or more of its lots still have pieces left to find
- * — fewer than 3 open lots folds into 'Miscellaneous' at display time, so
- * tiny sections never get their own dropdown entry. Windows and Doors
- * (3 lots) is the smallest section that stands on its own.
+ * Display rule (Joseph's audit, 2026-11-15; threshold loosened to 2 on
+ * 2026-11-20): a raw category keeps its own section only while 2 or
+ * more of its lots still have pieces left to find — fewer than 2 open
+ * lots folds into 'Miscellaneous' at display time, so single-lot
+ * sections never get their own dropdown entry. Tubes and Hoses
+ * (2 lots) is the smallest section that stands on its own.
  * 'Minifig / Accessories' is exempt — he placed the minifig gear there
  * on purpose. Empty categories never appear: the dropdown is built
  * from the lots that are actually there. */
@@ -126,7 +127,7 @@ function displayCat(item) {
   var raw = itemCat(item);
   if (raw === 'Miscellaneous' || raw === 'Minifig / Accessories') return raw;
   var m = catLotCount[item.setKey];
-  if (m && (m[raw] || 0) <= 2) return 'Miscellaneous';
+  if (m && (m[raw] || 0) <= 1) return 'Miscellaneous';
   return raw;
 }
 

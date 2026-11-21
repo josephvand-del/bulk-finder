@@ -242,9 +242,9 @@ async function main() {
 
   // v3.1 type merges: the dropdown is built from the real app code.
   sandbox.rebuildTypeSelect();
-  check("types: v3.1 dropdown (12 cats)", sandbox.document.getElementById("typeSelect").children.map((o) => o.value), ["all", "Plates", "Miscellaneous", "Bricks", "Sloped Bricks", "Small pieces", "Technic Pins / Bushes", "Minifig / Accessories", "Technic Axles", "Wheels and Tyres", "Technic Beams", "Technic Bricks", "Windows and Doors"]);
+  check("types: v3.26 dropdown (18 cats)", sandbox.document.getElementById("typeSelect").children.map((o) => o.value), ["all", "Plates", "Bricks", "Miscellaneous", "Sloped Bricks", "Small pieces", "Technic Pins / Bushes", "Minifig / Accessories", "Technic Axles", "Wheels and Tyres", "Technic Beams", "Technic Bricks", "Plates Special", "Technic Special", "Bars, Ladders and Fences", "Technic Connectors", "Tubes and Hoses", "Windows and Doors", "Transportation - Land"]);
   check("types: Minifig / Accessories never folds", sandbox.displayCat({ setKey: "8961-1", cat: "Minifig / Accessories" }), "Minifig / Accessories");
-  check("types: 2-lot raw cat folds to Miscellaneous", sandbox.displayCat({ setKey: "8961-1", cat: "Tubes and Hoses" }), "Miscellaneous");
+  check("types: 2-lot raw cat keeps its section", sandbox.displayCat({ setKey: "8961-1", cat: "Tubes and Hoses" }), "Tubes and Hoses");
   const catOf = (design) => sandbox.items.find((it) => it.id.split("-")[1] === design).cat;
   check("types: gear 3648 is Technic Bricks", catOf("3648"), "Technic Bricks");
   check("types: rock monster 64786 is Minifig / Accessories", catOf("64786"), "Minifig / Accessories");
@@ -661,7 +661,7 @@ async function main() {
   check("tiers: single set still shows all three tiers", singleBanners, ["TIER 1 — MOST LIKELY IN BULK", "TIER 2 — MEDIUM — WORTH A DIG", "TIER 3 — LEAST LIKELY IN BULK"]);
   check("tiers: single set cards carry no set tag", $("setView").children.filter((n) => n.className === "card-grid").some((g) => g.children.some((c) => c.children.some((d) => d.className === "set-tag"))), false);
 
-  // v3.9 — the fold follows lots still left: 3+ open lots keeps a section.
+  // v3.9 — the fold follows lots still left: 2+ open lots keeps a section.
   const inv8961 = sandbox.getInventory("8961-1");
   const foldMap = {};
   inv8961.items.forEach((it) => { foldMap[it.id] = it.qty; });
@@ -678,19 +678,25 @@ async function main() {
   check("fold: one lot left in Wheels and Tyres folds to Miscellaneous", sandbox.displayCat(openWheels), "Miscellaneous");
   const doors = sandbox.items.filter((it) => it.cat === "Windows and Doors");
   check("fold: three lots left in Windows and Doors keeps its section", doors.every((it) => sandbox.displayCat(it) === "Windows and Doors"), true);
-  check("fold: two lots left in Plates folds", sandbox.displayCat(sandbox.items.find((it) => it.cat === "Plates" && sandbox.remOf(it) > 0)), "Miscellaneous");
+  check("fold: two lots left in Plates keeps its section", sandbox.displayCat(sandbox.items.find((it) => it.cat === "Plates" && sandbox.remOf(it) > 0)), "Plates");
   check("fold: Bricks fully open keeps its section", sandbox.displayCat(sandbox.items.find((it) => it.cat === "Bricks")), "Bricks");
   const typeVals = $("typeSelect").children.map((o) => o.value);
   check("dropdown: fully found categories get no entry", ["Small pieces", "Technic Axles", "Technic Bricks", "Technic Pins / Bushes"].some((c) => typeVals.includes(c)), false);
   check("dropdown: folded Wheels and Tyres gets no entry", typeVals.includes("Wheels and Tyres"), false);
   check("dropdown: Windows and Doors still listed", typeVals.includes("Windows and Doors"), true);
   check("dropdown: no type shows 0 left", $("typeSelect").children.map((o) => o.textContent).some((t) => t.indexOf(" 0 left") >= 0), false);
-  // Live fold: finding one of the three Windows and Doors lots folds it.
+  // Live fold: finding one of the three Windows and Doors lots keeps it
+  // (two lots left); finding a second (one lot left) folds it.
   const doorLot = sandbox.items.find((it) => it.cat === "Windows and Doors" && sandbox.remOf(it) > 0);
   sandbox.changeRemaining(doorLot, -1);
-  check("fold: live tap folds Windows and Doors", sandbox.displayCat(doorLot), "Miscellaneous");
+  check("fold: live tap keeps Windows and Doors at two lots", sandbox.displayCat(doorLot), "Windows and Doors");
   sandbox.rebuildTypeSelect(); // the stub DOM has no card, so updateCardUI returns before rebuilding
-  check("dropdown: live tap drops Windows and Doors", $("typeSelect").children.map((o) => o.value).includes("Windows and Doors"), false);
+  check("dropdown: live tap keeps Windows and Doors", $("typeSelect").children.map((o) => o.value).includes("Windows and Doors"), true);
+  const doorLot2 = sandbox.items.find((it) => it.cat === "Windows and Doors" && sandbox.remOf(it) > 0);
+  sandbox.changeRemaining(doorLot2, -1);
+  check("fold: second live tap folds Windows and Doors", sandbox.displayCat(doorLot2), "Miscellaneous");
+  sandbox.rebuildTypeSelect();
+  check("dropdown: second live tap drops Windows and Doors", $("typeSelect").children.map((o) => o.value).includes("Windows and Doors"), false);
   // Colour dropdown: a family with nothing left gets no entry either.
   const colourMap = {};
   inv8961.items.forEach((it) => { colourMap[it.id] = it.qty; });
