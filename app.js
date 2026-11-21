@@ -1,4 +1,4 @@
-/* Bulk Finder v3.30 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.32 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -143,7 +143,11 @@ function itemCat(item) {
 // Lots still open (pieces remaining) per raw category, per set — rebuilt
 // when the selection loads and whenever a count changes, so the fold
 // follows what is actually left to find, not the full inventory.
+// In a multi-set view the fold also counts distinct merged pieces per
+// category (catLotCountMerged), so a merged card folds the same way the
+// cards around it do.
 var catLotCount = {};
+var catLotCountMerged = {};
 function rebuildCatCounts() {
   catLotCount = {};
   items.forEach(function (it) {
@@ -152,12 +156,24 @@ function rebuildCatCounts() {
     var c = itemCat(it);
     m[c] = (m[c] || 0) + 1;
   });
+  catLotCountMerged = {};
+  if (selectedKeys.length > 1) {
+    viewList().forEach(function (it) {
+      if (remOf(it) <= 0) return;
+      var c = itemCat(it);
+      catLotCountMerged[c] = (catLotCountMerged[c] || 0) + 1;
+    });
+  }
 }
 
 // The category shown in the type dropdown and used by the type filter.
 function displayCat(item) {
   var raw = itemCat(item);
   if (raw === 'Miscellaneous' || raw === 'Minifig / Accessories') return raw;
+  if (item.merged) {
+    if ((catLotCountMerged[raw] || 0) <= 1) return 'Miscellaneous';
+    return raw;
+  }
   var m = catLotCount[item.setKey];
   if (m && (m[raw] || 0) <= 1) return 'Miscellaneous';
   return raw;
@@ -301,7 +317,16 @@ var selectedKeys = [];        // set keys shown together in the combined view
 var items = [];               // combined inventory of the selected sets (each item carries setKey)
 var remainingBySet = {};      // setKey -> { partKey -> pieces still to find }
 // Pieces still to find for one combined-view item (its own set's map).
+// A merged card (v3.32) sums what is left across its sets.
 function remOf(item) {
+  if (item.merged) {
+    var total = 0;
+    item.lots.forEach(function (lot) {
+      var m = remainingBySet[lot.setKey];
+      total += (m && m[lot.id] !== undefined) ? m[lot.id] : lot.qty;
+    });
+    return total;
+  }
   var map = remainingBySet[item.setKey];
   if (!map) return item.qty;
   return map[item.id] === undefined ? item.qty : map[item.id];
@@ -1745,7 +1770,9 @@ function rebuildColourSelect() {
   // Remaining pieces per family (trans variants folded into base colours;
   // lots that used to be "any colour" count under their pictured colour).
   var famLeft = {};
-  items.forEach(function (it) {
+  // The dropdown counts what the cards show: in a multi-set view the
+  // merged pieces, so a colour's number matches its one card.
+  viewList().forEach(function (it) {
     var rem = remOf(it);
     var fam = familyOf(it);
     famLeft[fam] = (famLeft[fam] || 0) + rem;
@@ -1777,7 +1804,9 @@ function rebuildTypeSelect() {
   // Remaining pieces per displayed category — small raw categories fold
   // into Miscellaneous (see displayCat), from the lots actually here.
   var catLeft = {};
-  items.forEach(function (it) {
+  // The dropdown counts what the cards show: in a multi-set view the
+  // merged pieces, so a category's number matches its cards.
+  viewList().forEach(function (it) {
     var rem = remOf(it);
     var c = displayCat(it);
     catLeft[c] = (catLeft[c] || 0) + rem;
@@ -1828,6 +1857,53 @@ var TIER_NOTES = {
   3: 'Rare in bulk — check the sorted cases and minifig wall too.'
 };
 
+/* ---------- Merged cards (v3.32) ----------
+ * In a multi-set view, lots with the same part number + colour merge
+ * into ONE card with the grand total — like pieces sit together instead
+ * of showing once per set. The merge is view-only: `items` stays
+ * per-set (the header progress and the cloud sync still count lots),
+ * and a single-set view is unchanged — each lot is its own card there.
+ * A merged card's tier is the lowest (most likely in bulk) of its lots,
+ * its quantity is the summed quantity, and it carries its lots so a tap
+ * can still be credited to one set. Cards never name a set. */
+function mergeItemsForView() {
+  if (selectedKeys.length <= 1) return items;
+  var byKey = {};
+  var order = [];
+  items.forEach(function (it) {
+    var pk = partKeyOf(it);
+    var m = byKey[pk];
+    if (!m) {
+      m = { merged: true, id: it.id, setKey: it.setKey, colour: it.colour, dim: it.dim, img: it.img, name: it.name, cat: it.cat, tier: it.tier, qty: 0, lots: [] };
+      byKey[pk] = m;
+      order.push(m);
+    }
+    m.qty += it.qty;
+    if (it.tier < m.tier) m.tier = it.tier;
+    m.lots.push({ setKey: it.setKey, id: it.id, qty: it.qty });
+  });
+  return order;
+}
+function viewList() { return mergeItemsForView(); }
+
+// The DOM key of a card: merged cards are keyed by part, single-set
+// cards by set + lot id.
+function cardKeyFor(item) {
+  if (selectedKeys.length > 1) return 'merged|' + partKeyOf(item);
+  return item.setKey + '|' + item.id;
+}
+// The view item a tap or refresh belongs to: in a multi-set view a raw
+// lot resolves to its merged card; in a single-set view it is itself.
+function viewItemForCard(item) {
+  if (selectedKeys.length <= 1) return item;
+  var pk = partKeyOf(item);
+  var list = viewList();
+  for (var i = 0; i < list.length; i++) {
+    if (partKeyOf(list[i]) === pk) return list[i];
+  }
+  return item;
+}
+
 function renderSetView() {
   var view = $('setView');
   if (viewObserver) { viewObserver.disconnect(); viewObserver = null; }
@@ -1854,9 +1930,11 @@ function renderSetView() {
   // One ordered list, tier 1 then 2 then 3 — the same order the old
   // per-tier banners produced, for single- and multi-set views alike.
   // Cards carry no set tag in a combined view; the set a part came
-  // from is needless information there.
+  // from is needless information there. The list is the merged view
+  // (v3.32): one card per like piece when several sets are selected.
+  var list = viewList();
   [1, 2, 3].forEach(function (tier) {
-    items.forEach(function (it) {
+    list.forEach(function (it) {
       if (it.tier === tier && cardMatches(it)) viewPending.push(it);
     });
   });
@@ -2391,7 +2469,7 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
 function buildCard(item) {
   var rem = remOf(item);
   var card = el('article', 'card' + (rem === 0 ? ' done' : ''));
-  card.dataset.key = item.setKey + '|' + item.id;
+  card.dataset.key = cardKeyFor(item);
 
   var photo = el('div', 'photo');
   var img = document.createElement('img');
@@ -2451,13 +2529,14 @@ function buildCard(item) {
   return card;
 }
 
-// v3.29 — a card in the All view shows the piece's grand total across
-// every selected set, not just its own set's numbers: one physical
+// v3.29/v3.32 — a card in the All view shows the piece's grand total
+// across every selected set, not just its own set's numbers: one physical
 // piece can be needed by several sets, and the number on the card is
-// the whole hunt for that piece. A part in a single set is unchanged
-// (the sum is just that lot). The buttons stay per-set — minus routes
-// through the hunting preference / chooser, plus undoes one find in
-// this card's own set.
+// the whole hunt for that piece. Since v3.32 the card IS the merged
+// piece, so this sum is the card's own total. A part in a single set
+// is unchanged (the sum is just that lot). The buttons stay per-set —
+// minus routes through the hunting preference / chooser, plus undoes
+// the most recent find for the piece.
 function combinedLeft(item) {
   var pk = partKeyOf(item);
   var rem = 0, qty = 0;
@@ -2473,8 +2552,66 @@ function leftText(item) {
   return c.rem === 0 ? '✓ 0 of ' + c.qty + ' — done' : c.rem + ' of ' + c.qty + ' left';
 }
 
+// The set a merged card's most recent find went to, per piece — the
+// plus button undoes that find, not the first set's lot.
+var lastMinusSet = {};
+
+// The first lot of this piece in a set that still has room to undo
+// (a find was taken from it), or null.
+function lotWithRoom(setKey, pk) {
+  var out = null;
+  items.forEach(function (it) {
+    if (out) return;
+    if (it.setKey === setKey && partKeyOf(it) === pk && remOf(it) < it.qty) out = it;
+  });
+  return out;
+}
+
+// Which lot a merged card's plus undoes: the set of the last find
+// first, then the hunting preference's set, then the first lot with
+// room — so the undo always lands where a find came from.
+function undoTargetFor(mergedItem) {
+  var pk = partKeyOf(mergedItem);
+  var tryKeys = [];
+  if (lastMinusSet[pk]) tryKeys.push(lastMinusSet[pk]);
+  var pref = loadHuntPrefs()[pk];
+  if (pref && tryKeys.indexOf(pref) < 0) tryKeys.push(pref);
+  mergedItem.lots.forEach(function (lot) {
+    if (tryKeys.indexOf(lot.setKey) < 0) tryKeys.push(lot.setKey);
+  });
+  for (var i = 0; i < tryKeys.length; i++) {
+    var lot = lotWithRoom(tryKeys[i], pk);
+    if (lot) return lot;
+  }
+  return null;
+}
+
+// Pieces of this part still to find in one set, across all its lots
+// of the part (a set can hold the same part in two lots).
+function setRemForPart(setKey, pk) {
+  var total = 0;
+  var inv = getInventory(setKey);
+  if (!inv) return 0;
+  inv.items.forEach(function (lot) {
+    if (partNumOf(lot) + '|' + (lot.colour || '') !== pk) return;
+    var copy = {};
+    for (var k in lot) copy[k] = lot[k];
+    copy.setKey = setKey;
+    total += remOf(copy);
+  });
+  return total;
+}
+
 // One tap: device first, cloud second. Never wipes local on sync failure.
 function changeRemaining(item, delta) {
+  if (item.merged) {
+    // A merged card has no lot of its own: minus routes through the
+    // hunting preference / chooser, plus undoes the most recent find.
+    if (delta < 0) { onFoundTap(item); return; }
+    var target = undoTargetFor(item);
+    if (target) changeRemaining(target, +1);
+    return;
+  }
   var rem = remOf(item);
   var next = Math.max(0, Math.min(item.qty, rem + delta));
   if (next === rem) return;
@@ -2508,10 +2645,13 @@ function loadHuntPrefs() { return LS.get('bf:huntPrefs', {}); }
 function saveHuntPrefs(prefs) { LS.set('bf:huntPrefs', prefs); }
 function partKeyOf(item) { return partNumOf(item) + '|' + (item.colour || ''); }
 
-// Lots in the selected sets that still need this exact piece.
+// Lots in the selected sets that still need this exact piece — one
+// entry per set, with the set's total need for the piece (a set can
+// hold the same part in two lots; the chooser must not list it twice).
 function setsNeedingPart(item) {
   var pk = partKeyOf(item);
   var out = [];
+  var bySet = {};
   selectedKeys.forEach(function (key) {
     var inv = getInventory(key);
     if (!inv) return;
@@ -2521,10 +2661,15 @@ function setsNeedingPart(item) {
       for (var k in lot) copy[k] = lot[k];
       copy.setKey = key;
       var rem = remOf(copy);
-      if (rem > 0) {
+      if (rem <= 0) return;
+      var entry = bySet[key];
+      if (!entry) {
         var meta = findSet(key);
-        out.push({ setKey: key, setName: (meta && meta.set_name) || key, lot: copy, rem: rem });
+        entry = { setKey: key, setName: (meta && meta.set_name) || key, lot: copy, rem: 0 };
+        bySet[key] = entry;
+        out.push(entry);
       }
+      entry.rem += rem;
     });
   });
   return out;
@@ -2540,9 +2685,11 @@ function hideHuntChooser() {
 function applyFoundTo(candidate) {
   // One find credited to this set's lot of the piece.
   changeRemaining(candidate.lot, -1);
-  // Preference spent once that set's need for the piece is complete.
   var pk = partKeyOf(candidate.lot);
-  if (remOf(candidate.lot) === 0) {
+  lastMinusSet[pk] = candidate.setKey;
+  // Preference spent once that SET's need for the piece is complete
+  // (all its lots of the piece), not just the one lot.
+  if (setRemForPart(candidate.setKey, pk) === 0) {
     var prefs = loadHuntPrefs();
     if (prefs[pk]) { delete prefs[pk]; saveHuntPrefs(prefs); }
   }
@@ -2601,7 +2748,8 @@ function showHuntChooser(item, candidates) {
 function onFoundTap(item) {
   if (selectedKeys.length <= 1) { changeRemaining(item, -1); return; }
   var candidates = setsNeedingPart(item);
-  if (candidates.length <= 1) { changeRemaining(item, -1); return; }
+  if (!candidates.length) return; // nothing left to find (button is disabled)
+  if (candidates.length === 1) { applyFoundTo(candidates[0]); return; }
   var pk = partKeyOf(item);
   var pref = loadHuntPrefs()[pk];
   if (pref) {
@@ -2614,30 +2762,27 @@ function onFoundTap(item) {
 
 function updateCardUI(item) {
   rebuildCatCounts(); // the tap may have opened or closed a folded section
+  // One card per like piece in a multi-set view (v3.32), so one refresh
+  // moves its grand total — no sibling cards to chase anymore.
   updateOneCard(item);
-  // A shared piece shows its grand total on every set's card, so a tap
-  // on one card moves the number on the others too (v3.29).
-  var pk = partKeyOf(item);
-  items.forEach(function (other) {
-    if (other === item) return;
-    if (partKeyOf(other) !== pk) return;
-    updateOneCard(other);
-  });
   rebuildColourSelect();
   rebuildTypeSelect();
 }
 function updateOneCard(item) {
-  var rem = remOf(item);
-  var card = document.querySelector('.card[data-key="' + CSS.escape(item.setKey + '|' + item.id) + '"]');
+  // The card this tap belongs to: in a multi-set view a raw lot
+  // resolves to its merged card, whose numbers are the grand totals.
+  var view = viewItemForCard(item);
+  var rem = remOf(view);
+  var card = document.querySelector('.card[data-key="' + CSS.escape(cardKeyFor(view)) + '"]');
   if (!card) return; // card hidden by the current filter; progress still updated
   card.classList.toggle('done', rem === 0);
   var left = card.querySelector('.left');
-  if (left) left.textContent = leftText(item);
+  if (left) left.textContent = leftText(view);
   var btns = card.querySelectorAll('.counter button');
   if (btns[0]) btns[0].disabled = rem === 0;
-  if (btns[1]) btns[1].disabled = rem === item.qty;
+  if (btns[1]) btns[1].disabled = rem === view.qty;
   // If the tap moved the card out of the active filter, hide it.
-  if (!cardMatches(item)) card.style.display = 'none';
+  if (!cardMatches(view)) card.style.display = 'none';
 }
 
 /* ---------- Sidebar ---------- */

@@ -697,8 +697,20 @@ async function main() {
   check("tiers: one banner per tier across sets", banners, ["TIER 1 — MOST LIKELY IN BULK", "TIER 2 — MEDIUM — WORTH A DIG", "TIER 3 — LEAST LIKELY IN BULK"]);
   check("tiers: no per-set heading in the combined view", $("setView").children.some((n) => n.className === "set-heading"), false);
   const grids = $("setView").children.filter((n) => n.className === "card-grid");
-  const gridSets = (g) => g.children.map((c) => (c.dataset.key || "").split("|")[0]);
-  check("tiers: tier 2 grid holds both sets", gridSets(grids[1]).includes("8961-1") && gridSets(grids[1]).includes("10294-1"), true);
+  // A tier-2 card may be a merged card (dataset.key "merged|part|colour")
+  // spanning both sets, or a single-set card — either way the grid must
+  // hold pieces from both sets.
+  const grid2Sets = {};
+  grids[1].children.forEach((c) => {
+    const key = c.dataset.key || "";
+    if (key.indexOf("merged|") === 0) {
+      const m = sandbox.viewList().find((it) => sandbox.partKeyOf(it) === key.slice("merged|".length));
+      if (m) m.lots.forEach((l) => { grid2Sets[l.setKey] = true; });
+    } else {
+      grid2Sets[key.split("|")[0]] = true;
+    }
+  });
+  check("tiers: tier 2 grid holds both sets", grid2Sets["8961-1"] && grid2Sets["10294-1"], true);
   // Single-set view is unchanged: three banners, no set tags.
   sandbox.setSelected(["8961-1"]);
   const singleBanners = $("setView").children.filter((n) => n.className && n.className.indexOf("tier-banner") === 0).map((n) => n.textContent);
@@ -1393,28 +1405,87 @@ async function main() {
   check("buildfilter: a different set resets the filters", [sandbox.buildColourFilter, sandbox.buildTypeFilter], ["all", "all"]);
   check("buildfilter: new set shows its own lots", buildRowCount(), 2);
 
-  // Combined All-view totals: a shared piece's card shows the grand
-  // total across the selected sets, not one set's numbers.
+  // v3.32 — merged cards: one card per like piece in a multi-set view,
+  // with the grand total; the buttons still route per set. Show every
+  // card for the DOM checks (earlier tests can leave a 'done' filter).
+  const prevMStatus = sandbox.statusFilter, prevMType = sandbox.typeFilter, prevMColour = sandbox.colourFilter;
+  sandbox.statusFilter = "all"; sandbox.typeFilter = "all"; sandbox.colourFilter = "all";
   const counts8961c = fullCountsFor("8961-1"); counts8961c["300126-3001-Black"] = 3;
   sandbox.LS.set("bf:counts:8961-1", counts8961c);
   sandbox.LS.set("bf:counts:10305-1", fullCountsFor("10305-1"));
+  sandbox.LS.set("bf:huntPrefs", {});
   if (!sandbox.findSet("10305-1")) {
     sandbox.sets.push({ key: "10305-1", set_num: "10305-1", set_name: "Test Set 2", total_parts: 5, total_lots: 2, user_set_id: "us-10305" });
     sandbox.saveLocalSets(sandbox.sets);
   }
   sandbox.setSelected(["8961-1", "10305-1"]);
-  const shared8961c = sandbox.items.find((it) => it.id === "300126-3001-Black" && it.setKey === "8961-1");
-  const shared10305c = sandbox.items.find((it) => it.id === "300126-3001-Black" && it.setKey === "10305-1");
-  const only10305c = sandbox.items.find((it) => it.id === "614126-6141-White");
-  check("combined: shared piece shows the grand total", sandbox.leftText(shared8961c), "6 of 19 left");
-  check("combined: same total on the other set's card", sandbox.leftText(shared10305c), "6 of 19 left");
-  check("combined: single-set piece is unchanged", sandbox.leftText(only10305c), "2 of 2 left");
+  const lot8961c = (id) => sandbox.items.find((it) => it.id === id && it.setKey === "8961-1");
+  check("merge: raw lots are still per-set", sandbox.items.length, 140);
+  // 140 lots, two merges: the shared 3001 brick, and the two 62462 lots
+  // inside 8961-1 (same part, any colour) that merge with each other.
+  check("merge: the view merges the shared piece", sandbox.viewList().length, 138);
+  const merged3001 = sandbox.viewList().find((it) => sandbox.partKeyOf(it) === "3001|Black");
+  check("merge: one card for the shared piece", sandbox.viewList().filter((it) => sandbox.partKeyOf(it) === "3001|Black").length, 1);
+  check("merge: grand total on the merged card", sandbox.leftText(merged3001), "6 of 19 left");
+  check("merge: merged card carries the summed quantity", merged3001.qty, 19);
+  const merged6141 = sandbox.viewList().find((it) => sandbox.partKeyOf(it) === "6141|White");
+  check("merge: single-set piece is unchanged", sandbox.leftText(merged6141), "2 of 2 left");
+  // The merged card itself: one card, grand total, summed quantity.
+  while (sandbox.viewPending.length) sandbox.renderNextChunk();
+  const findCard = (key) => {
+    let found = null;
+    const walk = (el) => {
+      if (el.dataset && el.dataset.key === key) { found = el; return; }
+      for (const c of el.children) walk(c);
+    };
+    walk($("setView"));
+    return found;
+  };
+  const mergedCard = findCard("merged|3001|Black");
+  check("merge: merged card exists in the view", !!mergedCard, true);
+  const countCardsWithKey = (key) => {
+    let n = 0;
+    const w = (el) => { if (el.dataset && el.dataset.key === key) n++; for (const c of el.children) w(c); };
+    w($("setView"));
+    return n;
+  };
+  check("merge: no second card for the shared piece", countCardsWithKey("merged|3001|Black"), 1);
+  check("merge: merged card shows the grand total", mergedCard.children.find((d) => d.className === "counter").children.find((s) => s.className === "left").textContent, "6 of 19 left");
+  check("merge: merged card shows the summed quantity", mergedCard.children.some((d) => d.className === "qty" && d.textContent === "×19"), true);
+  // Minus on a shared piece pops the chooser (no preference yet); picking
+  // a set credits it there, and the next minus goes straight there.
+  sandbox.onFoundTap(merged3001);
+  check("merge: minus with two sets pops the chooser", sandbox.huntChooser.hidden, false);
+  check("merge: chooser lists one row per set", sandbox.huntChoiceList.children.length, 2);
+  check("merge: chooser shows each set's need", sandbox.huntChoiceList.children.map((b) => b.children[0].textContent), ["needs 3", "needs 3"]);
+  sandbox.huntChoiceList.children[0].listeners.click[0](); // pick Crystal Sweeper
+  check("merge: chooser pick credits the first set", sandbox.remOf(lot8961c("300126-3001-Black")), 2);
+  check("merge: grand total moves with the find", sandbox.leftText(merged3001), "5 of 19 left");
+  check("merge: chooser is closed after the pick", sandbox.huntChooser.hidden, true);
+  sandbox.onFoundTap(merged3001); // preference routes straight to 8961-1
+  check("merge: preference routes the next find", sandbox.remOf(lot8961c("300126-3001-Black")), 1);
+  check("merge: grand total moves again", sandbox.leftText(merged3001), "4 of 19 left");
+  // Plus undoes the most recent find (8961-1), not the first set's lot.
+  sandbox.changeRemaining(merged3001, +1);
+  check("merge: plus undoes into the last set", sandbox.remOf(lot8961c("300126-3001-Black")), 2);
+  check("merge: grand total moves back", sandbox.leftText(merged3001), "5 of 19 left");
+  check("merge: plus does not clear the preference", sandbox.LS.get("bf:huntPrefs", {}), { "3001|Black": "8961-1" });
+  // A set holding the same part in two lots gets one chooser row.
+  const c62462 = sandbox.setsNeedingPart(sandbox.items.find((it) => sandbox.partKeyOf(it) === "62462|"));
+  check("merge: two lots in one set give one chooser row", c62462.length, 1);
+  check("merge: that row carries the set's whole need", c62462[0].rem, sandbox.items.filter((it) => sandbox.partKeyOf(it) === "62462|").reduce((a, it) => a + sandbox.remOf(it), 0));
+  // Done everywhere reads done on the grand total.
   counts8961c["300126-3001-Black"] = 0;
   sandbox.LS.set("bf:counts:8961-1", counts8961c);
   const counts10305c = fullCountsFor("10305-1"); counts10305c["300126-3001-Black"] = 0;
   sandbox.LS.set("bf:counts:10305-1", counts10305c);
   sandbox.setSelected(["8961-1", "10305-1"]);
-  check("combined: done everywhere reads done on the grand total", sandbox.leftText(shared8961c), "✓ 0 of 19 — done");
+  check("merge: done everywhere reads done on the grand total", sandbox.leftText(sandbox.viewList().find((it) => sandbox.partKeyOf(it) === "3001|Black")), "✓ 0 of 19 — done");
+  // Single-set view is unchanged: no merging inside one set.
+  sandbox.setSelected(["8961-1"]);
+  check("merge: single set shows every lot", sandbox.viewList().length, 138);
+  check("merge: the two 62462 lots stay separate in one set", sandbox.viewList().filter((it) => sandbox.partKeyOf(it) === "62462|").length, 2);
+  sandbox.statusFilter = prevMStatus; sandbox.typeFilter = prevMType; sandbox.colourFilter = prevMColour;
 
   // v3.30 batch: edge swipe, batched rendering, fast startup, first-set
   // start, long-press reorder.
@@ -1435,14 +1506,14 @@ async function main() {
     return n;
   };
   const setViewEl = () => sandbox.document.getElementById("setView");
-  check("batch: first batch is 10 cards, not all 140", countCards(setViewEl()), 10);
-  check("batch: 130 still pending", sandbox.viewPending.length, 130);
-  check("batch: button names the remainder", sandbox.viewMoreBtn.textContent, "Show more (130 left)");
+  check("batch: first batch is 10 cards, not all 138", countCards(setViewEl()), 10);
+  check("batch: 128 still pending", sandbox.viewPending.length, 128);
+  check("batch: button names the remainder", sandbox.viewMoreBtn.textContent, "Show more (128 left)");
   sandbox.viewMoreBtn.listeners.click[0]();
   check("batch: Show more renders the next 10", countCards(setViewEl()), 20);
-  check("batch: pending drops to 120", sandbox.viewPending.length, 120);
+  check("batch: pending drops to 118", sandbox.viewPending.length, 118);
   while (sandbox.viewPending.length) sandbox.renderNextChunk();
-  check("batch: draining renders all 140", countCards(setViewEl()), 140);
+  check("batch: draining renders all 138", countCards(setViewEl()), 138);
   check("batch: nothing pending after drain", sandbox.viewPending.length, 0);
   check("batch: marker hides when done", sandbox.viewSentinel.hidden, true);
   // Tier banners still appear once each, in order, after a full drain.
