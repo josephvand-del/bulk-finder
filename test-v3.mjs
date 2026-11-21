@@ -347,14 +347,14 @@ async function main() {
   const counts8961 = sandbox.loadCounts("8961-1");
   counts8961["300126-3001-Black"] = 0; // 16 of 430 found
   sandbox.saveCounts("8961-1", counts8961);
-  check("rows: percent after one lot found", sandbox.setPercent(sandbox.findSet("8961-1")), "4%");
+  check("rows: percent after one lot found", sandbox.setPercent(sandbox.findSet("8961-1")), "3%"); // 16/430 = 3.72%, floored (v3.29): 100% only when complete
   sandbox.renderSets();
   const rows8961 = $("setList").children.filter((li) => li.children[0].children[1].textContent === "8961-1");
   check("rows: one row for 8961-1", rows8961.length, 1);
   const row8961 = rows8961[0];
   check("rows: name first", row8961.children[0].children[0].textContent, "Crystal Sweeper");
   check("rows: number second", row8961.children[0].children[1].textContent, "8961-1");
-  check("rows: percent third", row8961.children[0].children[2].textContent, "4%");
+  check("rows: percent third", row8961.children[0].children[2].textContent, "3%");
   const thumb8961 = row8961.children.find((c) => c.className === "set-thumb");
   check("rows: thumbnail present", !!thumb8961, true);
   check("rows: thumbnail is the set image", thumb8961 && thumb8961.src, "https://cdn.rebrickable.com/media/sets/8961-1.jpg");
@@ -1340,6 +1340,78 @@ async function main() {
   check("email: no session, no clear", replacedUrl, null);
   sandbox.user = savedUser;
   sandbox.location.hash = "";
+
+  // v3.29 — panel filters, combined All-view totals, floored sidebar %.
+
+  // Sidebar % is floored: 100% only when truly complete. Start from
+  // the marked-all-complete state (every count 0): one piece back on
+  // the need list must drop the sidebar to 99%, nine pieces to 97%.
+  const zeroCounts8961 = {}; sandbox.getInventory("8961-1").items.forEach((it) => { zeroCounts8961[it.id] = 0; });
+  sandbox.LS.set("bf:counts:8961-1", zeroCounts8961);
+  sandbox.setSelected(["8961-1"]);
+  check("percent: marked all complete reads 100%", sandbox.setPercent(sandbox.findSet("8961-1")), "100%");
+  sandbox.changeRemaining(sandbox.items[0], +1);
+  check("percent: one piece needed drops to 99%", sandbox.setPercent(sandbox.findSet("8961-1")), "99%");
+  for (let i = 1; i < 9; i++) sandbox.changeRemaining(sandbox.items[i], +1);
+  check("percent: nine pieces needed reads 97%", sandbox.setPercent(sandbox.findSet("8961-1")), "97%");
+
+  // Build panel filters: the All colors / All types dropdowns inside
+  // the panel filter its rows, like the main view's.
+  const fullCounts8961 = {}; sandbox.getInventory("8961-1").items.forEach((it) => { fullCounts8961[it.id] = it.qty; });
+  sandbox.LS.set("bf:counts:8961-1", fullCounts8961);
+  sandbox.setSelected(["8961-1"]);
+  sandbox.openBuildPanel("8961-1", "Crystal Sweeper");
+  const buildColourSel = () => sandbox.buildColourSelectEl;
+  const buildTypeSel = () => sandbox.buildTypeSelectEl;
+  const buildRowCount = () => [...sandbox.buildPanel.children].filter((c) => c.className.indexOf("build-row") === 0).length;
+  check("buildfilter: colour options", buildColourSel().children.map((o) => o.value), ["all", "Black", "Any colour", "Light Grey", "White", "Clear", "Blue", "Lime Green", "Orange", "Trans-Red", "Dark Grey", "Red", "Yellow", "Trans-Orange", "Trans-Blue", "Trans-Green", "Trans-Brown"]);
+  check("buildfilter: type options", buildTypeSel().children.map((o) => o.value), ["all", "Bricks", "Small pieces", "Plates", "Technic Axles", "Technic Bricks", "Miscellaneous", "Sloped Bricks", "Wheels and Tyres", "Technic Special", "Minifig / Accessories", "Technic Beams", "Bars, Ladders and Fences", "String, Bands and Reels", "Plates Special", "Technic Steering, Suspension and Engine", "Flags, Banners and Signs", "Windows and Doors", "Plates Round Curved and Dishes", "Bricks Curved", "Transportation - Land", "Bricks Round and Cones", "Stickers", "Hinges, Arms and Turntables"]);
+  check("buildfilter: all rows at first", buildRowCount(), 138);
+  buildColourSel().value = "Black";
+  buildColourSel().listeners.change[0]();
+  check("buildfilter: Black shows its 15 lots", buildRowCount(), 15);
+  check("buildfilter: colour selection sticks", sandbox.buildColourFilter, "Black");
+  buildTypeSel().value = "Small pieces";
+  buildTypeSel().listeners.change[0]();
+  check("buildfilter: Black + Small pieces has no lots", buildRowCount(), 0);
+  check("buildfilter: no-match note shows", [...sandbox.buildPanel.children].some((c) => c.className === "build-no-match"), true);
+  buildColourSel().value = "Any colour";
+  buildColourSel().listeners.change[0]();
+  check("buildfilter: Any colour + Small pieces shows 8 lots", buildRowCount(), 8);
+  buildColourSel().value = "all";
+  buildColourSel().listeners.change[0]();
+  check("buildfilter: Small pieces alone shows 22 lots", buildRowCount(), 22);
+  buildTypeSel().value = "all";
+  buildTypeSel().listeners.change[0]();
+  check("buildfilter: back to all rows", buildRowCount(), 138);
+  buildColourSel().value = "Black";
+  buildColourSel().listeners.change[0]();
+  sandbox.openBuildPanel("10305-1", "Test Set 2");
+  check("buildfilter: a different set resets the filters", [sandbox.buildColourFilter, sandbox.buildTypeFilter], ["all", "all"]);
+  check("buildfilter: new set shows its own lots", buildRowCount(), 2);
+
+  // Combined All-view totals: a shared piece's card shows the grand
+  // total across the selected sets, not one set's numbers.
+  const counts8961c = fullCountsFor("8961-1"); counts8961c["300126-3001-Black"] = 3;
+  sandbox.LS.set("bf:counts:8961-1", counts8961c);
+  sandbox.LS.set("bf:counts:10305-1", fullCountsFor("10305-1"));
+  if (!sandbox.findSet("10305-1")) {
+    sandbox.sets.push({ key: "10305-1", set_num: "10305-1", set_name: "Test Set 2", total_parts: 5, total_lots: 2, user_set_id: "us-10305" });
+    sandbox.saveLocalSets(sandbox.sets);
+  }
+  sandbox.setSelected(["8961-1", "10305-1"]);
+  const shared8961c = sandbox.items.find((it) => it.id === "300126-3001-Black" && it.setKey === "8961-1");
+  const shared10305c = sandbox.items.find((it) => it.id === "300126-3001-Black" && it.setKey === "10305-1");
+  const only10305c = sandbox.items.find((it) => it.id === "614126-6141-White");
+  check("combined: shared piece shows the grand total", sandbox.leftText(shared8961c), "6 of 19 left");
+  check("combined: same total on the other set's card", sandbox.leftText(shared10305c), "6 of 19 left");
+  check("combined: single-set piece is unchanged", sandbox.leftText(only10305c), "2 of 2 left");
+  counts8961c["300126-3001-Black"] = 0;
+  sandbox.LS.set("bf:counts:8961-1", counts8961c);
+  const counts10305c = fullCountsFor("10305-1"); counts10305c["300126-3001-Black"] = 0;
+  sandbox.LS.set("bf:counts:10305-1", counts10305c);
+  sandbox.setSelected(["8961-1", "10305-1"]);
+  check("combined: done everywhere reads done on the grand total", sandbox.leftText(shared8961c), "✓ 0 of 19 — done");
 
   console.log(failures === 0 ? "\nALL PASS" : "\n" + failures + " FAILURES");
   process.exit(failures === 0 ? 0 : 1);

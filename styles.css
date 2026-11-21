@@ -485,6 +485,9 @@ input, select {
 .instr-viewer.build-open .instr-status { left: 406px; }
 .build-panel-title { font-size: 18px; font-weight: 700; margin: 0 0 4px; }
 .build-panel-need { font-size: 15px; color: #444; margin: 0 0 10px; }
+.build-filters { display: flex; gap: 8px; margin: 0 0 10px; }
+.build-filters select { flex: 1; min-width: 0; font-size: 14px; padding: 8px 6px; border: 1px solid #ccc; border-radius: 8px; background: #fff; color: #222; }
+.build-no-match { font-size: 14px; color: #555; margin: 12px 0; }
 .build-mark-all { width: 100%; margin-bottom: 14px; }
 .build-type { font-size: 15px; font-weight: 700; margin: 14px 0 4px; padding-top: 10px; border-top: 1px solid #ddd; }
 .build-type:first-of-type { border-top: none; padding-top: 0; }

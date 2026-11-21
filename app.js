@@ -1,4 +1,4 @@
-/* Bulk Finder v3.28 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.29 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -1902,7 +1902,15 @@ var buildToggleBtn = null;
 var buildSetNum = null;
 var buildSetName = '';
 var buildDirty = false;
+// v3.29 — the panel's own All colours / All types filters. They are
+// the source of truth across re-renders; a different set resets them
+// (its colours and types differ), the same set keeps them.
+var buildColourFilter = 'all';
+var buildTypeFilter = 'all';
+var buildColourSelectEl = null;
+var buildTypeSelectEl = null;
 function openBuildPanel(setNum, setName) {
+  if (buildSetNum !== setNum) { buildColourFilter = 'all'; buildTypeFilter = 'all'; }
   buildSetNum = setNum;
   buildSetName = setName || setNum;
   var viewer = $('instrViewer');
@@ -1953,6 +1961,31 @@ function renderBuildPanel() {
   var totalNeed = 0;
   lots.forEach(function (lot) { totalNeed += remOf(lot); });
   buildPanel.appendChild(el('p', 'build-panel-need', totalNeed === 0 ? 'Nothing needed — everything is complete.' : 'Need ' + totalNeed + (totalNeed === 1 ? ' piece' : ' pieces')));
+  // v3.29 — the same All colours / All types dropdowns as the main
+  // view, but they filter this panel's rows. Raw types and exact
+  // colours, matching the group headers below (not the main view's
+  // folded display types or colour families). The "Need N pieces"
+  // line above stays the whole set's total; the filters only narrow
+  // which rows show, and Mark all complete still acts on the set.
+  var filters = el('div', 'build-filters');
+  buildColourSelectEl = document.createElement('select');
+  buildColourSelectEl.setAttribute('aria-label', 'Filter build list by colour');
+  buildColourSelectEl.addEventListener('change', function () { buildColourFilter = buildColourSelectEl.value; renderBuildPanel(); });
+  buildTypeSelectEl = document.createElement('select');
+  buildTypeSelectEl.setAttribute('aria-label', 'Filter build list by type');
+  buildTypeSelectEl.addEventListener('change', function () { buildTypeFilter = buildTypeSelectEl.value; renderBuildPanel(); });
+  filters.appendChild(buildColourSelectEl);
+  filters.appendChild(buildTypeSelectEl);
+  buildPanel.appendChild(filters);
+  rebuildBuildFilterSelects(lots);
+  var shown = lots.filter(function (lot) {
+    if (buildTypeFilter !== 'all' && itemCat(lot) !== buildTypeFilter) return false;
+    if (buildColourFilter !== 'all' && (lot.colour || 'Any colour') !== buildColourFilter) return false;
+    return true;
+  });
+  if (!shown.length) {
+    buildPanel.appendChild(el('p', 'build-no-match', 'No pieces match these filters.'));
+  }
   var markBtn = el('button', 'btn build-mark-all', 'Mark all complete');
   markBtn.type = 'button';
   markBtn.addEventListener('click', function () {
@@ -1968,9 +2001,10 @@ function renderBuildPanel() {
   // Group by type, then colour, in first-seen order. Raw types here
   // (itemCat), not the folded display types — a rebuild list must keep
   // its structure even when every lot of a type is already complete.
+  // Grouped from `shown`, the filter's cut of the lots.
   var types = [];
   var byType = {};
-  lots.forEach(function (lot) {
+  shown.forEach(function (lot) {
     var t = itemCat(lot);
     if (!byType[t]) { byType[t] = []; types.push(t); }
     byType[t].push(lot);
@@ -1993,6 +2027,38 @@ function renderBuildPanel() {
   closeBtn.type = 'button';
   closeBtn.addEventListener('click', function () { setBuildPanelOpen(false); });
   buildPanel.appendChild(closeBtn);
+}
+function fillBuildFilterSelect(sel, allLabel, values, left, current) {
+  sel.innerHTML = '';
+  var optAll = el('option', null, allLabel);
+  optAll.value = 'all';
+  sel.appendChild(optAll);
+  values.forEach(function (v) {
+    var o = el('option', null, v + ' · ' + (left[v] || 0) + ' left');
+    o.value = v;
+    sel.appendChild(o);
+  });
+  // Keep the previous selection if this set still has it; a different
+  // set (or a cleared need) falls back to All.
+  sel.value = (current === 'all' || (left[current] !== undefined)) ? current : 'all';
+}
+function rebuildBuildFilterSelects(lots) {
+  if (!buildColourSelectEl || !buildTypeSelectEl) return;
+  var colourLeft = {};
+  var typeLeft = {};
+  lots.forEach(function (lot) {
+    var c = lot.colour || 'Any colour';
+    var t = itemCat(lot);
+    colourLeft[c] = (colourLeft[c] || 0) + remOf(lot);
+    typeLeft[t] = (typeLeft[t] || 0) + remOf(lot);
+  });
+  // Options in first-seen order, like the groups below. Every value
+  // the set has is listed even at 0 left — the panel shows complete
+  // lots too, so a filter must be able to pick them.
+  fillBuildFilterSelect(buildColourSelectEl, 'All colors', Object.keys(colourLeft), colourLeft, buildColourFilter);
+  fillBuildFilterSelect(buildTypeSelectEl, 'All types', Object.keys(typeLeft), typeLeft, buildTypeFilter);
+  buildColourFilter = buildColourSelectEl.value;
+  buildTypeFilter = buildTypeSelectEl.value;
 }
 function buildRow(lot) {
   var row = el('div', 'build-row');
@@ -2202,7 +2268,7 @@ function buildCard(item) {
   plus.setAttribute('aria-label', 'Undo one found piece');
   plus.disabled = rem === item.qty;
   plus.addEventListener('click', function () { changeRemaining(item, +1); });
-  var left = el('span', 'left', leftText(item, rem));
+  var left = el('span', 'left', leftText(item));
   counter.appendChild(minus);
   counter.appendChild(left);
   counter.appendChild(plus);
@@ -2210,8 +2276,26 @@ function buildCard(item) {
   return card;
 }
 
-function leftText(item, rem) {
-  return rem === 0 ? '✓ 0 of ' + item.qty + ' — done' : rem + ' of ' + item.qty + ' left';
+// v3.29 — a card in the All view shows the piece's grand total across
+// every selected set, not just its own set's numbers: one physical
+// piece can be needed by several sets, and the number on the card is
+// the whole hunt for that piece. A part in a single set is unchanged
+// (the sum is just that lot). The buttons stay per-set — minus routes
+// through the hunting preference / chooser, plus undoes one find in
+// this card's own set.
+function combinedLeft(item) {
+  var pk = partKeyOf(item);
+  var rem = 0, qty = 0;
+  items.forEach(function (it) {
+    if (partKeyOf(it) !== pk) return;
+    rem += remOf(it);
+    qty += it.qty;
+  });
+  return { rem: rem, qty: qty };
+}
+function leftText(item) {
+  var c = combinedLeft(item);
+  return c.rem === 0 ? '✓ 0 of ' + c.qty + ' — done' : c.rem + ' of ' + c.qty + ' left';
 }
 
 // One tap: device first, cloud second. Never wipes local on sync failure.
@@ -2355,19 +2439,30 @@ function onFoundTap(item) {
 
 function updateCardUI(item) {
   rebuildCatCounts(); // the tap may have opened or closed a folded section
+  updateOneCard(item);
+  // A shared piece shows its grand total on every set's card, so a tap
+  // on one card moves the number on the others too (v3.29).
+  var pk = partKeyOf(item);
+  items.forEach(function (other) {
+    if (other === item) return;
+    if (partKeyOf(other) !== pk) return;
+    updateOneCard(other);
+  });
+  rebuildColourSelect();
+  rebuildTypeSelect();
+}
+function updateOneCard(item) {
   var rem = remOf(item);
   var card = document.querySelector('.card[data-key="' + CSS.escape(item.setKey + '|' + item.id) + '"]');
   if (!card) return; // card hidden by the current filter; progress still updated
   card.classList.toggle('done', rem === 0);
   var left = card.querySelector('.left');
-  if (left) left.textContent = leftText(item, rem);
+  if (left) left.textContent = leftText(item);
   var btns = card.querySelectorAll('.counter button');
   if (btns[0]) btns[0].disabled = rem === 0;
   if (btns[1]) btns[1].disabled = rem === item.qty;
   // If the tap moved the card out of the active filter, hide it.
   if (!cardMatches(item)) card.style.display = 'none';
-  rebuildColourSelect();
-  rebuildTypeSelect();
 }
 
 /* ---------- Sidebar ---------- */
@@ -2387,7 +2482,10 @@ function setPercent(setMeta) {
     var rem = (counts && typeof counts[it.id] === 'number') ? counts[it.id] : it.qty;
     found += (it.qty - rem);
   });
-  return Math.round((found / setMeta.total_parts) * 100) + '%';
+  // Floored, not rounded (v3.29): 100% means truly complete — one
+  // piece back on the need list must drop the number to 99%. Rounded,
+  // 429 of 430 still read 100% and the sidebar never moved.
+  return Math.floor((found / setMeta.total_parts) * 100) + '%';
 }
 
 /* ---------- Delete a set (v3.28) ----------
