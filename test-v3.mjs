@@ -100,6 +100,7 @@ class MockQuery {
   eq(col, val) { this.filters[col] = val; return this; }
   order() { return this; }
   insert(row) { this._insert = row; return this; }
+  delete() { this._delete = true; return this; }
   upsert(rows) { this._upsert = rows; dbCalls.push({ table: this.table, op: "upsert", rows }); return this; }
   async single() {
     if (this.table === "user_sets" && (this._insert || this._upsert)) {
@@ -118,6 +119,7 @@ class MockQuery {
     return { data: null, error: null };
   }
   then(resolve, reject) {
+    if (this._delete) { dbCalls.push({ table: this.table, op: "delete", filters: { ...this.filters } }); return Promise.resolve({ data: null, error: mockSb._deleteError || null }).then(resolve, reject); }
     if (this.table === "set_parts") return Promise.resolve({ data: setPartsRows, error: null }).then(resolve, reject);
     return Promise.resolve({ data: [], error: null }).then(resolve, reject);
   }
@@ -242,9 +244,9 @@ async function main() {
 
   // v3.1 type merges: the dropdown is built from the real app code.
   sandbox.rebuildTypeSelect();
-  check("types: v3.26 dropdown (18 cats)", sandbox.document.getElementById("typeSelect").children.map((o) => o.value), ["all", "Plates", "Bricks", "Miscellaneous", "Sloped Bricks", "Small pieces", "Technic Pins / Bushes", "Minifig / Accessories", "Technic Axles", "Wheels and Tyres", "Technic Beams", "Technic Bricks", "Plates Special", "Technic Special", "Bars, Ladders and Fences", "Technic Connectors", "Tubes and Hoses", "Windows and Doors", "Transportation - Land"]);
+  check("types: v3.28 dropdown (15 cats)", sandbox.document.getElementById("typeSelect").children.map((o) => o.value), ["all", "Small pieces", "Plates", "Bricks", "Sloped Bricks", "Minifig / Accessories", "Technic Axles", "Miscellaneous", "Wheels and Tyres", "Technic Beams", "Technic Bricks", "Plates Special", "Technic Special", "Bars, Ladders and Fences", "Windows and Doors", "Transportation - Land"]);
   check("types: Minifig / Accessories never folds", sandbox.displayCat({ setKey: "8961-1", cat: "Minifig / Accessories" }), "Minifig / Accessories");
-  check("types: 2-lot raw cat keeps its section", sandbox.displayCat({ setKey: "8961-1", cat: "Tubes and Hoses" }), "Tubes and Hoses");
+  check("types: 2-lot raw cat keeps its section", sandbox.displayCat({ setKey: "8961-1", cat: "Technic Special" }), "Technic Special");
   const catOf = (design) => sandbox.items.find((it) => it.id.split("-")[1] === design).cat;
   check("types: gear 3648 is Technic Bricks", catOf("3648"), "Technic Bricks");
   check("types: rock monster 64786 is Minifig / Accessories", catOf("64786"), "Minifig / Accessories");
@@ -1145,6 +1147,199 @@ async function main() {
   ] };
   sandbox.start3DPreload('test-3');
   check("prints: preload carries the element", preloadCalls3[0].map((i) => i.element), ['4542545', '4542547']);
+
+  // v3.28 — confirm modal, assign finds, small-connector rule,
+  // build-needs panel, delete-a-set, email-link fixes. (The Supabase
+  // dashboard was audited live 2026-11-20: Site URL and redirect URLs
+  // were already correct, so the email fix is app-side.)
+
+  // Shared Yes/Cancel confirm modal: show, Cancel, confirm, Escape.
+  let confirmFired = false;
+  sandbox.showConfirm({ title: "Sure?", message: "Just checking.", confirmLabel: "Do it", onConfirm: function () { confirmFired = true; } });
+  check("confirm: modal opens", sandbox.confirmModal.hidden, false);
+  check("confirm: title + message + label", [sandbox.confirmTitleEl.textContent, sandbox.confirmMsgEl.textContent, sandbox.confirmYesEl.textContent], ["Sure?", "Just checking.", "Do it"]);
+  sandbox.confirmModal.children[0].children[2].children[0].listeners.click[0](); // Cancel
+  check("confirm: Cancel hides it", sandbox.confirmModal.hidden, true);
+  check("confirm: Cancel does not fire", confirmFired, false);
+  sandbox.showConfirm({ title: "Sure?", message: "Just checking.", confirmLabel: "Do it", onConfirm: function () { confirmFired = true; } });
+  sandbox.confirmYesEl.listeners.click[0]();
+  check("confirm: Yes hides it", sandbox.confirmModal.hidden, true);
+  check("confirm: Yes fires", confirmFired, true);
+  sandbox.showConfirm({ title: "Sure?", message: "Just checking.", onConfirm: function () {} });
+  sandbox.document.listeners.keydown[0]({ key: "Escape" });
+  check("confirm: Escape hides it", sandbox.confirmModal.hidden, true);
+
+  // Assign finds in the All view: one set needing the piece -> direct;
+  // two sets -> chooser with a hunting preference that sticks, then
+  // clears once that set's need is complete.
+  const fullCountsFor = (setNum) => { const m = {}; sandbox.getInventory(setNum).items.forEach((it) => { m[it.id] = it.qty; }); return m; };
+  const counts8961a = fullCountsFor("8961-1"); counts8961a["300126-3001-Black"] = 3;
+  sandbox.LS.set("bf:counts:8961-1", counts8961a);
+  sandbox.LS.set("bf:counts:10305-1", fullCountsFor("10305-1"));
+  sandbox.LS.set("bf:huntPrefs", {});
+  // 10305-1 was pushed to the in-memory list by the fetch test without
+  // saving, so a later sets = localSets() (logout / second boot) dropped
+  // it; its inventory stayed registered. Re-add it, persisted, so the
+  // assign test has a real second set with a unique part.
+  if (!sandbox.findSet("10305-1")) {
+    sandbox.sets.push({ key: "10305-1", set_num: "10305-1", set_name: "Test Set 2", total_parts: 5, total_lots: 2, user_set_id: "us-10305" });
+    sandbox.saveLocalSets(sandbox.sets);
+  }
+  sandbox.setSelected(["8961-1", "10305-1"]);
+  const shared10305 = sandbox.items.find((it) => it.id === "300126-3001-Black" && it.setKey === "10305-1");
+  const shared8961 = sandbox.items.find((it) => it.id === "300126-3001-Black" && it.setKey === "8961-1");
+  const only10305 = sandbox.items.find((it) => it.id === "614126-6141-White");
+  check("assign: shared lot needs 3 in 8961-1", sandbox.remOf(shared8961), 3);
+  check("assign: shared lot needs 3 in 10305-1", sandbox.remOf(shared10305), 3);
+  sandbox.onFoundTap(only10305); // single-set-only part: no chooser, straight down
+  check("assign: single-set part credits directly", sandbox.remOf(only10305), 1);
+  check("assign: no chooser for a single-set part", !sandbox.huntChooser || sandbox.huntChooser.hidden, true);
+  sandbox.onFoundTap(shared10305); // shared part: chooser with both candidates
+  check("assign: chooser opens for a shared part", sandbox.huntChooser.hidden, false);
+  const choiceBtns = [...sandbox.huntChoiceList.children];
+  check("assign: chooser lists both sets", choiceBtns.map((b) => b.textContent), ["Crystal Sweeper", "Test Set 2"]);
+  check("assign: chooser shows each need", choiceBtns.map((b) => b.children[0].textContent), ["needs 3", "needs 3"]);
+  choiceBtns[0].listeners.click[0](); // pick Crystal Sweeper
+  check("assign: chooser closes after a pick", sandbox.huntChooser.hidden, true);
+  check("assign: preference saved", sandbox.LS.get("bf:huntPrefs", {}), { "3001|Black": "8961-1" });
+  check("assign: find credited to the picked set", sandbox.remOf(shared8961), 2);
+  check("assign: other set untouched", sandbox.remOf(shared10305), 3);
+  sandbox.onFoundTap(shared10305); // next tap auto-applies the preference
+  check("assign: preference auto-applies (no chooser)", sandbox.huntChooser.hidden, true);
+  check("assign: second find goes to the same set", sandbox.remOf(shared8961), 1);
+  sandbox.onFoundTap(shared10305); // completing that set's need clears it
+  check("assign: third find finishes the set's need", sandbox.remOf(shared8961), 0);
+  check("assign: preference cleared when the need is complete", sandbox.LS.get("bf:huntPrefs", {}), {});
+  sandbox.onFoundTap(shared10305); // one set left needing it: straight down
+  check("assign: last set needing it credits directly", sandbox.remOf(shared10305), 2);
+  check("assign: still no chooser", sandbox.huntChooser.hidden, true);
+  sandbox.setSelected(["10305-1"]); // single-set view: straight down, no chooser
+  sandbox.onFoundTap(shared10305);
+  check("assign: single-set view credits directly", sandbox.remOf(shared10305), 1);
+  check("assign: single-set view shows no chooser", sandbox.huntChooser.hidden, true);
+
+  // Small-connector rule (v3.28): Technic pins, bushes and connectors
+  // — plus the tooth part and the mini antenna — are Small pieces, at
+  // import time and at display time, so existing sets move too.
+  const lotByPart = (p) => sandbox.INVENTORY_8961.items.find((it) => it.id.split("-")[1] === p);
+  ["6590", "73587", "41669", "62462", "4274"].forEach((p) => {
+    check("small: part " + p + " displays as Small pieces", sandbox.itemCat(lotByPart(p)), "Small pieces");
+  });
+  check("small: 73587 stored cat moved", lotByPart("73587").cat, "Small pieces");
+  check("small: 41669 stored cat moved", lotByPart("41669").cat, "Small pieces");
+  const pins62462 = sandbox.INVENTORY_8961.items.filter((it) => it.id.split("-")[1] === "62462");
+  check("small: both 62462 lots stored as Small pieces", pins62462.map((it) => it.cat), ["Small pieces", "Small pieces"]);
+  check("small: both 62462 lots are black and orange", pins62462.map((it) => it.id.split("-")[2]).sort(), ["Black", "Bright_Orange"]);
+  check("small: Small pieces keeps its section", sandbox.displayCat({ setKey: "8961-1", cat: "Small pieces" }), "Small pieces");
+  check("small: no Technic Pins / Bushes or Connectors lots left", sandbox.INVENTORY_8961.items.some((it) => it.cat === "Technic Pins / Bushes" || it.cat === "Technic Connectors"), false);
+
+  // Build-needs panel inside the instructions viewer: grouped by type
+  // then colour, +/- steps on the tracker's own remaining counts,
+  // Mark all complete behind a confirm, and the close hook re-renders
+  // the main view only when something changed.
+  const counts8961b = fullCountsFor("8961-1"); counts8961b["300126-3001-Black"] = 0; // one lot already found, so + can raise it
+  sandbox.LS.set("bf:counts:8961-1", counts8961b);
+  sandbox.setSelected(["8961-1"]);
+  sandbox.openBuildPanel("8961-1", "Crystal Sweeper");
+  check("build: panel opens", sandbox.buildPanel.hidden, false);
+  check("build: viewer gets the dock class", $("instrViewer").classList.contains("build-open"), true);
+  const panelText = (cls) => [...sandbox.buildPanel.children].filter((c) => c.className === cls).map((c) => c.textContent);
+  check("build: title", panelText("build-panel-title"), ["Build list — Crystal Sweeper"]);
+  check("build: total need", panelText("build-panel-need"), ["Need 414 pieces"]);
+  check("build: type groups include Small pieces", panelText("build-type").includes("Small pieces"), true);
+  check("build: colour groups include Black", panelText("build-colour").includes("Black"), true);
+  const buildRows = [...sandbox.buildPanel.children].filter((c) => c.className.indexOf("build-row") === 0);
+  check("build: one row per lot", buildRows.length, 138);
+  const zeroRow = buildRows.find((r) => [...r.children].some((c) => c.className === "build-row-need" && c.textContent === "Need 0"));
+  check("build: the found lot shows Need 0", !!zeroRow, true);
+  const zeroSteps = [...zeroRow.children].filter((c) => c.className === "build-step-btn");
+  check("build: minus disabled at 0", zeroSteps[0].disabled, true);
+  zeroSteps[1].listeners.click[0](); // +
+  check("build: + raises the need", sandbox.remOf({ setKey: "8961-1", id: "300126-3001-Black", qty: 16 }), 1);
+  check("build: tap marks the panel dirty", sandbox.buildDirty, true);
+  check("build: total updates", panelText("build-panel-need"), ["Need 415 pieces"]);
+  const markBtn = () => [...sandbox.buildPanel.children].find((c) => c.className === "btn build-mark-all");
+  markBtn().listeners.click[0]();
+  check("build: mark-all asks first", [sandbox.confirmModal.hidden, sandbox.confirmTitleEl.textContent, sandbox.confirmYesEl.textContent], [false, "Mark everything complete?", "Mark all complete"]);
+  sandbox.confirmModal.children[0].children[2].children[0].listeners.click[0](); // Cancel
+  check("build: mark-all Cancel leaves counts", sandbox.remOf({ setKey: "8961-1", id: "300126-3001-Black", qty: 16 }), 1);
+  markBtn().listeners.click[0]();
+  sandbox.confirmYesEl.listeners.click[0]();
+  check("build: mark-all zeroes every lot", Object.values(sandbox.LS.get("bf:counts:8961-1", {})).every((v) => v === 0), true);
+  const bulkOps = sandbox.outbox().filter((o) => o.kind === "bulk" && o.user_set_id === "us-8961-1");
+  check("build: mark-all queues one bulk sync", bulkOps.length, 1);
+  check("build: bulk sync carries all lots", bulkOps[0].rows.length, 138);
+  check("build: panel shows everything complete", panelText("build-panel-need"), ["Nothing needed — everything is complete."]);
+  check("build: close hook sees the dirty panel", sandbox.buildDirty, true);
+  sandbox.__bfOnInstrClose();
+  check("build: close hook re-renders and clears dirty", sandbox.buildDirty, false);
+  sandbox.__bfOnInstrClose();
+  check("build: close hook is a no-op when clean", sandbox.buildDirty, false);
+
+  // Delete a set: the X asks first; Delete wipes local + cloud, and
+  // the selection falls back; a failed cloud wipe leaves a tombstone
+  // that the next sync retries.
+  sandbox.openSet("10294-1");
+  sandbox.LS.set("bf:huntPrefs", { "3001|Black": "10294-1" });
+  sandbox.LS.set("bf:instrPos:10294-1", 123);
+  check("delete: cloud id known before delete", sandbox.LS.get("bf:cloudIds", {})["10294-1"], "us-10294-1");
+  sandbox.renderSets();
+  const row10294 = $("setList").children.filter((li) => li.children[0].children[1].textContent === "10294-1")[0];
+  const delBtn10294 = row10294.children.find((c) => c.className === "set-del-btn");
+  check("delete: X on the row", !!delBtn10294 && delBtn10294.textContent, "×");
+  delBtn10294.listeners.click[0]({ stopPropagation() {} });
+  check("delete: confirm asks first", [sandbox.confirmModal.hidden, sandbox.confirmTitleEl.textContent, sandbox.confirmYesEl.textContent], [false, "Delete this set?", "Delete"]);
+  sandbox.confirmModal.children[0].children[2].children[0].listeners.click[0](); // Cancel
+  check("delete: Cancel keeps the set", sandbox.sets.some((s) => s.key === "10294-1"), true);
+  delBtn10294.listeners.click[0]({ stopPropagation() {} });
+  sandbox.confirmYesEl.listeners.click[0]();
+  await sleep(10);
+  check("delete: set gone from the list", sandbox.sets.some((s) => s.key === "10294-1"), false);
+  check("delete: counts wiped", sandbox.LS.get("bf:counts:10294-1", null), null);
+  check("delete: instructions position wiped", sandbox.LS.get("bf:instrPos:10294-1", null), null);
+  check("delete: hunting prefs for the set wiped", sandbox.LS.get("bf:huntPrefs", {}), {});
+  check("delete: cloud id wiped", sandbox.LS.get("bf:cloudIds", {})["10294-1"], undefined);
+  check("delete: set_parts delete ran", dbCalls.filter((c) => c.table === "set_parts" && c.op === "delete" && c.filters && c.filters.user_set_id === "us-10294-1").length, 1);
+  check("delete: user_sets delete ran", dbCalls.filter((c) => c.table === "user_sets" && c.op === "delete" && c.filters && c.filters.id === "us-10294-1").length, 1);
+  check("delete: selection falls back off the deleted set", sandbox.selectedKeys.includes("10294-1"), false);
+  check("delete: active set falls back", sandbox.activeSetKey, "8961-1");
+  mockSb._deleteError = { message: "boom" }; // failed cloud wipe: tombstone
+  sandbox.renderSets();
+  const row10305 = $("setList").children.filter((li) => li.children[0].children[1].textContent === "10305-1")[0];
+  row10305.children.find((c) => c.className === "set-del-btn").listeners.click[0]({ stopPropagation() {} });
+  sandbox.confirmYesEl.listeners.click[0]();
+  await sleep(10);
+  check("delete: failed wipe still removes the set locally", sandbox.sets.some((s) => s.key === "10305-1"), false);
+  check("delete: tombstone saved", sandbox.LS.get("bf:deletedSets", {}), { "us-10305": { set_num: "10305-1" } });
+  check("delete: failed wipe stops at set_parts", dbCalls.filter((c) => c.table === "user_sets" && c.op === "delete" && c.filters && c.filters.id === "us-10305").length, 0);
+  mockSb._deleteError = null;
+  await sandbox.retryDeletedSets();
+  check("delete: retry clears the tombstone", sandbox.LS.get("bf:deletedSets", {}), {});
+  check("delete: retry finishes the user_sets delete", dbCalls.filter((c) => c.table === "user_sets" && c.op === "delete" && c.filters && c.filters.id === "us-10305").length, 1);
+
+  // Email links (v3.28): signup passes an explicit redirect back to
+  // this app, and a confirm landing clears the token from the URL —
+  // but never on a recovery landing, and never without a session.
+  $("authEmail").value = "josephvand@gmail.com";
+  $("authPassword").value = "secret123";
+  await sandbox.doSignup();
+  check("email: signup passes this app as the redirect", mockSb._lastSignUp.options.emailRedirectTo, "https://josephvand-del.github.io/bulk-finder/");
+  replacedUrl = null;
+  sandbox.location.hash = "#access_token=abc&type=signup";
+  sandbox.clearAuthHashIfLanded();
+  check("email: confirm landing clears the token", replacedUrl, "/bulk-finder/");
+  replacedUrl = null;
+  sandbox.location.hash = "#access_token=abc&type=recovery";
+  sandbox.clearAuthHashIfLanded();
+  check("email: recovery landing keeps the hash", replacedUrl, null);
+  replacedUrl = null;
+  const savedUser = sandbox.user;
+  sandbox.user = null;
+  sandbox.location.hash = "#access_token=abc&type=signup";
+  sandbox.clearAuthHashIfLanded();
+  check("email: no session, no clear", replacedUrl, null);
+  sandbox.user = savedUser;
+  sandbox.location.hash = "";
 
   console.log(failures === 0 ? "\nALL PASS" : "\n" + failures + " FAILURES");
   process.exit(failures === 0 ? 0 : 1);

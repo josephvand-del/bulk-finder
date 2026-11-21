@@ -1,4 +1,4 @@
-// Bulk Finder — instructions viewer (v3.22).
+// Bulk Finder — instructions viewer (v3.28).
 // Tap "Instructions" on a My sets row and the set's booklets open as
 // one long scroll: every page rendered by pdf.js, booklets back to
 // back, so scrolling flows from one booklet into the next. The scroll
@@ -281,6 +281,9 @@ function close(fromPop) {
   instrOpen = false;
   instrHistoryPushed = false;
   savePosition();
+  // The app's build list may have edited the set's counts while the
+  // viewer was open — let it refresh the main view behind us.
+  if (typeof window.__bfOnInstrClose === 'function') { try { window.__bfOnInstrClose(); } catch (e) {} }
   generation++;
   if (observer) { observer.disconnect(); observer = null; }
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }

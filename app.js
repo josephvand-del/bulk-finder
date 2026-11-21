@@ -1,4 +1,4 @@
-/* Bulk Finder v3.27 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.28 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -36,7 +36,7 @@ var SUPABASE_KEY = 'sb_publishable_EIBE-riBIT2UCrfP0X0HmA_gUSRTGpD';
 // ~/workspace/research_notes/lego-8961-1-tracker/data.json
 // (138 lots, 430 pieces, catapult removed, rock monsters kept).
 // Injected verbatim at build time; do not hand-edit.
-var INVENTORY_8961 = {"set": "8961-1 Crystal Sweeper", "set_img_url": "https://cdn.rebrickable.com/media/sets/8961-1.jpg", "lots": 138, "pieces": 430, "tiers": {"1": "MOST LIKELY IN BULK", "2": "MEDIUM \u2014 WORTH A DIG", "3": "LEAST LIKELY IN BULK"}, "items": [{"id": "300126-3001-Black", "qty": 16, "dim": "2 \u00d7 4 studs", "colour": "Black", "any": false, "tier": 1, "cat": "Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/300126.jpg"}, {"id": "4121715-2780-Black", "qty": 8, "dim": "2 studs long", "colour": "", "any": true, "tier": 1, "cat": "Technic Pins / Bushes", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4121715.jpg"}, {"id": "614126-6141-Black", "qty": 4, "dim": "1 \u00d7 1 studs", "colour": "", "any": true, "tier": 1, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/614126.jpg"}, {"id": "4535739-63868-Black", "qty": 4, "dim": "2 \u00d7 1 studs", "colour": "", "any": true, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4535739.jpg"}, {"id": "4556158-60470-Black", "qty": 4, "dim": "1 \u00d7 2 studs", "colour": "", "any": true, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4556158.jpg"}, {"id": "302026-3020-Black", "qty": 2, "dim": "2 \u00d7 4 studs", "colour": "", "any": true, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/302026.jpg"}, {"id": "403226-4032-Black", "qty": 2, "dim": "2 \u00d7 2 studs", "colour": "", "any": true, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/403226.jpg"}, {"id": "4569733-88072-Black", "qty": 2, "dim": "1 \u00d7 2 studs", "colour": "", "any": true, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4569733.jpg"}, {"id": "370826-3708-Black", "qty": 2, "dim": "12 studs long", "colour": "", "any": true, "tier": 1, "cat": "Technic Axles", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/370826.jpg"}, {"id": "4526982-62462-Black", "qty": 2, "dim": "2 studs long", "colour": "", "any": true, "tier": 1, "cat": "Tubes and Hoses", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4526982.jpg"}, {"id": "416226-4162-Black", "qty": 2, "dim": "1 \u00d7 8 studs", "colour": "Black", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/416226.jpg"}, {"id": "4158848-30552-Black", "qty": 1, "dim": "1 stud", "colour": "", "any": true, "tier": 1, "cat": "Technic Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4158848.jpg"}, {"id": "370726-3707-Black", "qty": 1, "dim": "8 studs long", "colour": "", "any": true, "tier": 1, "cat": "Technic Axles", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/370726.jpg"}, {"id": "4211086-6587-Dark_Stone_Grey", "qty": 13, "dim": "3 studs long", "colour": "", "any": true, "tier": 1, "cat": "Technic Axles", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211086.jpg"}, {"id": "4508553-59426-Dark_Stone_Grey", "qty": 4, "dim": "5\u00bd studs long", "colour": "", "any": true, "tier": 1, "cat": "Technic Axles", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4508553.jpg"}, {"id": "4210798-6112-Dark_Stone_Grey", "qty": 2, "dim": "1 \u00d7 12 studs", "colour": "", "any": true, "tier": 1, "cat": "Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4210798.jpg"}, {"id": "4211061-3035-Dark_Stone_Grey", "qty": 2, "dim": "4 \u00d7 8 studs", "colour": "", "any": true, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211061.jpg"}, {"id": "4256149-3028-Dark_Stone_Grey", "qty": 2, "dim": "6 \u00d7 12 studs", "colour": "", "any": true, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4256149.jpg"}, {"id": "4211055-3068-Dark_Stone_Grey", "qty": 1, "dim": "2 \u00d7 2 studs", "colour": "", "any": true, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211055.jpg"}, {"id": "4211396-3021-Medium_Stone_Grey", "qty": 12, "dim": "2 \u00d7 3 studs", "colour": "", "any": true, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211396.jpg"}, {"id": "4211622-6590-Medium_Stone_Grey", "qty": 9, "dim": "1 stud", "colour": "", "any": true, "tier": 1, "cat": "Technic Pins / Bushes", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211622.jpg"}, {"id": "4521921-54200-Medium_Stone_Grey", "qty": 8, "dim": "1 \u00d7 1 studs", "colour": "Light Grey", "any": false, "tier": 1, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4521921.jpg"}, {"id": "4211503-4599-Medium_Stone_Grey", "qty": 6, "dim": "1 \u00d7 1 stud", "colour": "Light Grey", "any": false, "tier": 1, "cat": "Miscellaneous", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211503.jpg"}, {"id": "4211639-32073-Medium_Stone_Grey", "qty": 6, "dim": "5 studs long", "colour": "", "any": true, "tier": 1, "cat": "Technic Axles", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211639.jpg"}, {"id": "4515369-60478-Medium_Stone_Grey", "qty": 4, "dim": "1 \u00d7 2 studs", "colour": "Light Grey", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4515369.jpg"}, {"id": "4211406-3034-Medium_Stone_Grey", "qty": 3, "dim": "2 \u00d7 8 studs", "colour": "", "any": true, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211406.jpg"}, {"id": "4211397-3022-Medium_Stone_Grey", "qty": 2, "dim": "2 \u00d7 2 studs", "colour": "Light Grey", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211397.jpg"}, {"id": "4211360-2445-Medium_Stone_Grey", "qty": 1, "dim": "2 \u00d7 12 studs", "colour": "", "any": true, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211360.jpg"}, {"id": "4211526-6143-Medium_Stone_Grey", "qty": 1, "dim": "\u00d816 mm", "colour": "Light Grey", "any": false, "tier": 1, "cat": "Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211526.jpg"}, {"id": "4211696-30388-Medium_Stone_Grey", "qty": 1, "dim": "1 \u00d7 6 studs", "colour": "Light Grey", "any": false, "tier": 1, "cat": "Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211696.jpg"}, {"id": "4215971-40902-Medium_Stone_Grey", "qty": 1, "dim": "2 \u00d7 2 studs", "colour": "Light Grey", "any": false, "tier": 1, "cat": "Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4215971.jpg"}, {"id": "4211483-4274-Medium_Stone_Grey", "qty": 1, "dim": "1 stud", "colour": "", "any": true, "tier": 1, "cat": "Technic Pins / Bushes", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211483.jpg"}, {"id": "4211805-44294-Medium_Stone_Grey", "qty": 1, "dim": "7 studs long", "colour": "", "any": true, "tier": 1, "cat": "Technic Axles", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211805.jpg"}, {"id": "302201-3022-White", "qty": 3, "dim": "2 \u00d7 2 studs", "colour": "White", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/302201.jpg"}, {"id": "4140583-2540-White", "qty": 3, "dim": "1 \u00d7 2 studs", "colour": "White", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4140583.jpg"}, {"id": "408501-4085-White", "qty": 2, "dim": "1 \u00d7 1 studs", "colour": "White", "any": false, "tier": 1, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/408501.jpg"}, {"id": "4533763-60475-White", "qty": 2, "dim": "1 \u00d7 1 studs", "colour": "White", "any": false, "tier": 1, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4533763.jpg"}, {"id": "379401-3794-White", "qty": 1, "dim": "1 \u00d7 2 studs", "colour": "White", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/379401.jpg"}, {"id": "379501-3795-White", "qty": 1, "dim": "2 \u00d7 6 studs", "colour": "White", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/379501.jpg"}, {"id": "3005740-30057-Transparent", "qty": 6, "dim": "1 \u00d7 1 studs", "colour": "Clear", "any": false, "tier": 1, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/3005740.jpg"}, {"id": "4206482-43093-Bright_Blue", "qty": 6, "dim": "1 stud", "colour": "Blue", "any": false, "tier": 1, "cat": "Technic Pins / Bushes", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4206482.jpg"}, {"id": "4239601-32123-Bright_Yellow", "qty": 6, "dim": "\u00bd stud", "colour": "", "any": true, "tier": 1, "cat": "Technic Pins / Bushes", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4239601.jpg"}, {"id": "4164022-3004-Bright_Yellowish_Green", "qty": 13, "dim": "1 \u00d7 2 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4164022.jpg"}, {"id": "4164037-3023-Bright_Yellowish_Green", "qty": 13, "dim": "1 \u00d7 2 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4164037.jpg"}, {"id": "4220631-3002-Bright_Yellowish_Green", "qty": 10, "dim": "2 \u00d7 3 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4220631.jpg"}, {"id": "4187743-3710-Bright_Yellowish_Green", "qty": 7, "dim": "1 \u00d7 4 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4187743.jpg"}, {"id": "4212446-6091-Bright_Yellowish_Green", "qty": 6, "dim": "1 \u00d7 1 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4212446.jpg"}, {"id": "4537927-61678-Bright_Yellowish_Green", "qty": 6, "dim": "1 \u00d7 4 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Sloped Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4537927.jpg"}, {"id": "4164021-2431-Bright_Yellowish_Green", "qty": 4, "dim": "1 \u00d7 4 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4164021.jpg"}, {"id": "4220632-3003-Bright_Yellowish_Green", "qty": 4, "dim": "2 \u00d7 2 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4220632.jpg"}, {"id": "4160593-2431-Bright_Orange", "qty": 3, "dim": "1 \u00d7 4 studs", "colour": "Orange", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4160593.jpg"}, {"id": "4158355-3020-Bright_Orange", "qty": 2, "dim": "2 \u00d7 4 studs", "colour": "Orange", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4158355.jpg"}, {"id": "4234716-3010-Bright_Yellowish_Green", "qty": 2, "dim": "1 \u00d7 4 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4234716.jpg"}, {"id": "4500755-52031-Bright_Yellowish_Green", "qty": 2, "dim": "4 \u00d7 6 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4500755.jpg"}, {"id": "4504705-30565-Bright_Yellowish_Green", "qty": 2, "dim": "4 \u00d7 4 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4504705.jpg"}, {"id": "4529160-3666-Bright_Yellowish_Green", "qty": 2, "dim": "1 \u00d7 6 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4529160.jpg"}, {"id": "4541490-44126-Bright_Yellowish_Green", "qty": 2, "dim": "2 \u00d7 6 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4541490.jpg"}, {"id": "3000841-30008-Transparent_Red", "qty": 2, "dim": "1 \u00d7 1 studs", "colour": "Trans-Red", "any": false, "tier": 1, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/3000841.jpg"}, {"id": "4538144-62462-Bright_Orange", "qty": 1, "dim": "2 studs long", "colour": "", "any": true, "tier": 1, "cat": "Tubes and Hoses", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4538144.jpg"}, {"id": "4504850-3031-Bright_Yellowish_Green", "qty": 1, "dim": "4 \u00d7 4 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4504850.jpg"}, {"id": "4541957-4150-Bright_Yellowish_Green", "qty": 1, "dim": "2 \u00d7 2 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4541957.jpg"}, {"id": "4299389-56145-Black", "qty": 6, "dim": "\u00d830 mm", "colour": "Black", "any": false, "tier": 2, "cat": "Wheels and Tyres", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4299389.jpg"}, {"id": "370126-3701-Black", "qty": 2, "dim": "1 \u00d7 4 studs", "colour": "", "any": true, "tier": 2, "cat": "Technic Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/370126.jpg"}, {"id": "4100423-6087-Black", "qty": 2, "dim": "2 \u00d7 5 studs", "colour": "", "any": true, "tier": 2, "cat": "Miscellaneous", "img": "https://img.bricklink.com/ItemImage/PN/11/6087.png"}, {"id": "4216660-30367-Black", "qty": 2, "dim": "2 \u00d7 2 studs", "colour": "Black", "any": false, "tier": 2, "cat": "Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4216660.jpg"}, {"id": "4244953-50861-Black", "qty": 2, "dim": "\u00d821 mm", "colour": "Black", "any": false, "tier": 2, "cat": "Wheels and Tyres", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4244953.jpg"}, {"id": "4502834-53992-Black", "qty": 2, "dim": "\u22482 studs long", "colour": "Black", "any": false, "tier": 2, "cat": "Technic Special", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4502834.jpg"}, {"id": "4538456-64644-Black", "qty": 2, "dim": "\u22483 studs long", "colour": "Black", "any": false, "tier": 2, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4538456.jpg"}, {"id": "4112282-6629-Black", "qty": 2, "dim": "4 \u00d7 6 studs", "colour": "Black", "any": false, "tier": 2, "cat": "Technic Beams", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4112282.jpg"}, {"id": "602026-6020-Black", "qty": 1, "dim": "1 \u00d7 4 studs", "colour": "Black", "any": false, "tier": 2, "cat": "Bars, Ladders and Fences", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/602026.jpg"}, {"id": "4153044-30663-Black", "qty": 1, "dim": "2 \u00d7 2 studs", "colour": "Black", "any": false, "tier": 2, "cat": "Miscellaneous", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4153044.jpg"}, {"id": "4527063-62698-Black", "qty": 1, "dim": "1 \u00d7 2 studs", "colour": "Black", "any": false, "tier": 2, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4527063.jpg"}, {"id": "4211064-3747-Dark_Stone_Grey", "qty": 8, "dim": "2 \u00d7 3 studs", "colour": "Dark Grey", "any": false, "tier": 2, "cat": "Sloped Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211064.jpg"}, {"id": "4210631-2412-Dark_Stone_Grey", "qty": 6, "dim": "1 \u00d7 2 studs", "colour": "Dark Grey", "any": false, "tier": 2, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4210631.jpg"}, {"id": "4540386-61409-Dark_Stone_Grey", "qty": 4, "dim": "1 \u00d7 2 studs", "colour": "Dark Grey", "any": false, "tier": 2, "cat": "Sloped Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4540386.jpg"}, {"id": "4514558-3648-Dark_Stone_Grey", "qty": 3, "dim": "\u00d824 mm", "colour": "Dark Grey", "any": false, "tier": 2, "cat": "Technic Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4514558.jpg"}, {"id": "4161674-30367-Dark_Stone_Grey", "qty": 2, "dim": "2 \u00d7 2 studs", "colour": "Dark Grey", "any": false, "tier": 2, "cat": "Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4161674.jpg"}, {"id": "4210645-30170-Dark_Stone_Grey", "qty": 2, "dim": "minifig", "colour": "Dark Grey", "any": false, "tier": 2, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4210645.jpg"}, {"id": "4219725-3633-Dark_Stone_Grey", "qty": 2, "dim": "1 \u00d7 4 studs", "colour": "Dark Grey", "any": false, "tier": 2, "cat": "Bars, Ladders and Fences", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4219725.jpg"}, {"id": "4520307-61780-Dark_Stone_Grey", "qty": 2, "dim": "2 \u00d7 2 studs", "colour": "Dark Grey", "any": false, "tier": 2, "cat": "Miscellaneous", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4520307.jpg"}, {"id": "4211054-3039-Dark_Stone_Grey", "qty": 2, "dim": "2 \u00d7 2 studs", "colour": "Dark Grey", "any": false, "tier": 2, "cat": "Sloped Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211054.jpg"}, {"id": "4516456-60169-Dark_Stone_Grey", "qty": 1, "dim": "16 studs long", "colour": "Dark Grey", "any": false, "tier": 2, "cat": "String, Bands and Reels", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4516456.jpg"}, {"id": "4522784-47455-Dark_Stone_Grey", "qty": 1, "dim": "\u22482 studs", "colour": "Dark Grey", "any": false, "tier": 2, "cat": "Technic Connectors", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4522784.jpg"}, {"id": "4277927-44728-Medium_Stone_Grey", "qty": 4, "dim": "1 \u00d7 2 studs", "colour": "Light Grey", "any": false, "tier": 2, "cat": "Plates Special", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4277927.jpg"}, {"id": "4211847-30360-Medium_Stone_Grey", "qty": 2, "dim": "3 \u00d7 3 studs", "colour": "Light Grey", "any": false, "tier": 2, "cat": "Technic Steering, Suspension and Engine", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211847.jpg"}, {"id": "4590443-50862-Medium_Stone_Grey", "qty": 2, "dim": "\u00d815 mm", "colour": "Light Grey", "any": false, "tier": 2, "cat": "Wheels and Tyres", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4590443.jpg"}, {"id": "4211819-4515-Medium_Stone_Grey", "qty": 1, "dim": "6 \u00d7 8 studs", "colour": "", "any": true, "tier": 2, "cat": "Sloped Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211819.jpg"}, {"id": "4523403-60779-White", "qty": 2, "dim": "2 \u00d7 2 studs", "colour": "White", "any": false, "tier": 2, "cat": "Flags, Banners and Signs", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4523403.jpg"}, {"id": "4521210-60592-White", "qty": 1, "dim": "1 \u00d7 2 studs", "colour": "White", "any": false, "tier": 2, "cat": "Windows and Doors", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4521210.jpg"}, {"id": "4278412-54196-Transparent", "qty": 2, "dim": "2 \u00d7 2 studs", "colour": "Clear", "any": false, "tier": 2, "cat": "Plates Round Curved and Dishes", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4278412.jpg"}, {"id": "281721-2817-Bright_Red", "qty": 2, "dim": "2 \u00d7 2 studs", "colour": "Red", "any": false, "tier": 2, "cat": "Technic Special", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/281721.jpg"}, {"id": "4538780-64728-Bright_Red", "qty": 2, "dim": "\u22481 stud", "colour": "Red", "any": false, "tier": 2, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4538780.jpg"}, {"id": "4540418-30325-Bright_Blue", "qty": 2, "dim": "minifig", "colour": "Blue", "any": false, "tier": 2, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4540418.jpg"}, {"id": "4114584-33085-Bright_Yellow", "qty": 1, "dim": "\u22481 stud", "colour": "Yellow", "any": false, "tier": 2, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4114584.jpg"}, {"id": "4540385-61409-Bright_Yellowish_Green", "qty": 8, "dim": "1 \u00d7 2 studs", "colour": "Lime Green", "any": false, "tier": 2, "cat": "Sloped Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4540385.jpg"}, {"id": "4494219-4185-Bright_Yellowish_Green", "qty": 8, "dim": "\u00d824 mm", "colour": "Lime Green", "any": false, "tier": 2, "cat": "Wheels and Tyres", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4494219.jpg"}, {"id": "4540817-32348-Bright_Orange", "qty": 6, "dim": "4 \u00d7 4 studs", "colour": "Orange", "any": false, "tier": 2, "cat": "Technic Beams", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4540817.jpg"}, {"id": "4529679-3660-Bright_Yellowish_Green", "qty": 4, "dim": "2 \u00d7 2 studs", "colour": "Lime Green", "any": false, "tier": 2, "cat": "Sloped Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4529679.jpg"}, {"id": "4244369-50746-Transparent_Bright_Orange", "qty": 4, "dim": "1 \u00d7 1 studs", "colour": "Trans-Orange", "any": false, "tier": 2, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4244369.jpg"}, {"id": "4540299-64711-Bright_Orange", "qty": 2, "dim": "\u00d862 mm", "colour": "Orange", "any": false, "tier": 2, "cat": "Wheels and Tyres", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4540299.jpg"}, {"id": "4529045-33243-Bright_Yellowish_Green", "qty": 2, "dim": "1 \u00d7 3 studs", "colour": "Lime Green", "any": false, "tier": 2, "cat": "Bricks Curved", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4529045.jpg"}, {"id": "4261453-6536-Bright_Yellowish_Green", "qty": 2, "dim": "2 \u00d7 2 studs", "colour": "Lime Green", "any": false, "tier": 2, "cat": "Technic Connectors", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4261453.jpg"}, {"id": "4265684-32523-Bright_Yellowish_Green", "qty": 2, "dim": "3 studs long", "colour": "Lime Green", "any": false, "tier": 2, "cat": "Technic Beams", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4265684.jpg"}, {"id": "4508713-32009-Bright_Yellowish_Green", "qty": 2, "dim": "3 \u00d7 7 studs", "colour": "Lime Green", "any": false, "tier": 2, "cat": "Technic Beams", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4508713.jpg"}, {"id": "4119483-30153-Transparent_Blue", "qty": 2, "dim": "1 \u00d7 1 stud", "colour": "Trans-Blue", "any": false, "tier": 2, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4119483.jpg"}, {"id": "4541538-30385-Transparent_Blue", "qty": 2, "dim": "1 \u00d7 1 stud", "colour": "Trans-Blue", "any": false, "tier": 2, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4541538.jpg"}, {"id": "4541536-30385-Transparent_Bright_Orange", "qty": 2, "dim": "1 \u00d7 1 stud", "colour": "Trans-Orange", "any": false, "tier": 2, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4541536.jpg"}, {"id": "4114505-30153-Transparent_Fluorescent_Green", "qty": 2, "dim": "1 \u00d7 1 stud", "colour": "Trans-Green", "any": false, "tier": 2, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4114505.jpg"}, {"id": "4541537-30385-Transparent_Red", "qty": 2, "dim": "1 \u00d7 1 stud", "colour": "Trans-Red", "any": false, "tier": 2, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4541537.jpg"}, {"id": "4518029-59900-Bright_Orange", "qty": 1, "dim": "1 \u00d7 1 studs", "colour": "Orange", "any": false, "tier": 2, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4518029.jpg"}, {"id": "4537923-30499-Bright_Yellowish_Green", "qty": 1, "dim": "2 \u00d7 2 studs", "colour": "Lime Green", "any": false, "tier": 2, "cat": "Sloped Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4537923.jpg"}, {"id": "4552036-86209-Transparent_Brown", "qty": 1, "dim": "1 \u00d7 2 studs", "colour": "Trans-Brown", "any": false, "tier": 2, "cat": "Windows and Doors", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4552036.jpg"}, {"id": "4544720-64288-Transparent_Red", "qty": 1, "dim": "1 \u00d7 1 studs", "colour": "Trans-Red", "any": false, "tier": 2, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4544720.jpg"}, {"id": "4107558-32018-Black", "qty": 4, "dim": "1 \u00d7 14 studs", "colour": "Black", "any": false, "tier": 3, "cat": "Technic Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4107558.jpg"}, {"id": "4530673-50859-Black", "qty": 1, "dim": "6 studs long", "colour": "Black", "any": false, "tier": 3, "cat": "Transportation - Land", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4530673.jpg"}, {"id": "4539385-64450-Black", "qty": 1, "dim": "4 \u00d7 6 studs", "colour": "Black", "any": false, "tier": 3, "cat": "Miscellaneous", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4539385.jpg"}, {"id": "4211006-3837-Dark_Stone_Grey", "qty": 1, "dim": "\u22483 studs long", "colour": "Dark Grey", "any": false, "tier": 3, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211006.jpg"}, {"id": "4542545-76382-Medium_Stone_Grey", "qty": 1, "dim": "minifig torso", "colour": "Light Grey", "any": false, "tier": 3, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4542545.jpg"}, {"id": "4538783-64713-Medium_Stone_Grey", "qty": 1, "dim": "4 \u00d7 4 studs", "colour": "Light Grey", "any": false, "tier": 3, "cat": "Bricks Round and Cones", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4538783.jpg"}, {"id": "73737-73587-White", "qty": 4, "dim": "\u22482 studs long", "colour": "White", "any": false, "tier": 3, "cat": "Miscellaneous", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/73737.jpg"}, {"id": "4542547-76382-White", "qty": 1, "dim": "minifig torso", "colour": "White", "any": false, "tier": 3, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4542547.jpg"}, {"id": "85418-85418-White", "qty": 1, "dim": "sticker sheet", "colour": "White", "any": false, "tier": 3, "cat": "Stickers", "img": "http://media.peeron.com/pics/inv/custpics/thumbs/85418.1246725805.jpg"}, {"id": "4542552-85107-Bright_Blue", "qty": 2, "dim": "minifig legs", "colour": "Blue", "any": false, "tier": 3, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4542552.jpg"}, {"id": "4542171-64881-Bright_Yellow", "qty": 1, "dim": "minifig head", "colour": "Yellow", "any": false, "tier": 3, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4542171.jpg"}, {"id": "4542175-64882-Bright_Yellow", "qty": 1, "dim": "minifig head", "colour": "Yellow", "any": false, "tier": 3, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4542175.jpg"}, {"id": "4281515-41669-Bright_Orange", "qty": 24, "dim": "3 studs long", "colour": "Orange", "any": false, "tier": 3, "cat": "Bionicle, Hero Factory and Constraction", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4281515.jpg"}, {"id": "4508647-2634-{Not_Specified}", "qty": 1, "dim": "2 \u00d7 8 studs", "colour": "White", "any": false, "tier": 3, "cat": "Windows and Doors", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4508647.jpg"}, {"id": "4521107-50860-Bright_Orange", "qty": 1, "dim": "\u22486 studs long", "colour": "Orange", "any": false, "tier": 3, "cat": "Transportation - Land", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4521107.jpg"}, {"id": "4538363-30300-Bright_Orange", "qty": 1, "dim": "8 \u00d7 12 studs", "colour": "Orange", "any": false, "tier": 3, "cat": "Plates Special", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4538363.jpg"}, {"id": "4541465-64786-Transparent_Blue", "qty": 1, "dim": "\u22482 \u00d7 2 studs", "colour": "Trans-Blue", "any": false, "tier": 3, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4541465.jpg"}, {"id": "4538017-64786-Transparent_Red", "qty": 1, "dim": "\u22482 \u00d7 2 studs", "colour": "Trans-Red", "any": false, "tier": 3, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4538017.jpg"}, {"id": "4186017-6562-Brick_Yellow", "qty": 1, "dim": "3 studs long", "colour": "", "any": true, "tier": 1, "cat": "Technic Pins / Bushes", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4186017.jpg"}, {"id": "4210677-30088-Dark_Stone_Grey", "qty": 1, "dim": "5 studs long", "colour": "Dark Grey", "any": false, "tier": 2, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4210677.jpg"}, {"id": "4225973-48169-Dark_Stone_Grey", "qty": 1, "dim": "2 \u00d7 2 studs", "colour": "Dark Grey", "any": false, "tier": 3, "cat": "Technic Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4225973.jpg"}, {"id": "4225975-48171-Dark_Stone_Grey", "qty": 1, "dim": "2 \u00d7 2 studs", "colour": "Dark Grey", "any": false, "tier": 3, "cat": "Technic Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4225975.jpg"}, {"id": "4261715-3297-Dark_Stone_Grey", "qty": 2, "dim": "3 \u00d7 4 studs", "colour": "Dark Grey", "any": false, "tier": 2, "cat": "Sloped Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4261715.jpg"}, {"id": "4528323-60474-Dark_Stone_Grey", "qty": 1, "dim": "4 \u00d7 4 studs", "colour": "Dark Grey", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4528323.jpg"}, {"id": "4517986-61485-Black", "qty": 1, "dim": "4 \u00d7 4 studs", "colour": "Black", "any": false, "tier": 2, "cat": "Hinges, Arms and Turntables", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4517986.jpg"}]};
+var INVENTORY_8961 = {"set": "8961-1 Crystal Sweeper", "set_img_url": "https://cdn.rebrickable.com/media/sets/8961-1.jpg", "lots": 138, "pieces": 430, "tiers": {"1": "MOST LIKELY IN BULK", "2": "MEDIUM \u2014 WORTH A DIG", "3": "LEAST LIKELY IN BULK"}, "items": [{"id": "300126-3001-Black", "qty": 16, "dim": "2 \u00d7 4 studs", "colour": "Black", "any": false, "tier": 1, "cat": "Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/300126.jpg"}, {"id": "4121715-2780-Black", "qty": 8, "dim": "2 studs long", "colour": "", "any": true, "tier": 1, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4121715.jpg"}, {"id": "614126-6141-Black", "qty": 4, "dim": "1 \u00d7 1 studs", "colour": "", "any": true, "tier": 1, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/614126.jpg"}, {"id": "4535739-63868-Black", "qty": 4, "dim": "2 \u00d7 1 studs", "colour": "", "any": true, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4535739.jpg"}, {"id": "4556158-60470-Black", "qty": 4, "dim": "1 \u00d7 2 studs", "colour": "", "any": true, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4556158.jpg"}, {"id": "302026-3020-Black", "qty": 2, "dim": "2 \u00d7 4 studs", "colour": "", "any": true, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/302026.jpg"}, {"id": "403226-4032-Black", "qty": 2, "dim": "2 \u00d7 2 studs", "colour": "", "any": true, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/403226.jpg"}, {"id": "4569733-88072-Black", "qty": 2, "dim": "1 \u00d7 2 studs", "colour": "", "any": true, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4569733.jpg"}, {"id": "370826-3708-Black", "qty": 2, "dim": "12 studs long", "colour": "", "any": true, "tier": 1, "cat": "Technic Axles", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/370826.jpg"}, {"id": "4526982-62462-Black", "qty": 2, "dim": "2 studs long", "colour": "", "any": true, "tier": 1, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4526982.jpg"}, {"id": "416226-4162-Black", "qty": 2, "dim": "1 \u00d7 8 studs", "colour": "Black", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/416226.jpg"}, {"id": "4158848-30552-Black", "qty": 1, "dim": "1 stud", "colour": "", "any": true, "tier": 1, "cat": "Technic Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4158848.jpg"}, {"id": "370726-3707-Black", "qty": 1, "dim": "8 studs long", "colour": "", "any": true, "tier": 1, "cat": "Technic Axles", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/370726.jpg"}, {"id": "4211086-6587-Dark_Stone_Grey", "qty": 13, "dim": "3 studs long", "colour": "", "any": true, "tier": 1, "cat": "Technic Axles", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211086.jpg"}, {"id": "4508553-59426-Dark_Stone_Grey", "qty": 4, "dim": "5\u00bd studs long", "colour": "", "any": true, "tier": 1, "cat": "Technic Axles", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4508553.jpg"}, {"id": "4210798-6112-Dark_Stone_Grey", "qty": 2, "dim": "1 \u00d7 12 studs", "colour": "", "any": true, "tier": 1, "cat": "Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4210798.jpg"}, {"id": "4211061-3035-Dark_Stone_Grey", "qty": 2, "dim": "4 \u00d7 8 studs", "colour": "", "any": true, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211061.jpg"}, {"id": "4256149-3028-Dark_Stone_Grey", "qty": 2, "dim": "6 \u00d7 12 studs", "colour": "", "any": true, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4256149.jpg"}, {"id": "4211055-3068-Dark_Stone_Grey", "qty": 1, "dim": "2 \u00d7 2 studs", "colour": "", "any": true, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211055.jpg"}, {"id": "4211396-3021-Medium_Stone_Grey", "qty": 12, "dim": "2 \u00d7 3 studs", "colour": "", "any": true, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211396.jpg"}, {"id": "4211622-6590-Medium_Stone_Grey", "qty": 9, "dim": "1 stud", "colour": "", "any": true, "tier": 1, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211622.jpg"}, {"id": "4521921-54200-Medium_Stone_Grey", "qty": 8, "dim": "1 \u00d7 1 studs", "colour": "Light Grey", "any": false, "tier": 1, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4521921.jpg"}, {"id": "4211503-4599-Medium_Stone_Grey", "qty": 6, "dim": "1 \u00d7 1 stud", "colour": "Light Grey", "any": false, "tier": 1, "cat": "Miscellaneous", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211503.jpg"}, {"id": "4211639-32073-Medium_Stone_Grey", "qty": 6, "dim": "5 studs long", "colour": "", "any": true, "tier": 1, "cat": "Technic Axles", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211639.jpg"}, {"id": "4515369-60478-Medium_Stone_Grey", "qty": 4, "dim": "1 \u00d7 2 studs", "colour": "Light Grey", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4515369.jpg"}, {"id": "4211406-3034-Medium_Stone_Grey", "qty": 3, "dim": "2 \u00d7 8 studs", "colour": "", "any": true, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211406.jpg"}, {"id": "4211397-3022-Medium_Stone_Grey", "qty": 2, "dim": "2 \u00d7 2 studs", "colour": "Light Grey", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211397.jpg"}, {"id": "4211360-2445-Medium_Stone_Grey", "qty": 1, "dim": "2 \u00d7 12 studs", "colour": "", "any": true, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211360.jpg"}, {"id": "4211526-6143-Medium_Stone_Grey", "qty": 1, "dim": "\u00d816 mm", "colour": "Light Grey", "any": false, "tier": 1, "cat": "Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211526.jpg"}, {"id": "4211696-30388-Medium_Stone_Grey", "qty": 1, "dim": "1 \u00d7 6 studs", "colour": "Light Grey", "any": false, "tier": 1, "cat": "Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211696.jpg"}, {"id": "4215971-40902-Medium_Stone_Grey", "qty": 1, "dim": "2 \u00d7 2 studs", "colour": "Light Grey", "any": false, "tier": 1, "cat": "Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4215971.jpg"}, {"id": "4211483-4274-Medium_Stone_Grey", "qty": 1, "dim": "1 stud", "colour": "", "any": true, "tier": 1, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211483.jpg"}, {"id": "4211805-44294-Medium_Stone_Grey", "qty": 1, "dim": "7 studs long", "colour": "", "any": true, "tier": 1, "cat": "Technic Axles", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211805.jpg"}, {"id": "302201-3022-White", "qty": 3, "dim": "2 \u00d7 2 studs", "colour": "White", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/302201.jpg"}, {"id": "4140583-2540-White", "qty": 3, "dim": "1 \u00d7 2 studs", "colour": "White", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4140583.jpg"}, {"id": "408501-4085-White", "qty": 2, "dim": "1 \u00d7 1 studs", "colour": "White", "any": false, "tier": 1, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/408501.jpg"}, {"id": "4533763-60475-White", "qty": 2, "dim": "1 \u00d7 1 studs", "colour": "White", "any": false, "tier": 1, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4533763.jpg"}, {"id": "379401-3794-White", "qty": 1, "dim": "1 \u00d7 2 studs", "colour": "White", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/379401.jpg"}, {"id": "379501-3795-White", "qty": 1, "dim": "2 \u00d7 6 studs", "colour": "White", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/379501.jpg"}, {"id": "3005740-30057-Transparent", "qty": 6, "dim": "1 \u00d7 1 studs", "colour": "Clear", "any": false, "tier": 1, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/3005740.jpg"}, {"id": "4206482-43093-Bright_Blue", "qty": 6, "dim": "1 stud", "colour": "Blue", "any": false, "tier": 1, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4206482.jpg"}, {"id": "4239601-32123-Bright_Yellow", "qty": 6, "dim": "\u00bd stud", "colour": "", "any": true, "tier": 1, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4239601.jpg"}, {"id": "4164022-3004-Bright_Yellowish_Green", "qty": 13, "dim": "1 \u00d7 2 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4164022.jpg"}, {"id": "4164037-3023-Bright_Yellowish_Green", "qty": 13, "dim": "1 \u00d7 2 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4164037.jpg"}, {"id": "4220631-3002-Bright_Yellowish_Green", "qty": 10, "dim": "2 \u00d7 3 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4220631.jpg"}, {"id": "4187743-3710-Bright_Yellowish_Green", "qty": 7, "dim": "1 \u00d7 4 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4187743.jpg"}, {"id": "4212446-6091-Bright_Yellowish_Green", "qty": 6, "dim": "1 \u00d7 1 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4212446.jpg"}, {"id": "4537927-61678-Bright_Yellowish_Green", "qty": 6, "dim": "1 \u00d7 4 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Sloped Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4537927.jpg"}, {"id": "4164021-2431-Bright_Yellowish_Green", "qty": 4, "dim": "1 \u00d7 4 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4164021.jpg"}, {"id": "4220632-3003-Bright_Yellowish_Green", "qty": 4, "dim": "2 \u00d7 2 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4220632.jpg"}, {"id": "4160593-2431-Bright_Orange", "qty": 3, "dim": "1 \u00d7 4 studs", "colour": "Orange", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4160593.jpg"}, {"id": "4158355-3020-Bright_Orange", "qty": 2, "dim": "2 \u00d7 4 studs", "colour": "Orange", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4158355.jpg"}, {"id": "4234716-3010-Bright_Yellowish_Green", "qty": 2, "dim": "1 \u00d7 4 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4234716.jpg"}, {"id": "4500755-52031-Bright_Yellowish_Green", "qty": 2, "dim": "4 \u00d7 6 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4500755.jpg"}, {"id": "4504705-30565-Bright_Yellowish_Green", "qty": 2, "dim": "4 \u00d7 4 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4504705.jpg"}, {"id": "4529160-3666-Bright_Yellowish_Green", "qty": 2, "dim": "1 \u00d7 6 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4529160.jpg"}, {"id": "4541490-44126-Bright_Yellowish_Green", "qty": 2, "dim": "2 \u00d7 6 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4541490.jpg"}, {"id": "3000841-30008-Transparent_Red", "qty": 2, "dim": "1 \u00d7 1 studs", "colour": "Trans-Red", "any": false, "tier": 1, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/3000841.jpg"}, {"id": "4538144-62462-Bright_Orange", "qty": 1, "dim": "2 studs long", "colour": "", "any": true, "tier": 1, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4538144.jpg"}, {"id": "4504850-3031-Bright_Yellowish_Green", "qty": 1, "dim": "4 \u00d7 4 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4504850.jpg"}, {"id": "4541957-4150-Bright_Yellowish_Green", "qty": 1, "dim": "2 \u00d7 2 studs", "colour": "Lime Green", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4541957.jpg"}, {"id": "4299389-56145-Black", "qty": 6, "dim": "\u00d830 mm", "colour": "Black", "any": false, "tier": 2, "cat": "Wheels and Tyres", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4299389.jpg"}, {"id": "370126-3701-Black", "qty": 2, "dim": "1 \u00d7 4 studs", "colour": "", "any": true, "tier": 2, "cat": "Technic Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/370126.jpg"}, {"id": "4100423-6087-Black", "qty": 2, "dim": "2 \u00d7 5 studs", "colour": "", "any": true, "tier": 2, "cat": "Miscellaneous", "img": "https://img.bricklink.com/ItemImage/PN/11/6087.png"}, {"id": "4216660-30367-Black", "qty": 2, "dim": "2 \u00d7 2 studs", "colour": "Black", "any": false, "tier": 2, "cat": "Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4216660.jpg"}, {"id": "4244953-50861-Black", "qty": 2, "dim": "\u00d821 mm", "colour": "Black", "any": false, "tier": 2, "cat": "Wheels and Tyres", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4244953.jpg"}, {"id": "4502834-53992-Black", "qty": 2, "dim": "\u22482 studs long", "colour": "Black", "any": false, "tier": 2, "cat": "Technic Special", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4502834.jpg"}, {"id": "4538456-64644-Black", "qty": 2, "dim": "\u22483 studs long", "colour": "Black", "any": false, "tier": 2, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4538456.jpg"}, {"id": "4112282-6629-Black", "qty": 2, "dim": "4 \u00d7 6 studs", "colour": "Black", "any": false, "tier": 2, "cat": "Technic Beams", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4112282.jpg"}, {"id": "602026-6020-Black", "qty": 1, "dim": "1 \u00d7 4 studs", "colour": "Black", "any": false, "tier": 2, "cat": "Bars, Ladders and Fences", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/602026.jpg"}, {"id": "4153044-30663-Black", "qty": 1, "dim": "2 \u00d7 2 studs", "colour": "Black", "any": false, "tier": 2, "cat": "Miscellaneous", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4153044.jpg"}, {"id": "4527063-62698-Black", "qty": 1, "dim": "1 \u00d7 2 studs", "colour": "Black", "any": false, "tier": 2, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4527063.jpg"}, {"id": "4211064-3747-Dark_Stone_Grey", "qty": 8, "dim": "2 \u00d7 3 studs", "colour": "Dark Grey", "any": false, "tier": 2, "cat": "Sloped Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211064.jpg"}, {"id": "4210631-2412-Dark_Stone_Grey", "qty": 6, "dim": "1 \u00d7 2 studs", "colour": "Dark Grey", "any": false, "tier": 2, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4210631.jpg"}, {"id": "4540386-61409-Dark_Stone_Grey", "qty": 4, "dim": "1 \u00d7 2 studs", "colour": "Dark Grey", "any": false, "tier": 2, "cat": "Sloped Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4540386.jpg"}, {"id": "4514558-3648-Dark_Stone_Grey", "qty": 3, "dim": "\u00d824 mm", "colour": "Dark Grey", "any": false, "tier": 2, "cat": "Technic Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4514558.jpg"}, {"id": "4161674-30367-Dark_Stone_Grey", "qty": 2, "dim": "2 \u00d7 2 studs", "colour": "Dark Grey", "any": false, "tier": 2, "cat": "Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4161674.jpg"}, {"id": "4210645-30170-Dark_Stone_Grey", "qty": 2, "dim": "minifig", "colour": "Dark Grey", "any": false, "tier": 2, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4210645.jpg"}, {"id": "4219725-3633-Dark_Stone_Grey", "qty": 2, "dim": "1 \u00d7 4 studs", "colour": "Dark Grey", "any": false, "tier": 2, "cat": "Bars, Ladders and Fences", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4219725.jpg"}, {"id": "4520307-61780-Dark_Stone_Grey", "qty": 2, "dim": "2 \u00d7 2 studs", "colour": "Dark Grey", "any": false, "tier": 2, "cat": "Miscellaneous", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4520307.jpg"}, {"id": "4211054-3039-Dark_Stone_Grey", "qty": 2, "dim": "2 \u00d7 2 studs", "colour": "Dark Grey", "any": false, "tier": 2, "cat": "Sloped Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211054.jpg"}, {"id": "4516456-60169-Dark_Stone_Grey", "qty": 1, "dim": "16 studs long", "colour": "Dark Grey", "any": false, "tier": 2, "cat": "String, Bands and Reels", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4516456.jpg"}, {"id": "4522784-47455-Dark_Stone_Grey", "qty": 1, "dim": "\u22482 studs", "colour": "Dark Grey", "any": false, "tier": 2, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4522784.jpg"}, {"id": "4277927-44728-Medium_Stone_Grey", "qty": 4, "dim": "1 \u00d7 2 studs", "colour": "Light Grey", "any": false, "tier": 2, "cat": "Plates Special", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4277927.jpg"}, {"id": "4211847-30360-Medium_Stone_Grey", "qty": 2, "dim": "3 \u00d7 3 studs", "colour": "Light Grey", "any": false, "tier": 2, "cat": "Technic Steering, Suspension and Engine", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211847.jpg"}, {"id": "4590443-50862-Medium_Stone_Grey", "qty": 2, "dim": "\u00d815 mm", "colour": "Light Grey", "any": false, "tier": 2, "cat": "Wheels and Tyres", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4590443.jpg"}, {"id": "4211819-4515-Medium_Stone_Grey", "qty": 1, "dim": "6 \u00d7 8 studs", "colour": "", "any": true, "tier": 2, "cat": "Sloped Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211819.jpg"}, {"id": "4523403-60779-White", "qty": 2, "dim": "2 \u00d7 2 studs", "colour": "White", "any": false, "tier": 2, "cat": "Flags, Banners and Signs", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4523403.jpg"}, {"id": "4521210-60592-White", "qty": 1, "dim": "1 \u00d7 2 studs", "colour": "White", "any": false, "tier": 2, "cat": "Windows and Doors", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4521210.jpg"}, {"id": "4278412-54196-Transparent", "qty": 2, "dim": "2 \u00d7 2 studs", "colour": "Clear", "any": false, "tier": 2, "cat": "Plates Round Curved and Dishes", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4278412.jpg"}, {"id": "281721-2817-Bright_Red", "qty": 2, "dim": "2 \u00d7 2 studs", "colour": "Red", "any": false, "tier": 2, "cat": "Technic Special", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/281721.jpg"}, {"id": "4538780-64728-Bright_Red", "qty": 2, "dim": "\u22481 stud", "colour": "Red", "any": false, "tier": 2, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4538780.jpg"}, {"id": "4540418-30325-Bright_Blue", "qty": 2, "dim": "minifig", "colour": "Blue", "any": false, "tier": 2, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4540418.jpg"}, {"id": "4114584-33085-Bright_Yellow", "qty": 1, "dim": "\u22481 stud", "colour": "Yellow", "any": false, "tier": 2, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4114584.jpg"}, {"id": "4540385-61409-Bright_Yellowish_Green", "qty": 8, "dim": "1 \u00d7 2 studs", "colour": "Lime Green", "any": false, "tier": 2, "cat": "Sloped Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4540385.jpg"}, {"id": "4494219-4185-Bright_Yellowish_Green", "qty": 8, "dim": "\u00d824 mm", "colour": "Lime Green", "any": false, "tier": 2, "cat": "Wheels and Tyres", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4494219.jpg"}, {"id": "4540817-32348-Bright_Orange", "qty": 6, "dim": "4 \u00d7 4 studs", "colour": "Orange", "any": false, "tier": 2, "cat": "Technic Beams", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4540817.jpg"}, {"id": "4529679-3660-Bright_Yellowish_Green", "qty": 4, "dim": "2 \u00d7 2 studs", "colour": "Lime Green", "any": false, "tier": 2, "cat": "Sloped Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4529679.jpg"}, {"id": "4244369-50746-Transparent_Bright_Orange", "qty": 4, "dim": "1 \u00d7 1 studs", "colour": "Trans-Orange", "any": false, "tier": 2, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4244369.jpg"}, {"id": "4540299-64711-Bright_Orange", "qty": 2, "dim": "\u00d862 mm", "colour": "Orange", "any": false, "tier": 2, "cat": "Wheels and Tyres", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4540299.jpg"}, {"id": "4529045-33243-Bright_Yellowish_Green", "qty": 2, "dim": "1 \u00d7 3 studs", "colour": "Lime Green", "any": false, "tier": 2, "cat": "Bricks Curved", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4529045.jpg"}, {"id": "4261453-6536-Bright_Yellowish_Green", "qty": 2, "dim": "2 \u00d7 2 studs", "colour": "Lime Green", "any": false, "tier": 2, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4261453.jpg"}, {"id": "4265684-32523-Bright_Yellowish_Green", "qty": 2, "dim": "3 studs long", "colour": "Lime Green", "any": false, "tier": 2, "cat": "Technic Beams", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4265684.jpg"}, {"id": "4508713-32009-Bright_Yellowish_Green", "qty": 2, "dim": "3 \u00d7 7 studs", "colour": "Lime Green", "any": false, "tier": 2, "cat": "Technic Beams", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4508713.jpg"}, {"id": "4119483-30153-Transparent_Blue", "qty": 2, "dim": "1 \u00d7 1 stud", "colour": "Trans-Blue", "any": false, "tier": 2, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4119483.jpg"}, {"id": "4541538-30385-Transparent_Blue", "qty": 2, "dim": "1 \u00d7 1 stud", "colour": "Trans-Blue", "any": false, "tier": 2, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4541538.jpg"}, {"id": "4541536-30385-Transparent_Bright_Orange", "qty": 2, "dim": "1 \u00d7 1 stud", "colour": "Trans-Orange", "any": false, "tier": 2, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4541536.jpg"}, {"id": "4114505-30153-Transparent_Fluorescent_Green", "qty": 2, "dim": "1 \u00d7 1 stud", "colour": "Trans-Green", "any": false, "tier": 2, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4114505.jpg"}, {"id": "4541537-30385-Transparent_Red", "qty": 2, "dim": "1 \u00d7 1 stud", "colour": "Trans-Red", "any": false, "tier": 2, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4541537.jpg"}, {"id": "4518029-59900-Bright_Orange", "qty": 1, "dim": "1 \u00d7 1 studs", "colour": "Orange", "any": false, "tier": 2, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4518029.jpg"}, {"id": "4537923-30499-Bright_Yellowish_Green", "qty": 1, "dim": "2 \u00d7 2 studs", "colour": "Lime Green", "any": false, "tier": 2, "cat": "Sloped Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4537923.jpg"}, {"id": "4552036-86209-Transparent_Brown", "qty": 1, "dim": "1 \u00d7 2 studs", "colour": "Trans-Brown", "any": false, "tier": 2, "cat": "Windows and Doors", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4552036.jpg"}, {"id": "4544720-64288-Transparent_Red", "qty": 1, "dim": "1 \u00d7 1 studs", "colour": "Trans-Red", "any": false, "tier": 2, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4544720.jpg"}, {"id": "4107558-32018-Black", "qty": 4, "dim": "1 \u00d7 14 studs", "colour": "Black", "any": false, "tier": 3, "cat": "Technic Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4107558.jpg"}, {"id": "4530673-50859-Black", "qty": 1, "dim": "6 studs long", "colour": "Black", "any": false, "tier": 3, "cat": "Transportation - Land", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4530673.jpg"}, {"id": "4539385-64450-Black", "qty": 1, "dim": "4 \u00d7 6 studs", "colour": "Black", "any": false, "tier": 3, "cat": "Miscellaneous", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4539385.jpg"}, {"id": "4211006-3837-Dark_Stone_Grey", "qty": 1, "dim": "\u22483 studs long", "colour": "Dark Grey", "any": false, "tier": 3, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4211006.jpg"}, {"id": "4542545-76382-Medium_Stone_Grey", "qty": 1, "dim": "minifig torso", "colour": "Light Grey", "any": false, "tier": 3, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4542545.jpg"}, {"id": "4538783-64713-Medium_Stone_Grey", "qty": 1, "dim": "4 \u00d7 4 studs", "colour": "Light Grey", "any": false, "tier": 3, "cat": "Bricks Round and Cones", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4538783.jpg"}, {"id": "73737-73587-White", "qty": 4, "dim": "\u22482 studs long", "colour": "White", "any": false, "tier": 3, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/73737.jpg"}, {"id": "4542547-76382-White", "qty": 1, "dim": "minifig torso", "colour": "White", "any": false, "tier": 3, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4542547.jpg"}, {"id": "85418-85418-White", "qty": 1, "dim": "sticker sheet", "colour": "White", "any": false, "tier": 3, "cat": "Stickers", "img": "http://media.peeron.com/pics/inv/custpics/thumbs/85418.1246725805.jpg"}, {"id": "4542552-85107-Bright_Blue", "qty": 2, "dim": "minifig legs", "colour": "Blue", "any": false, "tier": 3, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4542552.jpg"}, {"id": "4542171-64881-Bright_Yellow", "qty": 1, "dim": "minifig head", "colour": "Yellow", "any": false, "tier": 3, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4542171.jpg"}, {"id": "4542175-64882-Bright_Yellow", "qty": 1, "dim": "minifig head", "colour": "Yellow", "any": false, "tier": 3, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4542175.jpg"}, {"id": "4281515-41669-Bright_Orange", "qty": 24, "dim": "3 studs long", "colour": "Orange", "any": false, "tier": 3, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4281515.jpg"}, {"id": "4508647-2634-{Not_Specified}", "qty": 1, "dim": "2 \u00d7 8 studs", "colour": "White", "any": false, "tier": 3, "cat": "Windows and Doors", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4508647.jpg"}, {"id": "4521107-50860-Bright_Orange", "qty": 1, "dim": "\u22486 studs long", "colour": "Orange", "any": false, "tier": 3, "cat": "Transportation - Land", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4521107.jpg"}, {"id": "4538363-30300-Bright_Orange", "qty": 1, "dim": "8 \u00d7 12 studs", "colour": "Orange", "any": false, "tier": 3, "cat": "Plates Special", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4538363.jpg"}, {"id": "4541465-64786-Transparent_Blue", "qty": 1, "dim": "\u22482 \u00d7 2 studs", "colour": "Trans-Blue", "any": false, "tier": 3, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4541465.jpg"}, {"id": "4538017-64786-Transparent_Red", "qty": 1, "dim": "\u22482 \u00d7 2 studs", "colour": "Trans-Red", "any": false, "tier": 3, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4538017.jpg"}, {"id": "4186017-6562-Brick_Yellow", "qty": 1, "dim": "3 studs long", "colour": "", "any": true, "tier": 1, "cat": "Small pieces", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4186017.jpg"}, {"id": "4210677-30088-Dark_Stone_Grey", "qty": 1, "dim": "5 studs long", "colour": "Dark Grey", "any": false, "tier": 2, "cat": "Minifig / Accessories", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4210677.jpg"}, {"id": "4225973-48169-Dark_Stone_Grey", "qty": 1, "dim": "2 \u00d7 2 studs", "colour": "Dark Grey", "any": false, "tier": 3, "cat": "Technic Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4225973.jpg"}, {"id": "4225975-48171-Dark_Stone_Grey", "qty": 1, "dim": "2 \u00d7 2 studs", "colour": "Dark Grey", "any": false, "tier": 3, "cat": "Technic Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4225975.jpg"}, {"id": "4261715-3297-Dark_Stone_Grey", "qty": 2, "dim": "3 \u00d7 4 studs", "colour": "Dark Grey", "any": false, "tier": 2, "cat": "Sloped Bricks", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4261715.jpg"}, {"id": "4528323-60474-Dark_Stone_Grey", "qty": 1, "dim": "4 \u00d7 4 studs", "colour": "Dark Grey", "any": false, "tier": 1, "cat": "Plates", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4528323.jpg"}, {"id": "4517986-61485-Black", "qty": 1, "dim": "4 \u00d7 4 studs", "colour": "Black", "any": false, "tier": 2, "cat": "Hinges, Arms and Turntables", "img": "https://www.lego.com/cdn/product-assets/element.img.lod5photo.192x192/4517986.jpg"}]};
 // One-time import snapshot: Joseph's progress in the old Muse-hosted
 // 8961-1 tracker, as of 2026-11-15 09:26 MST — 340 of 430 found, 96 of 138
 // lots done. Key = lot id, value = pieces still to find. Used only by
@@ -105,10 +105,14 @@ function displayColour(item) { return familyOf(item); }
  * Minifig* category folds into 'Minifig / Accessories' (pieces, figures
  * and accessories in one bucket, so no minifig lot ever lands in
  * Miscellaneous). 'Bricks Special' + 'Containers' fold into
- * 'Miscellaneous' (the old 'Random' bucket is gone), and Technic Pins
- * and Technic Bushes are one category, 'Technic Pins / Bushes'.
+ * 'Miscellaneous' (the old 'Random' bucket is gone).
  * Small pieces is the one non-Rebrickable bucket: 1x1 / single-stud
- * bricks and plates. Future sets from the Rebrickable lookup carry
+ * bricks and plates, plus small Technic connectors — pins, bushes and
+ * pin connectors are 1–3 studs of tiny connector, and the Technic tooth
+ * (41669) and mini antenna (73587) are the same kind of small piece
+ * (Joseph, 2026-11-20; the rule lives in itemCat below and in the
+ * import transform, so it holds for old sets and new ones alike).
+ * Future sets from the Rebrickable lookup carry
  * their own part_cat_id, so this dropdown works for any set with no
  * hand-mapping.
  *
@@ -121,7 +125,20 @@ function displayColour(item) { return familyOf(item); }
  * 'Minifig / Accessories' is exempt — he placed the minifig gear there
  * on purpose. Empty categories never appear: the dropdown is built
  * from the lots that are actually there. */
-function itemCat(item) { return item.cat || 'Other'; }
+// Small Technic connectors are Small pieces (Joseph, 2026-11-20) —
+// the same rule as the import transform, applied here so sets already
+// in the app move without re-importing. Pins, bushes and pin connectors
+// are 1–3 studs of tiny connector; the mini antenna (73587) and the
+// Technic tooth (41669) are the same kind of small piece. Part numbers,
+// so it holds for the 8961-1 list (no names) and for cached inventories
+// whose stored cat is stale — a pin's old 'Technic Pins / Bushes', a
+// connector's 'Tubes and Hoses', 73587's one-off Miscellaneous.
+var SMALL_CONNECTOR_PARTS = { '6590': 1, '73587': 1, '41669': 1, '62462': 1 };
+function itemCat(item) {
+  if (SMALL_CONNECTOR_PARTS[partNumOf(item)]) return 'Small pieces';
+  if (item.cat === 'Technic Pins / Bushes' || item.cat === 'Technic Connectors') return 'Small pieces';
+  return item.cat || 'Other';
+}
 
 // Lots still open (pieces remaining) per raw category, per set — rebuilt
 // when the selection loads and whenever a count changes, so the fold
@@ -170,6 +187,9 @@ var LS = {
   },
   set: function (k, v) {
     try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* storage full/blocked: taps still work in memory */ }
+  },
+  remove: function (k) {
+    try { localStorage.removeItem(k); } catch (e) { /* already gone */ }
   }
 };
 
@@ -603,6 +623,10 @@ async function ensureCloudSet(meta) {
 // the sidebar list becomes the cloud list (union with local).
 async function refreshSetsFromCloud() {
   var cloud = await fetchCloudSets();
+  // A deleted set's cloud row may still be out there (offline delete):
+  // never let the pull resurrect it — the tombstone's retry wipes it.
+  var tombs = deletedSets();
+  cloud = cloud.filter(function (s) { return !tombs[s.user_set_id]; });
   var local = localSets();
   var byNum = {};
   cloud.forEach(function (s) { byNum[s.set_num] = s; });
@@ -728,6 +752,7 @@ async function pullSelectedRemote() {
 
 // Push what's queued, then pull what other devices changed.
 async function tickSync() {
+  await retryDeletedSets();
   await processOutbox();
   await pullSelectedRemote();
 }
@@ -777,6 +802,63 @@ function unsubscribeLive() {
   liveChannel = null;
 }
 
+/* ---------- Confirm modal ----------
+ * One shared Yes/Cancel popup for destructive or wide actions (delete
+ * a set, mark a set complete). Real buttons, not window.confirm, so it
+ * looks like the app and works in the PWA. Built once in JS; the
+ * title/message/confirm elements are kept by reference (getElementById
+ * would miss them in a stub DOM, and the modal is built, not in HTML).
+ * z-index sits above the instructions viewer, so it can confirm a
+ * build action from inside the viewer too. */
+var confirmModal = null;
+var confirmTitleEl = null;
+var confirmMsgEl = null;
+var confirmYesEl = null;
+var confirmCallback = null;
+function ensureConfirmModal() {
+  if (confirmModal) return confirmModal;
+  var overlay = document.createElement('div');
+  overlay.className = 'confirm-modal';
+  overlay.hidden = true;
+  var box = document.createElement('div');
+  box.className = 'confirm-box';
+  confirmTitleEl = document.createElement('h3');
+  box.appendChild(confirmTitleEl);
+  confirmMsgEl = document.createElement('p');
+  box.appendChild(confirmMsgEl);
+  var row = document.createElement('div');
+  row.className = 'confirm-buttons';
+  var no = document.createElement('button');
+  no.type = 'button'; no.className = 'btn'; no.textContent = 'Cancel';
+  no.addEventListener('click', hideConfirm);
+  confirmYesEl = document.createElement('button');
+  confirmYesEl.type = 'button'; confirmYesEl.className = 'btn btn-danger';
+  confirmYesEl.addEventListener('click', function () {
+    var cb = confirmCallback; confirmCallback = null; hideConfirm();
+    if (cb) cb();
+  });
+  row.appendChild(no); row.appendChild(confirmYesEl);
+  box.appendChild(row);
+  overlay.appendChild(box);
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) hideConfirm(); });
+  document.body.appendChild(overlay);
+  confirmModal = overlay;
+  return overlay;
+}
+function showConfirm(opts) {
+  var m = ensureConfirmModal();
+  confirmTitleEl.textContent = opts.title || 'Are you sure?';
+  confirmMsgEl.textContent = opts.message || '';
+  confirmYesEl.textContent = opts.confirmLabel || 'Yes';
+  confirmYesEl.className = 'btn' + (opts.danger === false ? '' : ' btn-danger');
+  confirmCallback = opts.onConfirm || null;
+  m.hidden = false;
+}
+function hideConfirm() {
+  if (confirmModal) confirmModal.hidden = true;
+  confirmCallback = null;
+}
+
 /* ---------- Auth ----------
  * Multi-device: Supabase Auth issues a separate session per device
  * (each device keeps its own token in its own localStorage), so two
@@ -807,6 +889,19 @@ function clearUrlHash() {
       window.history.replaceState(null, '', window.location.pathname + window.location.search);
     }
   } catch (e) { /* leaving the hash is harmless */ }
+}
+
+// After an email-link landing (signup confirm), the #access_token=...
+// fragment has done its job once the session exists. Clear it so the
+// URL is clean — but never on a recovery landing, where the form still
+// owns the hash until the password is set, and never without a session
+// (nothing landed yet).
+function clearAuthHashIfLanded() {
+  if (!user || isRecoveryUrl()) return;
+  try {
+    var h = (typeof window !== 'undefined' && window.location) ? (window.location.hash || '') : '';
+    if (/access_token=/.test(h)) clearUrlHash();
+  } catch (e) { /* a stale hash is cosmetic; the session is what matters */ }
 }
 
 // Show the "Set new password" form (used by both the event handler
@@ -865,7 +960,15 @@ async function doSignup() {
   if (!email || !password) { setAuthMsg('Enter an email and password.'); return; }
   if (password.length < 6) { setAuthMsg('Password needs at least 6 characters.'); return; }
   setAuthMsg('Creating your account…', true);
-  var res = await sb.auth.signUp({ email: email, password: password });
+  var opts = {};
+  if (typeof window !== 'undefined' && window.location && window.location.href) {
+    // The confirm link must come back to this app, not to the project's
+    // default Site URL (v3.28: the dashboard Site URL is already the
+    // app, but an explicit redirect means the link survives a future
+    // dashboard change instead of landing on a dead page).
+    opts.emailRedirectTo = window.location.href.split('#')[0];
+  }
+  var res = await sb.auth.signUp({ email: email, password: password, options: opts });
   if (res.error) { setAuthMsg(authErrorText(res.error)); return; }
   if (res.data && res.data.session) {
     setAuthMsg('Account created — logged in.', true);
@@ -1774,11 +1877,178 @@ function legoInstructionsUrl(setNum) {
 function openInstructions(setNum, setName) {
   if (typeof window !== 'undefined' && window.BulkFinderInstructions) {
     window.BulkFinderInstructions.open(setNum, setName || setNum);
+  } else if (typeof window !== 'undefined') {
+    window.__bfPendingInstr = { set: setNum, name: setName || setNum };
+  } else {
     return;
   }
-  if (typeof window === 'undefined') return;
-  window.__bfPendingInstr = { set: setNum, name: setName || setNum };
+  openBuildPanel(setNum, setName || setNum);
 }
+
+/* ---------- Build list panel (v3.28) ----------
+ * The store workflow: a set comes in, they flip through the
+ * instructions and tap what the rebuild needs, then go dig bulk with
+ * the list. The panel is a mini tracker down the left side of the
+ * instructions viewer, grouped by type then colour — no endless
+ * scroll, no PDF colour-reading (pixels can't tell a brick from a
+ * plate). Every row has a small photo and + / − to add a need.
+ * Needs ARE the tracker's remaining counts (changeRemaining), so when
+ * they exit the instructions the main view shows exactly what is
+ * still needed — no second list to keep in sync. "Mark all complete"
+ * resets the set to all-found (asks first) and is the starting point
+ * for a rebuild: everything starts as have-it, taps add the needs. */
+var buildPanel = null;
+var buildToggleBtn = null;
+var buildSetNum = null;
+var buildSetName = '';
+var buildDirty = false;
+function openBuildPanel(setNum, setName) {
+  buildSetNum = setNum;
+  buildSetName = setName || setNum;
+  var viewer = $('instrViewer');
+  if (!viewer) return;
+  if (!buildToggleBtn) {
+    buildToggleBtn = document.createElement('button');
+    buildToggleBtn.type = 'button';
+    buildToggleBtn.className = 'instr-build-btn';
+    buildToggleBtn.textContent = 'Build list';
+    buildToggleBtn.addEventListener('click', function () { toggleBuildPanel(); });
+    viewer.appendChild(buildToggleBtn);
+  }
+  if (!buildPanel) {
+    buildPanel = document.createElement('div');
+    buildPanel.className = 'instr-build-panel';
+    viewer.appendChild(buildPanel);
+  }
+  // Wide screen: the list docks open next to the pages. Phone: it
+  // starts closed under the Build list button.
+  var narrow = (typeof window !== 'undefined' && window.innerWidth && window.innerWidth < 700);
+  setBuildPanelOpen(!narrow);
+  renderBuildPanel();
+}
+function setBuildPanelOpen(open) {
+  var viewer = $('instrViewer');
+  if (!viewer || !buildPanel) return;
+  buildPanel.hidden = !open;
+  if (viewer.classList) viewer.classList.toggle('build-open', open);
+}
+function toggleBuildPanel() {
+  if (!buildPanel) return;
+  setBuildPanelOpen(buildPanel.hidden);
+}
+function renderBuildPanel() {
+  if (!buildPanel || !buildSetNum) return;
+  var inv = getInventory(buildSetNum);
+  buildPanel.innerHTML = '';
+  buildPanel.appendChild(el('h3', 'build-panel-title', 'Build list — ' + buildSetName));
+  if (!inv) {
+    buildPanel.appendChild(el('p', 'build-panel-need', 'No parts list for this set yet.'));
+    return;
+  }
+  var lots = inv.items.map(function (lot) {
+    var copy = {}; for (var k in lot) copy[k] = lot[k];
+    copy.setKey = buildSetNum;
+    return copy;
+  });
+  var totalNeed = 0;
+  lots.forEach(function (lot) { totalNeed += remOf(lot); });
+  buildPanel.appendChild(el('p', 'build-panel-need', totalNeed === 0 ? 'Nothing needed — everything is complete.' : 'Need ' + totalNeed + (totalNeed === 1 ? ' piece' : ' pieces')));
+  var markBtn = el('button', 'btn build-mark-all', 'Mark all complete');
+  markBtn.type = 'button';
+  markBtn.addEventListener('click', function () {
+    showConfirm({
+      title: 'Mark everything complete?',
+      message: 'This marks every piece in ' + buildSetName + ' as found — any pieces on the need list will be cleared.',
+      confirmLabel: 'Mark all complete',
+      danger: false,
+      onConfirm: function () { markSetComplete(buildSetNum); }
+    });
+  });
+  buildPanel.appendChild(markBtn);
+  // Group by type, then colour, in first-seen order. Raw types here
+  // (itemCat), not the folded display types — a rebuild list must keep
+  // its structure even when every lot of a type is already complete.
+  var types = [];
+  var byType = {};
+  lots.forEach(function (lot) {
+    var t = itemCat(lot);
+    if (!byType[t]) { byType[t] = []; types.push(t); }
+    byType[t].push(lot);
+  });
+  types.forEach(function (t) {
+    buildPanel.appendChild(el('div', 'build-type', t));
+    var colours = [];
+    var byColour = {};
+    byType[t].forEach(function (lot) {
+      var c = lot.colour || 'Any colour';
+      if (!byColour[c]) { byColour[c] = []; colours.push(c); }
+      byColour[c].push(lot);
+    });
+    colours.forEach(function (c) {
+      buildPanel.appendChild(el('div', 'build-colour', c));
+      byColour[c].forEach(function (lot) { buildPanel.appendChild(buildRow(lot)); });
+    });
+  });
+  var closeBtn = el('button', 'btn btn-quiet build-mark-all', 'Close build list');
+  closeBtn.type = 'button';
+  closeBtn.addEventListener('click', function () { setBuildPanelOpen(false); });
+  buildPanel.appendChild(closeBtn);
+}
+function buildRow(lot) {
+  var row = el('div', 'build-row');
+  var rem = remOf(lot);
+  if (rem === 0) row.className += ' need-none';
+  if (lot.img) {
+    var img = document.createElement('img');
+    img.src = lot.img; img.alt = '';
+    img.addEventListener('error', function () { img.style.display = 'none'; });
+    row.appendChild(img);
+  }
+  var text = el('div', 'build-row-text');
+  text.appendChild(el('div', 'build-row-name', lot.name || ('Part ' + partNumOf(lot))));
+  text.appendChild(el('div', 'build-row-meta', (lot.colour || '') + ' · Part ' + partNumOf(lot) + ' · ×' + lot.qty + ' in set'));
+  row.appendChild(text);
+  row.appendChild(el('div', 'build-row-need', 'Need ' + rem));
+  var minus = el('button', 'build-step-btn', '−');
+  minus.type = 'button';
+  minus.setAttribute('aria-label', 'One fewer needed');
+  minus.disabled = rem === 0;
+  minus.addEventListener('click', function () { buildStep(lot, -1); });
+  var plus = el('button', 'build-step-btn', '+');
+  plus.type = 'button';
+  plus.setAttribute('aria-label', 'Need one more');
+  plus.disabled = rem === lot.qty;
+  plus.addEventListener('click', function () { buildStep(lot, +1); });
+  row.appendChild(minus);
+  row.appendChild(plus);
+  return row;
+}
+function buildStep(lot, delta) {
+  changeRemaining(lot, delta);
+  buildDirty = true;
+  renderBuildPanel();
+}
+function markSetComplete(setNum) {
+  var inv = getInventory(setNum);
+  if (!inv) return;
+  var map = {};
+  inv.items.forEach(function (it) { map[it.id] = 0; });
+  remainingBySet[setNum] = map;
+  saveCounts(setNum, map);
+  var meta = findSet(setNum);
+  if (meta && meta.user_set_id) enqueueBulkSync(meta);
+  buildDirty = true;
+  renderSets();
+  renderProgress();
+  renderBuildPanel();
+}
+// The instructions viewer lives in its own module; it calls this hook
+// when it closes, so the main view behind it shows the build edits.
+window.__bfOnInstrClose = function () {
+  if (!buildDirty) return;
+  buildDirty = false;
+  renderSetView();
+};
 
 function closeViewer() {
   viewerItem = null;
@@ -1926,7 +2196,7 @@ function buildCard(item) {
   minus.type = 'button';
   minus.setAttribute('aria-label', 'One fewer still needed');
   minus.disabled = rem === 0;
-  minus.addEventListener('click', function () { changeRemaining(item, -1); });
+  minus.addEventListener('click', function () { onFoundTap(item); });
   var plus = el('button', null, '+');
   plus.type = 'button';
   plus.setAttribute('aria-label', 'Undo one found piece');
@@ -1962,6 +2232,125 @@ function changeRemaining(item, delta) {
   renderSets(); // sidebar "X of 430 found" must move on the same tap
   var meta = findSet(item.setKey);
   if (meta) enqueuePartSync(meta, item);
+}
+
+/* ---------- Hunting preference (v3.28) ----------
+ * In the All view one physical piece can be needed by several sets.
+ * Tapping minus on a card asks which set it goes to — unless the
+ * answer is already known:
+ * - one set still needs it: no popup, it just goes down there;
+ * - two or more: a chooser pops up with a Hunting preference at the
+ *   top. Pick a set and finds of that piece keep going there until
+ *   that set's need for the piece is complete; then the preference
+ *   clears and the next find asks again (or goes straight down if
+ *   only one set is left needing it). The preference is per piece
+ *   (part number + colour), saved on this device. */
+function loadHuntPrefs() { return LS.get('bf:huntPrefs', {}); }
+function saveHuntPrefs(prefs) { LS.set('bf:huntPrefs', prefs); }
+function partKeyOf(item) { return partNumOf(item) + '|' + (item.colour || ''); }
+
+// Lots in the selected sets that still need this exact piece.
+function setsNeedingPart(item) {
+  var pk = partKeyOf(item);
+  var out = [];
+  selectedKeys.forEach(function (key) {
+    var inv = getInventory(key);
+    if (!inv) return;
+    inv.items.forEach(function (lot) {
+      if (partNumOf(lot) + '|' + (lot.colour || '') !== pk) return;
+      var copy = {};
+      for (var k in lot) copy[k] = lot[k];
+      copy.setKey = key;
+      var rem = remOf(copy);
+      if (rem > 0) {
+        var meta = findSet(key);
+        out.push({ setKey: key, setName: (meta && meta.set_name) || key, lot: copy, rem: rem });
+      }
+    });
+  });
+  return out;
+}
+
+var huntChooser = null;
+var huntChoiceList = null;
+var huntChooserItem = null;
+function hideHuntChooser() {
+  if (huntChooser) huntChooser.hidden = true;
+  huntChooserItem = null;
+}
+function applyFoundTo(candidate) {
+  // One find credited to this set's lot of the piece.
+  changeRemaining(candidate.lot, -1);
+  // Preference spent once that set's need for the piece is complete.
+  var pk = partKeyOf(candidate.lot);
+  if (remOf(candidate.lot) === 0) {
+    var prefs = loadHuntPrefs();
+    if (prefs[pk]) { delete prefs[pk]; saveHuntPrefs(prefs); }
+  }
+}
+function showHuntChooser(item, candidates) {
+  huntChooserItem = item;
+  if (!huntChooser) {
+    var overlay = document.createElement('div');
+    overlay.className = 'confirm-modal hunt-chooser';
+    overlay.hidden = true;
+    var box = document.createElement('div');
+    box.className = 'confirm-box';
+    var title = document.createElement('h3');
+    title.textContent = 'Which set is this piece for?';
+    box.appendChild(title);
+    var sub = document.createElement('p');
+    sub.textContent = 'This piece is still needed by more than one set.';
+    box.appendChild(sub);
+    var prefLabel = document.createElement('div');
+    prefLabel.className = 'hunt-pref-label';
+    prefLabel.textContent = 'Hunting preference';
+    box.appendChild(prefLabel);
+    huntChoiceList = document.createElement('div');
+    box.appendChild(huntChoiceList);
+    var cancel = document.createElement('button');
+    cancel.type = 'button'; cancel.className = 'btn'; cancel.textContent = 'Cancel';
+    cancel.addEventListener('click', hideHuntChooser);
+    box.appendChild(cancel);
+    overlay.appendChild(box);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) hideHuntChooser(); });
+    document.body.appendChild(overlay);
+    huntChooser = overlay;
+  }
+  huntChoiceList.innerHTML = '';
+  candidates.forEach(function (c) {
+    var btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'hunt-choice';
+    btn.textContent = c.setName;
+    var need = document.createElement('span');
+    need.className = 'hunt-need';
+    need.textContent = 'needs ' + c.rem;
+    btn.appendChild(need);
+    btn.addEventListener('click', function () {
+      var prefs = loadHuntPrefs();
+      prefs[partKeyOf(item)] = c.setKey;
+      saveHuntPrefs(prefs);
+      hideHuntChooser();
+      applyFoundTo(c);
+    });
+    huntChoiceList.appendChild(btn);
+  });
+  huntChooser.hidden = false;
+}
+
+// Minus tap: the piece may be needed by several sets in the All view.
+function onFoundTap(item) {
+  if (selectedKeys.length <= 1) { changeRemaining(item, -1); return; }
+  var candidates = setsNeedingPart(item);
+  if (candidates.length <= 1) { changeRemaining(item, -1); return; }
+  var pk = partKeyOf(item);
+  var pref = loadHuntPrefs()[pk];
+  if (pref) {
+    for (var i = 0; i < candidates.length; i++) {
+      if (candidates[i].setKey === pref) { applyFoundTo(candidates[i]); return; }
+    }
+  }
+  showHuntChooser(item, candidates);
 }
 
 function updateCardUI(item) {
@@ -2001,6 +2390,84 @@ function setPercent(setMeta) {
   return Math.round((found / setMeta.total_parts) * 100) + '%';
 }
 
+/* ---------- Delete a set (v3.28) ----------
+ * The X on a My sets row asks once, then wipes the set everywhere:
+ * local list + counts + instructions position + cloud ids + hunting
+ * prefs + queued sync ops, and the cloud user_sets + set_parts rows.
+ * The shared set_inventories cache stays — re-adding the set later is
+ * instant. If the cloud wipe can't run (offline, or the delete fails),
+ * a tombstone is saved and the wipe is retried on the next sync; the
+ * pull skips tombstoned sets so a deleted set can never come back. */
+function deletedSets() { return LS.get('bf:deletedSets', {}); }
+function saveDeletedSets(map) { LS.set('bf:deletedSets', map); }
+
+async function deleteCloudSet(userSetId) {
+  if (!sb || !user || !userSetId) return false;
+  try {
+    var parts = await sb.from('set_parts').delete().eq('user_set_id', userSetId);
+    if (parts.error) return false;
+    var row = await sb.from('user_sets').delete().eq('id', userSetId);
+    if (row.error) return false;
+    return true;
+  } catch (e) { return false; }
+}
+
+async function retryDeletedSets() {
+  if (!sb || !user) return;
+  var tombs = deletedSets();
+  var ids = Object.keys(tombs);
+  if (!ids.length) return;
+  var left = {};
+  for (var i = 0; i < ids.length; i++) {
+    var ok = await deleteCloudSet(ids[i]);
+    if (!ok) left[ids[i]] = tombs[ids[i]];
+  }
+  saveDeletedSets(left);
+}
+
+async function deleteSet(meta) {
+  var key = meta.key || meta.set_num;
+  var setNum = meta.set_num || meta.key;
+  var userSetId = meta.user_set_id || (cloudIds()[setNum] || null);
+  // Local wipe first: the set is gone from this device either way.
+  sets = sets.filter(function (s) { return (s.key || s.set_num) !== key; });
+  saveLocalSets(sets);
+  LS.remove(countsKey(setNum));
+  LS.remove(instrPosKey(setNum));
+  var ids = cloudIds();
+  if (ids[setNum]) { delete ids[setNum]; saveCloudIds(ids); }
+  var prefs = loadHuntPrefs();
+  var prefsChanged = false;
+  Object.keys(prefs).forEach(function (pk) { if (prefs[pk] === key) { delete prefs[pk]; prefsChanged = true; } });
+  if (prefsChanged) saveHuntPrefs(prefs);
+  if (userSetId) {
+    saveOutbox(outbox().filter(function (op) { return op.user_set_id !== userSetId; }));
+  }
+  // Cloud wipe, best effort; a tombstone retries it later.
+  if (userSetId) {
+    var wiped = await deleteCloudSet(userSetId);
+    if (!wiped) {
+      var tombs = deletedSets();
+      tombs[userSetId] = { set_num: setNum };
+      saveDeletedSets(tombs);
+    }
+  }
+  // Selection fallback: another selected set takes over, or the first
+  // set in the list; nothing left means the empty state.
+  selectedKeys = selectedKeys.filter(function (k) { return k !== key; });
+  saveSelectedKeys();
+  if (activeSetKey === key) {
+    activeSetKey = selectedKeys.length ? selectedKeys[0] : (sets.length ? sets[0].key : null);
+    if (activeSetKey) LS.set('bf:activeSet', activeSetKey);
+    else LS.remove('bf:activeSet');
+  }
+  if (selectedKeys.length) loadSelected();
+  else { items = []; remainingBySet = {}; }
+  renderSets();
+  renderSetView();
+  updateSyncStatus();
+}
+
 function renderSets() {
   var list = $('setList');
   list.innerHTML = '';
@@ -2032,6 +2499,20 @@ function renderSets() {
       img.addEventListener('error', function () { img.style.display = 'none'; });
       li.appendChild(img);
     }
+    // X on the row, right of the picture: delete the set (asks first).
+    var delBtn = el('button', 'set-del-btn', '×');
+    delBtn.type = 'button';
+    delBtn.setAttribute('aria-label', 'Delete ' + (s.set_name || s.set_num));
+    delBtn.addEventListener('click', function (e) {
+      e.stopPropagation(); // don't also open the set
+      showConfirm({
+        title: 'Delete this set?',
+        message: 'This removes ' + (s.set_name || s.set_num) + ' (' + s.set_num + ') and all its saved counts from this device and your account. You can add it again later.',
+        confirmLabel: 'Delete',
+        onConfirm: function () { deleteSet(s); }
+      });
+    });
+    li.appendChild(delBtn);
     li.addEventListener('click', function () { openSet(s.key); });
     list.appendChild(li);
   });
@@ -2092,7 +2573,7 @@ function bindEvents() {
   window.addEventListener('resize', applyCols);
   $('menuBtn').addEventListener('click', toggleDrawer);
   $('drawerBackdrop').addEventListener('click', closeDrawer);
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeDrawer(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeDrawer(); hideConfirm(); hideHuntChooser(); } });
   $('forgotBtn').addEventListener('click', doForgotPassword);
   $('pwToggleBtn').addEventListener('click', function () {
     var pw = $('authPassword');
@@ -2229,6 +2710,10 @@ async function init() {
       clearUrlHash();
     }
   }
+  // A signup-confirm link lands here the same way (#...&type=signup):
+  // the session is in place and the app shows logged-in, but the token
+  // stays in the address bar — a reload or a shared link replays it.
+  clearAuthHashIfLanded();
   // Guest path (or a set added on another device): load every set's
   // inventory from the cache table before the first open.
   await loadInventoriesForSets();

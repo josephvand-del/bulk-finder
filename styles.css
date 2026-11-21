@@ -447,3 +447,61 @@ input, select {
 .auth-card label .pw-wrap input { display: block; flex: 1; min-width: 0; width: auto; margin-top: 0; }
 .auth-links { margin: 8px 0 0; }
 .link-btn { background: none; border: none; padding: 0; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
+
+/* v3.28 — shared Yes/Cancel confirm modal (delete a set, mark a set
+   complete). Sits above the instructions viewer (z 110) and lightbox. */
+.confirm-modal { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; z-index: 200; padding: 16px; }
+.confirm-modal[hidden] { display: none; }
+.confirm-box { background: #fff; color: #222; border-radius: 12px; padding: 20px; max-width: 420px; width: 100%; }
+.confirm-box h3 { margin: 0 0 8px; font-size: 19px; }
+.confirm-box p { margin: 0 0 16px; line-height: 1.45; color: #444; }
+.confirm-buttons { display: flex; gap: 10px; justify-content: flex-end; }
+.confirm-buttons .btn { min-width: 90px; }
+
+/* v3.28 — delete-set X on each My sets row, right of the thumbnail. */
+.set-list .set-del-btn { flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%; border: 1px solid #ddd; background: #fff; color: #888; font-size: 18px; line-height: 1; cursor: pointer; padding: 0; }
+.set-list .set-del-btn:active { background: #fdecea; color: #b71c1c; border-color: #b71c1c; }
+
+/* v3.28 — hunting chooser: which set a found piece goes to. Same
+   overlay as the confirm modal; one button per set that still needs
+   the piece, each showing how many it still needs. */
+.hunt-chooser .confirm-box { max-width: 460px; }
+.hunt-chooser p { margin-bottom: 6px; }
+.hunt-pref-label { font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #666; margin: 10px 0 6px; }
+.hunt-choice { display: block; width: 100%; text-align: left; background: #fff; border: 2px solid #222; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; font-size: 16px; cursor: pointer; }
+.hunt-choice:active { background: #f5f5f5; }
+.hunt-choice .hunt-need { float: right; color: #555; font-size: 14px; }
+
+/* v3.28 — build list panel inside the instructions viewer: a mini
+   tracker down the left side, grouped by type then colour. On a wide
+   screen it docks and the pages shift right; on a phone it covers the
+   viewer until closed. */
+.instr-build-btn { position: absolute; top: 12px; right: 12px; z-index: 5; background: #fff; color: #222; border: none; border-radius: 10px; padding: 8px 14px; font-size: 15px; cursor: pointer; }
+.instr-build-btn:active { background: #eee; }
+.instr-build-panel { position: absolute; top: 0; bottom: 0; left: 0; width: min(340px, 94vw); background: #fff; color: #222; z-index: 4; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 64px 12px 24px; box-shadow: 4px 0 16px rgba(0, 0, 0, 0.5); }
+.instr-build-panel[hidden] { display: none; }
+.instr-viewer.build-open .instr-pages { left: 340px; }
+.instr-viewer.build-open .instr-close { left: 352px; }
+.instr-viewer.build-open .instr-status { left: 406px; }
+.build-panel-title { font-size: 18px; font-weight: 700; margin: 0 0 4px; }
+.build-panel-need { font-size: 15px; color: #444; margin: 0 0 10px; }
+.build-mark-all { width: 100%; margin-bottom: 14px; }
+.build-type { font-size: 15px; font-weight: 700; margin: 14px 0 4px; padding-top: 10px; border-top: 1px solid #ddd; }
+.build-type:first-of-type { border-top: none; padding-top: 0; }
+.build-colour { font-size: 13px; font-weight: 700; color: #555; margin: 8px 0 4px; }
+.build-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #eee; }
+.build-row.need-none { opacity: 0.55; }
+.build-row img { width: 44px; height: 44px; object-fit: contain; flex-shrink: 0; border-radius: 4px; background: #f5f5f5; }
+.build-row-text { flex: 1; min-width: 0; }
+.build-row-name { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.build-row-meta { font-size: 12px; color: #555; }
+.build-row-need { font-size: 14px; font-weight: 700; min-width: 58px; text-align: center; }
+.build-step-btn { flex-shrink: 0; width: 34px; height: 34px; border-radius: 8px; border: 2px solid #222; background: #fff; font-size: 20px; line-height: 1; cursor: pointer; padding: 0; }
+.build-step-btn:disabled { opacity: 0.35; cursor: default; }
+.build-step-btn:active { background: #eee; }
+@media (max-width: 700px) {
+  .instr-viewer.build-open .instr-pages { left: 0; }
+  .instr-viewer.build-open .instr-close { left: 12px; }
+  .instr-viewer.build-open .instr-status { left: 66px; }
+  .instr-build-panel { width: 100vw; }
+}
