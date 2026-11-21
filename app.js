@@ -1,4 +1,4 @@
-/* Bulk Finder v3.29 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.30 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -583,6 +583,8 @@ async function ensureCloudSet(meta) {
     if (rows === null) return; // fetch failed: keep local, retry next open
     if (rows.length > 0) {
       var inv = getInventory(meta.set_num);
+      if (!inv) return; // inventory not loaded (its fetch failed): the
+      // merge waits for the next open instead of crashing the refresh.
       var map = {};
       inv.items.forEach(function (it) { map[it.id] = it.qty; });
       var local = remainingBySet[meta.set_num] || loadCounts(meta.set_num);
@@ -628,10 +630,18 @@ async function refreshSetsFromCloud() {
   var tombs = deletedSets();
   cloud = cloud.filter(function (s) { return !tombs[s.user_set_id]; });
   var local = localSets();
+  // v3.30 — the sidebar order is the user's order: start from the
+  // local list (so a long-press reorder survives a cloud refresh) and
+  // append cloud-only sets at the end. Cloud data still wins per set
+  // (it carries the account id); only the position comes from local.
   var byNum = {};
-  cloud.forEach(function (s) { byNum[s.set_num] = s; });
-  local.forEach(function (s) { if (!byNum[s.set_num]) byNum[s.set_num] = s; });
-  sets = Object.keys(byNum).map(function (k) {
+  var order = [];
+  local.forEach(function (s) { byNum[s.set_num] = s; order.push(s.set_num); });
+  cloud.forEach(function (s) {
+    if (!byNum[s.set_num]) { byNum[s.set_num] = s; order.push(s.set_num); }
+    else byNum[s.set_num] = s;
+  });
+  sets = order.map(function (k) {
     var m = byNum[k];
     // Cloud rows carry no picture — keep the local one when there is one.
     if (!m.set_img_url) {
@@ -1532,6 +1542,114 @@ function setDrawer(open) {
 function toggleDrawer() { setDrawer(!document.body.classList.contains('drawer-open')); }
 function closeDrawer() { setDrawer(false); }
 
+/* ---------- Swipe in from the left edge (v3.30): phone ----------
+ * On a phone the sidebar is a drawer; a swipe starting within 32px
+ * of the left edge and moving right opens it, and a left swipe while
+ * it is open closes it. Vertical movement is a scroll, not a swipe,
+ * so the set list still scrolls. Skipped while the instructions
+ * viewer or the 3D lightbox is open (they sit on top of the drawer),
+ * and while a set box is being long-press dragged. Works from the
+ * installed home-screen icon; in a browser tab the system back-swipe
+ * may claim the gesture first. */
+var swipeStartX = null, swipeStartY = null;
+function swipeModalOpen() {
+  if (typeof document.querySelector !== 'function') return false;
+  return !!document.querySelector('.instr-viewer:not([hidden]), #lightbox:not([hidden])');
+}
+function drawerSwipeStart(x, y) { swipeStartX = x; swipeStartY = y; }
+function drawerSwipeMove(x, y) {
+  if (swipeStartX === null) return;
+  if (dragActive || dragPressTimer) return; // a set reorder owns the gesture
+  var dx = x - swipeStartX, dy = y - swipeStartY;
+  if (Math.abs(dy) > Math.abs(dx)) return; // scrolling, not swiping
+  var open = document.body.classList.contains('drawer-open');
+  if (!open && swipeStartX <= 32 && dx > 48 && !swipeModalOpen()) {
+    setDrawer(true);
+    swipeStartX = null;
+  } else if (open && dx < -48) {
+    setDrawer(false);
+    swipeStartX = null;
+  }
+}
+function drawerSwipeEnd() { swipeStartX = null; swipeStartY = null; }
+
+/* ---------- Long-press drag to reorder My sets (v3.30) ----------
+ * Hold a set box ~400ms and it lifts (a small haptic tick on phones);
+ * drag it up or down and release to drop it there. The order is the
+ * ranking: it decides which set is "first" at startup and the order
+ * in the combined view. A tap still opens the set and a scroll still
+ * scrolls — the hold timer only fires when the finger stays put, and
+ * the click right after a drag is swallowed. The order lives in the
+ * local sets list, so it is per-device (cloud rows carry no order). */
+var SET_DRAG_HOLD_MS = 400;
+var dragPressTimer = null;
+var dragPressX = null, dragPressY = null;
+var dragKey = null, dragLi = null, dragActive = false;
+var suppressNextRowClick = false;
+function setRowPress(s, li, e) {
+  // A press that starts on a button (Instructions / delete) is that
+  // button's tap, never a drag.
+  if (e && e.target && typeof e.target.closest === 'function' && e.target.closest('button')) return;
+  cancelSetPress();
+  dragPressX = (e && typeof e.clientX === 'number') ? e.clientX : null;
+  dragPressY = (e && typeof e.clientY === 'number') ? e.clientY : null;
+  dragPressTimer = setTimeout(function () { beginSetDrag(s, li); }, SET_DRAG_HOLD_MS);
+}
+function cancelSetPress() {
+  if (dragPressTimer) { clearTimeout(dragPressTimer); dragPressTimer = null; }
+  dragPressX = null; dragPressY = null;
+}
+function beginSetDrag(s, li) {
+  dragPressTimer = null;
+  dragKey = s.key;
+  dragLi = li;
+  dragActive = true;
+  li.classList.add('dragging');
+  if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(10);
+}
+function dragMoveTo(clientY) {
+  if (!dragActive || !dragKey) return;
+  var list = $('setList');
+  var rows = list.children;
+  var dragged = null;
+  var before = null;
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    if (row.dataset && row.dataset.key === dragKey) { dragged = row; continue; }
+    var r = row.getBoundingClientRect();
+    if (clientY < r.top + r.height / 2) { before = row; break; }
+  }
+  if (!dragged) return;
+  if (before === dragged.nextSibling) return; // already in that spot
+  if (before === null && dragged === rows[rows.length - 1]) return;
+  if (before) list.insertBefore(dragged, before);
+  else list.appendChild(dragged);
+}
+function endSetDrag() {
+  if (!dragActive) return;
+  dragActive = false;
+  if (dragLi) dragLi.classList.remove('dragging');
+  suppressNextRowClick = true;
+  setTimeout(function () { suppressNextRowClick = false; }, 350);
+  // Commit: read the row order from the sidebar and reorder `sets`
+  // to match, then save. Cloud refresh keeps this order (v3.30).
+  var list = $('setList');
+  var order = [];
+  for (var i = 0; i < list.children.length; i++) {
+    var k = list.children[i].dataset && list.children[i].dataset.key;
+    if (k) order.push(k);
+  }
+  if (order.length === sets.length) {
+    sets.sort(function (a, b) { return order.indexOf(a.key) - order.indexOf(b.key); });
+    saveLocalSets(sets.map(function (s) {
+      return { key: s.set_num, set_num: s.set_num, set_name: s.set_name, total_parts: s.total_parts, total_lots: s.total_lots, set_img_url: s.set_img_url || null, user_set_id: s.user_set_id || null };
+    }));
+    renderSets();
+  }
+  dragKey = null;
+  dragLi = null;
+}
+
 // Pick exactly these sets (at least one) and show them together.
 function setSelected(keys) {
   var valid = keys.filter(function (k) { return findSet(k); });
@@ -1690,9 +1808,34 @@ function renderProgress() {
   $('progressFill').style.width = (t.total ? Math.round(100 * t.found / t.total) : 0) + '%';
 }
 
+/* ---------- Batched card rendering (v3.30) ----------
+ * The All view used to build every card — and every image — up front,
+ * which is why it crawled once the sets passed ~36,000 pieces. Cards
+ * now render in batches of CARD_CHUNK as the user scrolls: the first
+ * batch shows at once, and the next batch loads when the "Show more"
+ * marker scrolls into view (or when its button is tapped). Images
+ * already carry loading="lazy", so only on-screen cards fetch photos. */
+var CARD_CHUNK = 120;
+var viewPending = [];    // ordered items not yet rendered in this view
+var viewTierGrids = {};  // tier -> its card-grid element, this view
+var viewTierNames = null;
+var viewSentinel = null; // the "Show more" footer, kept last in the view
+var viewMoreBtn = null;
+var viewObserver = null; // IntersectionObserver auto-loading next batches
+var TIER_NOTES = {
+  1: 'Common bricks and plates — the bulk bins are full of these.',
+  2: 'Worth digging for — less common, still in the bins.',
+  3: 'Rare in bulk — check the sorted cases and minifig wall too.'
+};
+
 function renderSetView() {
   var view = $('setView');
+  if (viewObserver) { viewObserver.disconnect(); viewObserver = null; }
   view.innerHTML = '';
+  viewPending = [];
+  viewTierGrids = {};
+  viewSentinel = null;
+  viewMoreBtn = null;
   if (!selectedKeys.length || !items.length) { showEmpty(); return; }
   $('emptyState').hidden = true;
   $('progressWrap').hidden = false;
@@ -1701,47 +1844,43 @@ function renderSetView() {
   h.style.margin = '4px 0 12px';
   view.appendChild(h);
 
-  var tierNotes = {
-    1: 'Common bricks and plates — the bulk bins are full of these.',
-    2: 'Worth digging for — less common, still in the bins.',
-    3: 'Rare in bulk — check the sorted cases and minifig wall too.'
-  };
-
-  var shown = 0;
   // Tier names are the same across sets; take them from the first set
   // that has an inventory, so a combined view still names each tier once.
-  var tierNames = { 1: 'MOST LIKELY IN BULK', 2: 'MEDIUM — WORTH A DIG', 3: 'LEAST LIKELY IN BULK' };
+  viewTierNames = { 1: 'MOST LIKELY IN BULK', 2: 'MEDIUM — WORTH A DIG', 3: 'LEAST LIKELY IN BULK' };
   selectedKeys.forEach(function (key) {
     var inv = getInventory(key);
-    if (inv && inv.tiers) tierNames = inv.tiers;
+    if (inv && inv.tiers) viewTierNames = inv.tiers;
   });
-  function appendTier(tier, tierItems) {
-    if (!tierItems.length) return;
-    shown++;
-    var banner = el('h3', 'tier-banner tier-' + tier, 'TIER ' + tier + ' — ' + tierNames[String(tier)]);
-    view.appendChild(banner);
-    view.appendChild(el('p', 'tier-note', tierNotes[tier]));
-    var grid = el('div', 'card-grid');
-    tierItems.forEach(function (it) { grid.appendChild(buildCard(it)); });
-    view.appendChild(grid);
-  }
-  if (selectedKeys.length > 1) {
-    // Several sets open: one banner per tier across ALL sets, so TIER 2
-    // never repeats after TIER 3. Cards carry no set tag — in a combined
-    // view the set a part came from is needless information.
-    [1, 2, 3].forEach(function (tier) {
-      appendTier(tier, items.filter(function (it) { return it.tier === tier && cardMatches(it); }));
+  // One ordered list, tier 1 then 2 then 3 — the same order the old
+  // per-tier banners produced, for single- and multi-set views alike.
+  // Cards carry no set tag in a combined view; the set a part came
+  // from is needless information there.
+  [1, 2, 3].forEach(function (tier) {
+    items.forEach(function (it) {
+      if (it.tier === tier && cardMatches(it)) viewPending.push(it);
     });
+  });
+  if (!viewPending.length) {
+    view.appendChild(el('p', 'muted', 'No pieces match these filters — try widening the type or colour.'));
   } else {
-    selectedKeys.forEach(function (key) {
-      var setItems = items.filter(function (it) { return it.setKey === key; });
-      if (!setItems.length) return;
-      [1, 2, 3].forEach(function (tier) {
-        appendTier(tier, setItems.filter(function (it) { return it.tier === tier && cardMatches(it); }));
-      });
-    });
+    renderNextChunk();
+    viewSentinel = el('div', 'view-more');
+    viewMoreBtn = el('button', 'btn', 'Show more');
+    viewMoreBtn.type = 'button';
+    viewMoreBtn.addEventListener('click', function () { renderNextChunk(); });
+    viewSentinel.appendChild(viewMoreBtn);
+    view.appendChild(viewSentinel);
+    updateViewMore();
+    // Scroll-loading: the next batch arrives when the marker scrolls
+    // into view. The button stays as the fallback (and for browsers
+    // without IntersectionObserver).
+    if (typeof IntersectionObserver !== 'undefined') {
+      viewObserver = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) { if (en.isIntersecting) renderNextChunk(); });
+      }, { rootMargin: '600px' });
+      viewObserver.observe(viewSentinel);
+    }
   }
-  if (!shown) view.appendChild(el('p', 'muted', 'No pieces match these filters — try widening the type or colour.'));
 
   var impBtn = $('importBtn');
   if (impBtn) impBtn.hidden = selectedKeys.indexOf('8961-1') < 0;
@@ -1749,6 +1888,42 @@ function renderSetView() {
   rebuildTypeSelect();
   renderProgress();
   renderSets(); // sidebar progress numbers
+}
+
+// Create a tier's banner + note + grid the first time one of its cards
+// is rendered, and return the grid to append to.
+function ensureTierSection(tier) {
+  if (viewTierGrids[tier]) return viewTierGrids[tier];
+  var view = $('setView');
+  view.appendChild(el('h3', 'tier-banner tier-' + tier, 'TIER ' + tier + ' — ' + viewTierNames[String(tier)]));
+  view.appendChild(el('p', 'tier-note', TIER_NOTES[tier]));
+  var grid = el('div', 'card-grid');
+  view.appendChild(grid);
+  viewTierGrids[tier] = grid;
+  return grid;
+}
+
+// Render the next batch of cards. The sentinel stays last in the view:
+// a new tier's banner + grid go in just above it.
+function renderNextChunk() {
+  var view = $('setView');
+  var n = Math.min(CARD_CHUNK, viewPending.length);
+  for (var i = 0; i < n; i++) {
+    var it = viewPending.shift();
+    ensureTierSection(it.tier).appendChild(buildCard(it));
+  }
+  if (viewSentinel) view.appendChild(viewSentinel);
+  updateViewMore();
+}
+
+function updateViewMore() {
+  if (!viewSentinel || !viewMoreBtn) return;
+  if (!viewPending.length) {
+    if (viewObserver) { viewObserver.disconnect(); viewObserver = null; }
+    viewSentinel.hidden = true;
+    return;
+  }
+  viewMoreBtn.textContent = 'Show more (' + viewPending.length + ' left)';
 }
 
 // BrickLink colour ids for the display colours (from Rebrickable's
@@ -2574,6 +2749,10 @@ function renderSets() {
   refreshImportButtons();
   sets.forEach(function (s) {
     var li = el('li', selectedKeys.indexOf(s.key) >= 0 ? 'active' : '');
+    li.dataset.key = s.key;
+    // Hold to drag the box up or down the ranking (v3.30); a plain
+    // tap still opens the set.
+    li.addEventListener('pointerdown', function (e) { setRowPress(s, li, e); });
     var text = el('div', 'set-text');
     text.appendChild(el('div', 'set-name', s.set_name));
     text.appendChild(el('div', 'set-num', s.set_num));
@@ -2611,7 +2790,12 @@ function renderSets() {
       });
     });
     li.appendChild(delBtn);
-    li.addEventListener('click', function () { openSet(s.key); });
+    li.addEventListener('click', function () {
+      // A tap right after a long-press drag ends is the drag's own
+      // release, not an open — swallow it (v3.30).
+      if (suppressNextRowClick) { suppressNextRowClick = false; return; }
+      openSet(s.key);
+    });
     list.appendChild(li);
   });
   renderSetPicker();
@@ -2671,6 +2855,33 @@ function bindEvents() {
   window.addEventListener('resize', applyCols);
   $('menuBtn').addEventListener('click', toggleDrawer);
   $('drawerBackdrop').addEventListener('click', closeDrawer);
+  // Edge swipe opens the drawer on a phone (v3.30).
+  document.addEventListener('touchstart', function (e) {
+    if (!e.touches || !e.touches.length) return;
+    drawerSwipeStart(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: true });
+  document.addEventListener('touchmove', function (e) {
+    if (!e.touches || !e.touches.length) return;
+    drawerSwipeMove(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: true });
+  document.addEventListener('touchend', drawerSwipeEnd, { passive: true });
+  document.addEventListener('touchcancel', drawerSwipeEnd, { passive: true });
+  // Long-press drag on a set box (v3.30): the row's pointerdown starts
+  // the hold timer; these document handlers run the drag itself.
+  document.addEventListener('pointermove', function (e) {
+    if (dragActive) { dragMoveTo(e.clientY); return; }
+    if (dragPressTimer && dragPressX !== null && dragPressY !== null && typeof e.clientX === 'number' && typeof e.clientY === 'number') {
+      if (Math.abs(e.clientX - dragPressX) > 12 || Math.abs(e.clientY - dragPressY) > 12) cancelSetPress();
+    }
+  });
+  document.addEventListener('pointerup', function () {
+    if (dragActive) endSetDrag();
+    else cancelSetPress();
+  });
+  document.addEventListener('pointercancel', function () {
+    cancelSetPress();
+    if (dragActive) endSetDrag();
+  });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeDrawer(); hideConfirm(); hideHuntChooser(); } });
   $('forgotBtn').addEventListener('click', doForgotPassword);
   $('pwToggleBtn').addEventListener('click', function () {
@@ -2772,27 +2983,45 @@ async function init() {
   setSoundOn(soundOn);
   applyCols();
   sets = localSets();
+  // v3.30 — first paint comes from the local cache: the sets and the
+  // saved view show at once, before the login check has had its say.
+  // The login check and the cloud merge run in the background below
+  // and re-render when they land.
+  renderAuth();
+  renderSets();
+  restoreStartupView();
+  viewRestored = true;
+  updateSyncStatus();
+  // Inventories for imported sets arrive in the background; the view
+  // re-renders when they land (8961-1 is baked in, so it shows now).
+  loadInventoriesForSets().then(function () { if (viewRestored) loadSelected(); });
   if (!sb) {
     // Supabase CDN failed (offline on first load): guest mode still works.
     $('syncStatus').textContent = 'Offline — guest mode, saved on this phone';
     $('authToggleBtn').disabled = true;
     $('authToggleBtn').textContent = 'Log in unavailable offline';
-  } else {
-    // While the saved login is being checked, say so — the Log in
-    // button must not invite a tap before the restore has had its say.
-    $('authToggleBtn').textContent = 'Checking login…';
-    $('authToggleBtn').disabled = true;
-    try {
-      var sess = await sb.auth.getSession();
-      if (sess.data && sess.data.session && sess.data.session.user) {
-        user = sess.data.session.user;
-        subscribeLive();
-        await refreshSetsFromCloud();
-      }
-      sb.auth.onAuthStateChange(handleAuthChange);
-    } catch (e) {
-      console.warn('auth check failed, continuing as guest', e);
+    return;
+  }
+  // While the saved login is being checked, say so — the Log in
+  // button must not invite a tap before the restore has had its say.
+  $('authToggleBtn').textContent = 'Checking login…';
+  $('authToggleBtn').disabled = true;
+  try {
+    var sess = await sb.auth.getSession();
+    if (sess.data && sess.data.session && sess.data.session.user) {
+      user = sess.data.session.user;
+      subscribeLive();
+      await refreshSetsFromCloud();
+      renderAuth();
+      renderSets();
+      if (selectedKeys.length) loadSelected();
+    } else {
+      renderAuth(); // restores the Log in button
     }
+    sb.auth.onAuthStateChange(handleAuthChange);
+  } catch (e) {
+    console.warn('auth check failed, continuing as guest', e);
+    renderAuth();
   }
   // A password-reset link lands here with #...&type=recovery in the URL.
   // The recovery session is already in place (getSession above); show
@@ -2812,29 +3041,31 @@ async function init() {
   // the session is in place and the app shows logged-in, but the token
   // stays in the address bar — a reload or a shared link replays it.
   clearAuthHashIfLanded();
-  // Guest path (or a set added on another device): load every set's
-  // inventory from the cache table before the first open.
-  await loadInventoriesForSets();
-  renderAuth();
-  renderSets();
-  // Restore today's view (filters + set selection); a new day starts
-  // fresh at Still needed with every set open.
+}
+
+// Restore today's view (filters + set selection); a new day starts
+// fresh at Still needed with the first set open — never All (v3.30:
+// opening every set at once is what made startup crawl).
+function restoreStartupView() {
   var sameDay = loadViewState();
   var last = LS.get('bf:activeSet', null);
   var savedSel = loadSelectedKeys();
   if (sameDay && savedSel && savedSel.length && savedSel.every(function (k) { return findSet(k); })) {
-    selectedKeys = savedSel;
+    // A saved all-sets selection opens just the first set instead.
+    if (savedSel.length === sets.length && sets.length > 1) {
+      selectedKeys = [sets[0].key];
+    } else {
+      selectedKeys = savedSel;
+    }
     activeSetKey = (last && selectedKeys.indexOf(last) >= 0) ? last : selectedKeys[0];
     loadSelected();
   } else if (!sameDay && sets.length) {
     activeSetKey = sets[0].key;
     LS.set('bf:activeSet', activeSetKey);
-    selectAllSets(true);
+    setSelected([sets[0].key]);
   } else if (last && findSet(last)) openSet(last);
   else if (sets.length) openSet(sets[0].key);
   else showEmpty();
-  viewRestored = true;
-  updateSyncStatus();
 }
 
 document.addEventListener('DOMContentLoaded', init);

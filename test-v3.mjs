@@ -89,6 +89,7 @@ const dbCalls = [];
 let invokeHandler = null;
 let replacedUrl = null; // last URL history.replaceState was called with
 let setPartsRows = []; // cloud rows fetchCloudParts returns in tests
+let cloudSetRows = null; // cloud rows fetchCloudSets returns in tests
 const mockChannels = [];
 function fireParts(payload) {
   for (const ch of mockChannels) for (const h of ch.handlers) if (h.filter.table === "set_parts") h.cb(payload);
@@ -121,6 +122,7 @@ class MockQuery {
   then(resolve, reject) {
     if (this._delete) { dbCalls.push({ table: this.table, op: "delete", filters: { ...this.filters } }); return Promise.resolve({ data: null, error: mockSb._deleteError || null }).then(resolve, reject); }
     if (this.table === "set_parts") return Promise.resolve({ data: setPartsRows, error: null }).then(resolve, reject);
+    if (this.table === "user_sets" && cloudSetRows) return Promise.resolve({ data: cloudSetRows, error: null }).then(resolve, reject);
     return Promise.resolve({ data: [], error: null }).then(resolve, reject);
   }
 }
@@ -690,6 +692,7 @@ async function main() {
 
   // v3.9 — combined view groups tiers across sets: one banner per tier.
   sandbox.setSelected(["8961-1", "10294-1"]);
+  while (sandbox.viewPending.length) sandbox.renderNextChunk(); // v3.30: batches render on scroll, drain them to see every banner
   const banners = $("setView").children.filter((n) => n.className && n.className.indexOf("tier-banner") === 0).map((n) => n.textContent);
   check("tiers: one banner per tier across sets", banners, ["TIER 1 — MOST LIKELY IN BULK", "TIER 2 — MEDIUM — WORTH A DIG", "TIER 3 — LEAST LIKELY IN BULK"]);
   check("tiers: no per-set heading in the combined view", $("setView").children.some((n) => n.className === "set-heading"), false);
@@ -1412,6 +1415,158 @@ async function main() {
   sandbox.LS.set("bf:counts:10305-1", counts10305c);
   sandbox.setSelected(["8961-1", "10305-1"]);
   check("combined: done everywhere reads done on the grand total", sandbox.leftText(shared8961c), "✓ 0 of 19 — done");
+
+  // v3.30 batch: edge swipe, batched rendering, fast startup, first-set
+  // start, long-press reorder.
+
+  // --- Batched rendering: the All view builds cards in batches and
+  // loads more as it scrolls, instead of every card + image up front.
+  const prevChunk = sandbox.CARD_CHUNK;
+  const prevStatus = sandbox.statusFilter, prevType = sandbox.typeFilter, prevColour = sandbox.colourFilter;
+  sandbox.statusFilter = "all"; sandbox.typeFilter = "all"; sandbox.colourFilter = "all";
+  sandbox.LS.set("bf:counts:8961-1", fullCountsFor("8961-1"));
+  sandbox.LS.set("bf:counts:10305-1", fullCountsFor("10305-1"));
+  sandbox.INVENTORIES["10305-1"] = fixtureInv10305;
+  sandbox.CARD_CHUNK = 10;
+  sandbox.setSelected(["8961-1", "10305-1"]);
+  const countCards = (el) => {
+    let n = (el.className || "").split(" ").includes("card") ? 1 : 0;
+    for (const c of el.children) n += countCards(c);
+    return n;
+  };
+  const setViewEl = () => sandbox.document.getElementById("setView");
+  check("batch: first batch is 10 cards, not all 140", countCards(setViewEl()), 10);
+  check("batch: 130 still pending", sandbox.viewPending.length, 130);
+  check("batch: button names the remainder", sandbox.viewMoreBtn.textContent, "Show more (130 left)");
+  sandbox.viewMoreBtn.listeners.click[0]();
+  check("batch: Show more renders the next 10", countCards(setViewEl()), 20);
+  check("batch: pending drops to 120", sandbox.viewPending.length, 120);
+  while (sandbox.viewPending.length) sandbox.renderNextChunk();
+  check("batch: draining renders all 140", countCards(setViewEl()), 140);
+  check("batch: nothing pending after drain", sandbox.viewPending.length, 0);
+  check("batch: marker hides when done", sandbox.viewSentinel.hidden, true);
+  // Tier banners still appear once each, in order, after a full drain.
+  const tierBanners = [];
+  const walkH3 = (el) => {
+    if (el.tagName === "H3") tierBanners.push(el.className);
+    for (const c of el.children) walkH3(c);
+  };
+  walkH3(setViewEl());
+  check("batch: tier banners in order", tierBanners, ["tier-banner tier-1", "tier-banner tier-2", "tier-banner tier-3"]);
+  // Default chunk: 8961-1 alone renders 120 of 138, then the rest.
+  sandbox.CARD_CHUNK = 120;
+  sandbox.setSelected(["8961-1"]);
+  check("batch: default chunk renders 120 of 138", countCards(setViewEl()), 120);
+  check("batch: 18 pending at default chunk", sandbox.viewPending.length, 18);
+  sandbox.renderNextChunk();
+  check("batch: second chunk finishes the set", countCards(setViewEl()), 138);
+  check("batch: marker hides at the end", sandbox.viewSentinel.hidden, true);
+  sandbox.CARD_CHUNK = prevChunk;
+  sandbox.statusFilter = prevStatus; sandbox.typeFilter = prevType; sandbox.colourFilter = prevColour;
+
+  // --- Edge swipe: a right swipe from the left edge opens the drawer.
+  sandbox.setDrawer(false);
+  check("swipe: drawer starts closed", sandbox.document.body.classList.contains("drawer-open"), false);
+  doc.listeners.touchstart[0]({ touches: [{ clientX: 8, clientY: 300 }] });
+  doc.listeners.touchmove[0]({ touches: [{ clientX: 70, clientY: 305 }] });
+  check("swipe: edge swipe opens the drawer", sandbox.document.body.classList.contains("drawer-open"), true);
+  doc.listeners.touchend[0]();
+  // Left swipe closes it.
+  doc.listeners.touchstart[0]({ touches: [{ clientX: 250, clientY: 300 }] });
+  doc.listeners.touchmove[0]({ touches: [{ clientX: 180, clientY: 300 }] });
+  check("swipe: left swipe closes the drawer", sandbox.document.body.classList.contains("drawer-open"), false);
+  doc.listeners.touchend[0]();
+  // A mostly-vertical drag is a scroll, not a swipe.
+  doc.listeners.touchstart[0]({ touches: [{ clientX: 8, clientY: 300 }] });
+  doc.listeners.touchmove[0]({ touches: [{ clientX: 12, clientY: 420 }] });
+  check("swipe: vertical drag does not open", sandbox.document.body.classList.contains("drawer-open"), false);
+  doc.listeners.touchend[0]();
+  // A swipe starting away from the edge does not open.
+  doc.listeners.touchstart[0]({ touches: [{ clientX: 120, clientY: 300 }] });
+  doc.listeners.touchmove[0]({ touches: [{ clientX: 220, clientY: 300 }] });
+  check("swipe: mid-screen swipe does not open", sandbox.document.body.classList.contains("drawer-open"), false);
+  doc.listeners.touchend[0]();
+
+  // --- Fast startup: the first set opens, never All.
+  const allKeys = () => sandbox.sets.map((s) => s.key);
+  sandbox.LS.set("bf:view", { date: "2026-11-20", status: "needed", type: "all", colour: "all" });
+  sandbox.LS.set("bf:selectedSets", allKeys());
+  sandbox.LS.set("bf:activeSet", allKeys()[1]);
+  sandbox.restoreStartupView();
+  check("startup: new day opens the first set only", sandbox.selectedKeys, [allKeys()[0]]);
+  sandbox.LS.set("bf:view", { date: sandbox.todayStr(), status: "needed", type: "all", colour: "all" });
+  sandbox.LS.set("bf:selectedSets", allKeys());
+  sandbox.restoreStartupView();
+  check("startup: saved All is clamped to the first set", sandbox.selectedKeys, [allKeys()[0]]);
+  sandbox.LS.set("bf:selectedSets", [allKeys()[1]]);
+  sandbox.restoreStartupView();
+  check("startup: a saved single set is kept", sandbox.selectedKeys, [allKeys()[1]]);
+
+  // --- Long-press drag: hold a set box, move it, release — the
+  // ranking follows, and the tap right after is not an open.
+  if (!sandbox.findSet("10294-1")) {
+    sandbox.INVENTORIES["10294-1"] = fixtureInv10294;
+    sandbox.sets.push({ key: "10294-1", set_num: "10294-1", set_name: "Test Ship", total_parts: 10, total_lots: 3, user_set_id: "us-10294" });
+    sandbox.saveLocalSets(sandbox.sets);
+  }
+  sandbox.setSelected(["8961-1"]);
+  sandbox.renderSets();
+  const setListEl = () => sandbox.document.getElementById("setList");
+  const startOrder = setListEl().children.map((li) => li.dataset.key);
+  check("reorder: rows in the sidebar", startOrder.length, sandbox.sets.length);
+  const prevHold = sandbox.SET_DRAG_HOLD_MS;
+  sandbox.SET_DRAG_HOLD_MS = 0;
+  const dragRow = setListEl().children[1];
+  const dragKey = dragRow.dataset.key;
+  dragRow.listeners.pointerdown[0]({ target: { closest: () => null }, clientX: 50, clientY: 100 });
+  await sleep(10);
+  check("reorder: hold lifts the row", sandbox.dragActive, true);
+  check("reorder: row shows the dragging style", dragRow.classList.contains("dragging"), true);
+  // Drop it at the top: move the row in the DOM, release.
+  const listChildren = setListEl().children;
+  listChildren.splice(1, 1);
+  listChildren.unshift(dragRow);
+  sandbox.endSetDrag();
+  const droppedOrder = [dragKey].concat(startOrder.filter((k) => k !== dragKey));
+  check("reorder: sets follow the dropped order", sandbox.sets.map((s) => s.key), droppedOrder);
+  check("reorder: order is saved locally", JSON.parse(sandbox.localStorage.getItem("bf:sets")).map((s) => s.key), droppedOrder);
+  check("reorder: sidebar rebuilds in the new order", setListEl().children.map((li) => li.dataset.key), droppedOrder);
+  check("reorder: release arms the click guard", sandbox.suppressNextRowClick, true);
+  // The tap right after the drag is swallowed, not an open.
+  const selBefore = sandbox.selectedKeys.slice();
+  setListEl().children[0].listeners.click[0]();
+  check("reorder: tap after drag does not open the set", sandbox.selectedKeys, selBefore);
+  check("reorder: guard is consumed by that tap", sandbox.suppressNextRowClick, false);
+  // A press starting on a button is that button's tap, never a drag.
+  sandbox.SET_DRAG_HOLD_MS = 0;
+  setListEl().children[0].listeners.pointerdown[0]({ target: { closest: (sel) => (sel === "button" ? {} : null) }, clientX: 50, clientY: 100 });
+  await sleep(10);
+  check("reorder: press on a button never starts a drag", sandbox.dragActive, false);
+  // Moving before the hold fires cancels the drag (it was a scroll).
+  sandbox.SET_DRAG_HOLD_MS = 60;
+  setListEl().children[0].listeners.pointerdown[0]({ target: { closest: () => null }, clientX: 50, clientY: 100 });
+  doc.listeners.pointermove[0]({ clientX: 50, clientY: 140 });
+  await sleep(100);
+  check("reorder: moving before the hold cancels the drag", sandbox.dragActive, false);
+  sandbox.SET_DRAG_HOLD_MS = prevHold;
+
+  // --- Cloud refresh keeps the user's order (v3.30 merge).
+  sandbox.LS.set("bf:deletedSets", {});
+  setPartsRows = [];
+  cloudSetRows = [
+    { set_num: "8961-1", set_name: "Crystal Sweeper", total_parts: 430, total_lots: 138, id: "us-8961-1" },
+    { set_num: "10305-1", set_name: "Test Set 2", total_parts: 5, total_lots: 2, id: "us-10305" },
+    { set_num: "10294-1", set_name: "Test Ship", total_parts: 10, total_lots: 3, id: "us-10294" },
+    { set_num: "75419-1", set_name: "Death Star", total_parts: 9023, total_lots: 1135, id: "us-75419" },
+  ];
+  const orderBeforeCloud = sandbox.sets.map((s) => s.key);
+  await sandbox.refreshSetsFromCloud();
+  check("cloud: refresh keeps the local order", sandbox.sets.map((s) => s.key), orderBeforeCloud.concat(["75419-1"]));
+  const cloudIdsByNum = {};
+  cloudSetRows.forEach((r) => { cloudIdsByNum[r.set_num] = r.id; });
+  check("cloud: cloud data still lands on each set", sandbox.sets.map((s) => s.user_set_id), orderBeforeCloud.concat(["75419-1"]).map((k) => cloudIdsByNum[k] || "us-" + k));
+  check("cloud: cloud-only set appends at the end", sandbox.sets[sandbox.sets.length - 1].key, "75419-1");
+  cloudSetRows = null;
 
   console.log(failures === 0 ? "\nALL PASS" : "\n" + failures + " FAILURES");
   process.exit(failures === 0 ? 0 : 1);

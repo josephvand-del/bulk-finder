@@ -462,6 +462,15 @@ input, select {
 .set-list .set-del-btn { flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%; border: 1px solid #ddd; background: #fff; color: #888; font-size: 18px; line-height: 1; cursor: pointer; padding: 0; }
 .set-list .set-del-btn:active { background: #fdecea; color: #b71c1c; border-color: #b71c1c; }
 
+/* v3.30 — "Show more" batches at the end of the set view. */
+.view-more { padding: 16px 0 24px; text-align: center; }
+.view-more .btn { min-width: 220px; }
+
+/* v3.30 — long-press drag on a set box: no text selection while
+ * holding, no scrolling while dragging, lifted look while held. */
+.set-list li { -webkit-user-select: none; user-select: none; }
+.set-list li.dragging { touch-action: none; opacity: 0.75; border-color: #222; background: #eef3fa; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25); }
+
 /* v3.28 — hunting chooser: which set a found piece goes to. Same
    overlay as the confirm modal; one button per set that still needs
    the piece, each showing how many it still needs. */
