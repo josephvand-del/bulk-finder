@@ -496,6 +496,45 @@ async function main() {
   check("login: show password flips type", $("authPassword").type, "text");
   check("login: toggle button says Hide", $("pwToggleBtn").textContent, "Hide");
 
+  // v3.27 — stay signed in: a saved login restores itself when the app
+  // comes back, without asking for the password again.
+  // (user is cleared directly, not via applyLoggedOutUI — logging out
+  // rebuilds the view around the active set, and these checks must
+  // leave the combined view exactly as the later tests expect it.)
+  sandbox.user = null;
+  sandbox.renderAuth();
+  check("stayin: logged-out toggle says Log in / Sign up", $("authToggleBtn").textContent, "Log in / Sign up");
+  await sandbox.refreshSessionIfLoggedOut();
+  check("stayin: saved session restores the user", sandbox.user && sandbox.user.email, "josephvand@gmail.com");
+  check("stayin: restore hides the login button", $("authToggleBtn").hidden, true);
+  // No session saved: the re-check leaves the app logged out.
+  const realGetSession = mockSb.auth.getSession;
+  mockSb.auth.getSession = async () => ({ data: { session: null }, error: null });
+  sandbox.user = null;
+  sandbox.renderAuth();
+  await sandbox.refreshSessionIfLoggedOut();
+  check("stayin: no saved session stays logged out", sandbox.user, null);
+  mockSb.auth.getSession = realGetSession;
+  // Already logged in: the re-check is a no-op and never asks again.
+  sandbox.user = { id: "u-1", email: "josephvand@gmail.com" };
+  let getSessionCalls = 0;
+  mockSb.auth.getSession = async () => { getSessionCalls++; return realGetSession(); };
+  await sandbox.refreshSessionIfLoggedOut();
+  check("stayin: re-check skipped while logged in", getSessionCalls, 0);
+  mockSb.auth.getSession = realGetSession;
+  // Coming back online re-checks the session when logged out.
+  sandbox.user = null;
+  sandbox.renderAuth();
+  sandbox._winListeners.online();
+  await sleep(20);
+  check("stayin: online event restores the session", sandbox.user && sandbox.user.email, "josephvand@gmail.com");
+  // Coming back to the app re-checks it too.
+  sandbox.user = null;
+  sandbox.renderAuth();
+  doc.listeners["visibilitychange"][0]();
+  await sleep(20);
+  check("stayin: returning to the app restores the session", sandbox.user && sandbox.user.email, "josephvand@gmail.com");
+
   // Live sync: a tap on another device arrives without a refresh.
   const meta8961 = sandbox.sets.find((s) => s.key === "8961-1");
   meta8961.user_set_id = "us-8961-1";

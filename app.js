@@ -1,4 +1,4 @@
-/* Bulk Finder v3.26 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.27 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -46,7 +46,22 @@ const IMPORT_8961_PROGRESS = {"300126-3001-Black":0,"4121715-2780-Black":0,"6141
 /* ---------- Supabase client (guarded: guest mode works offline) ---------- */
 var sb = null;
 if (window.supabase && window.supabase.createClient) {
-  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  // Stay signed in: the session is saved in this device's own
+  // localStorage and the client refreshes its own token, so closing
+  // the app — or coming back tomorrow — must not ask for the password
+  // again. These are the supabase-js defaults, spelled out so a CDN
+  // update can never flip them silently; the key is the stock
+  // sb-<project-ref>-auth-token one, so a login saved before this
+  // version keeps working.
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      storage: window.localStorage,
+      storageKey: 'sb-xwekulsnfarjibawqqih-auth-token',
+    },
+  });
 }
 
 /* ---------- Colour families ----------
@@ -908,6 +923,27 @@ async function doLogout() {
   applyLoggedOutUI();
 }
 
+// Stay signed in, part 2: if the app opened while offline (or the
+// token refresh failed the first time), the first getSession finds
+// nothing and the app looks logged out — even though the saved login
+// is still in this device's storage. Re-check whenever the app comes
+// back online or comes to the front, so a good connection restores
+// the login without asking for the password again.
+async function refreshSessionIfLoggedOut() {
+  if (!sb || user) return;
+  try {
+    var sess = await sb.auth.getSession();
+    if (sess.data && sess.data.session && sess.data.session.user) {
+      user = sess.data.session.user;
+      subscribeLive();
+      await refreshSetsFromCloud();
+      renderAuth();
+      renderSets();
+      updateSyncStatus();
+    }
+  } catch (e) { /* still logged out; the Log in button stays */ }
+}
+
 async function handleAuthChange(event, session) {
   if (event === 'PASSWORD_RECOVERY') {
     // Opened a reset link: the log-in button becomes "Set new password".
@@ -976,6 +1012,7 @@ function renderAuth() {
     chip.textContent = user.email || 'Logged in';
   } else {
     toggle.hidden = false;
+    if (sb) { toggle.textContent = 'Log in / Sign up'; toggle.disabled = false; }
     logout.hidden = true;
     chip.hidden = true;
     changePwBtn.hidden = true;
@@ -2142,10 +2179,10 @@ function bindEvents() {
       if (viewerItem) { viewerHistoryPushed = false; closeViewer(); }
     });
   }
-  window.addEventListener('online', function () { updateSyncStatus(); tickSync(); });
+  window.addEventListener('online', function () { updateSyncStatus(); tickSync(); refreshSessionIfLoggedOut(); });
   window.addEventListener('offline', updateSyncStatus);
   document.addEventListener('visibilitychange', function () {
-    if (!document.hidden) tickSync();
+    if (!document.hidden) { tickSync(); refreshSessionIfLoggedOut(); }
   });
   // Every 20s: push what's queued, then pull what other devices changed.
   setInterval(tickSync, 20000);
@@ -2162,6 +2199,10 @@ async function init() {
     $('authToggleBtn').disabled = true;
     $('authToggleBtn').textContent = 'Log in unavailable offline';
   } else {
+    // While the saved login is being checked, say so — the Log in
+    // button must not invite a tap before the restore has had its say.
+    $('authToggleBtn').textContent = 'Checking login…';
+    $('authToggleBtn').disabled = true;
     try {
       var sess = await sb.auth.getSession();
       if (sess.data && sess.data.session && sess.data.session.user) {
