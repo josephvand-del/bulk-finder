@@ -2776,6 +2776,24 @@ async function main() {
   sandbox.saveLocalSets(sandbox.sets);
   sandbox.closeOptimizerView();
 
+  // --- v3.41: Export list button after "Find optimal sets" ---
+  const expList = sandbox.createBulkList("Export test");
+  sandbox.addScannedPart(expList.id, "3001", "Brick 2 x 4", "Black");
+  sandbox.addScannedPart(expList.id, "3001", "Brick 2 x 4", "Black");
+  sandbox.addScannedPart(expList.id, "54200", "Slope 30 1 x 1 x 2/3", "Light Grey");
+  check("export41: text lists part, colour, qty and name per lot", sandbox.bulkListExportText(expList), [
+    "Bulk list: Export test",
+    "3 pieces · 2 lots · exported " + sandbox.todayStr(),
+    "3001 · Black ×2 — Brick 2 x 4",
+    "54200 · Light Grey ×1 — Slope 30 1 x 1 x 2/3",
+    "",
+  ].join("\n"));
+  sandbox.openBulkList(expList.id);
+  const expRow = sandbox.$("setView").children.find((c) => c.className.includes("bulk-actions"));
+  check("export41: Export list sits right after Find optimal sets", expRow.children.map((b) => b.textContent), ["📷 Add more", "Find optimal sets", "Export list", "Delete list", "← Back to sets"]);
+  expRow.children[2].listeners.click[0]();
+  check("export41: download fallback tells the user", sandbox.bulkExportStatusEl.textContent, "Export didn't work here — take a screenshot of the list instead.");
+
   invokeHandler = null;
 
   console.log(failures === 0 ? "\nALL PASS" : "\n" + failures + " FAILURES");

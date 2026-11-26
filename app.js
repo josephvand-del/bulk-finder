@@ -1,4 +1,4 @@
-/* Bulk Finder v3.40 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.41 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -3465,6 +3465,40 @@ function buildBulkRow(list, p) {
   return row;
 }
 
+/* ---------- Bulk list export (v3.41) ----------
+ * One plain-text file per bulk list — part, colour and quantity per
+ * lot, in the order shown on screen — so the list can be shared or
+ * checked elsewhere (the bulk lists themselves never leave the
+ * phone: they are local-only, no Supabase table holds them). */
+var bulkExportStatusEl = null;
+function bulkListExportText(list) {
+  var lines = [];
+  lines.push('Bulk list: ' + list.name);
+  lines.push(bulkListPieces(list) + ' pieces · ' + (list.parts || []).length + ' lots · exported ' + todayStr());
+  (list.parts || []).forEach(function (p) {
+    lines.push(p.part + ' · ' + p.colour + ' ×' + p.qty + (p.name ? ' — ' + p.name : ''));
+  });
+  return lines.join('\n') + '\n';
+}
+function exportBulkList(list) {
+  try {
+    var slug = String(list.name || 'bulk').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'bulk';
+    var name = 'bulk-finder-' + slug + '.txt';
+    var blob = new Blob([bulkListExportText(list)], { type: 'text/plain' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    if (bulkExportStatusEl) bulkExportStatusEl.textContent = 'Exported ' + name + ' — share it from your downloads.';
+  } catch (e) {
+    if (bulkExportStatusEl) bulkExportStatusEl.textContent = 'Export didn\'t work here — take a screenshot of the list instead.';
+  }
+}
+
 function renderBulkListView() {
   // A stray re-render while the optimizer view is open re-renders
   // that view, so the optimizer never drops back to the parts list
@@ -3494,6 +3528,10 @@ function renderBulkListView() {
   optBtn.type = 'button';
   optBtn.addEventListener('click', function () { openOptimizerView(list.id); });
   row.appendChild(optBtn);
+  var exportBtn = el('button', 'btn btn-small', 'Export list');
+  exportBtn.type = 'button';
+  exportBtn.addEventListener('click', function () { exportBulkList(list); });
+  row.appendChild(exportBtn);
   var delBtn = el('button', 'btn btn-small btn-quiet', 'Delete list');
   delBtn.type = 'button';
   delBtn.addEventListener('click', function () {
@@ -3510,6 +3548,8 @@ function renderBulkListView() {
   backBtn.addEventListener('click', function () { closeBulkView(); });
   row.appendChild(backBtn);
   view.appendChild(row);
+  bulkExportStatusEl = el('p', 'muted small', '');
+  view.appendChild(bulkExportStatusEl);
   var partsWrap = el('div', 'bulk-parts');
   if (!list.parts.length) {
     partsWrap.appendChild(el('p', 'muted', 'Nothing scanned yet — tap "Add more" and point the camera at a piece.'));
