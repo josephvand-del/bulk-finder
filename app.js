@@ -1,4 +1,4 @@
-/* Bulk Finder v3.39 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.40 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -3339,7 +3339,7 @@ function addScannedPart(listId, part, name, colour) {
   renderBulkLists();
   return list;
 }
-function removeScannedPart(listId, part, colour, n) {
+function removeScannedPart(listId, part, colour, n, skipView) {
   var list = findBulkList(listId);
   if (!list) return;
   n = (n === undefined) ? 1 : n;
@@ -3353,7 +3353,11 @@ function removeScannedPart(listId, part, colour, n) {
   }
   saveBulkLists();
   renderBulkLists();
-  if (bulkViewId === listId) renderBulkListView();
+  // The optimizer apply popup (v3.40) removes bulk pieces while the
+  // optimizer view is open: re-rendering the bulk list view would
+  // rebuild the optimizer and reset its sort mode, so it skips the
+  // view re-render — closing the optimizer re-renders the list.
+  if (bulkViewId === listId && !skipView) renderBulkListView();
 }
 function setScannedQty(listId, part, colour, qty) {
   var list = findBulkList(listId);
@@ -3669,6 +3673,76 @@ function priceSort(a, b) {
   return a.setName < b.setName ? -1 : 1;
 }
 
+// Bulk pieces that fit one set (v3.40, optimizer apply popup): one
+// row per inventory lot. cover is how many the bulk can give that
+// lot (capped at what the set still needs), need is what the set
+// still needs, and spent is the exact bulk pieces consumed
+// (part+colour+qty) so an Add removes the right colours. The pool
+// is spent in inventory order, mirroring rankBulkListSets, so a
+// bulk piece is never counted twice. Lots the set no longer needs
+// (remaining 0) never appear.
+function bulkAppliesToSet(list, setKey, blind, excludeMinifig) {
+  var inv = getInventory(setKey);
+  if (!inv) return [];
+  var pool = {};
+  (list.parts || []).forEach(function (p) {
+    var b = pool[p.part] || (pool[p.part] = { total: 0, byColour: {} });
+    b.total += p.qty;
+    b.byColour[p.colour] = (b.byColour[p.colour] || 0) + p.qty;
+  });
+  // Same spending rule as rankBulkListSets' takeFrom, but the spent
+  // colours come back too: an any-colour lot (or blind mode) spends
+  // the fullest colour buckets first.
+  function takeSpent(pn, colour, qty) {
+    var b = pool[pn];
+    if (!b || b.total <= 0) return { n: 0, spent: [] };
+    var spent = [], n = 0;
+    if (colour) {
+      n = Math.min(b.byColour[colour] || 0, qty);
+      if (n > 0) { b.byColour[colour] -= n; spent.push({ colour: colour, qty: n }); }
+    } else {
+      n = Math.min(b.total, qty);
+      var left = n;
+      var cols = Object.keys(b.byColour).sort(function (a, c) { return b.byColour[c] - b.byColour[a]; });
+      cols.forEach(function (c) {
+        if (left <= 0) return;
+        var d = Math.min(b.byColour[c], left);
+        b.byColour[c] -= d;
+        left -= d;
+        if (d > 0) spent.push({ colour: c, qty: d });
+      });
+    }
+    b.total -= n;
+    return { n: n, spent: spent };
+  }
+  function bulkName(part) {
+    for (var i = 0; i < (list.parts || []).length; i++) {
+      if (list.parts[i].part === part && list.parts[i].name) return list.parts[i].name;
+    }
+    return null;
+  }
+  var rows = [];
+  inv.items.forEach(function (lot) {
+    if (excludeMinifig && isMinifigLot(lot)) return;
+    var rem = remOfLot(setKey, lot);
+    if (rem <= 0) return;
+    var t = (blind || lot.any)
+      ? takeSpent(partNumOf(lot), null, rem)
+      : takeSpent(partNumOf(lot), lot.colour, rem);
+    if (t.n <= 0) return;
+    var copy = {};
+    for (var k in lot) copy[k] = lot[k];
+    copy.setKey = setKey;
+    rows.push({
+      lot: copy, part: partNumOf(lot),
+      name: bulkName(partNumOf(lot)) || lot.name || partNumOf(lot),
+      colour: lot.colour || 'Any colour',
+      cover: t.n, need: rem, spent: t.spent
+    });
+  });
+  return rows;
+}
+
 var OPT_HEADING = { pieces: 'Sets this bulk can build', newest: 'Sets this bulk can build', fewest: 'Closest to complete', price: 'Cheapest to complete' };
 
 function buildOptSortRow(listId) {
@@ -3801,24 +3875,26 @@ function renderOptRows(wrap, results, list) {
         ? 'No tracked set fits ' + fmtUsd(bulkOptBudget) + ' — the cheapest is ' + cheapest.setName + ' at ' + fmtUsd(cheapest.costUsd) + '.'
         : 'No tracked set fits ' + fmtUsd(bulkOptBudget) + ' — no prices yet.'));
     } else {
-      split.fits.forEach(function (r) { wrap.appendChild(optRow(r)); });
+      split.fits.forEach(function (r) { wrap.appendChild(optRow(r, list.id)); });
     }
     var bits = [];
     if (split.over.length) bits.push('Over ' + fmtUsd(bulkOptBudget) + ': ' + split.over.map(function (r) { return r.setName + ' (' + fmtUsd(r.costUsd) + ')'; }).join(', '));
     if (split.unknown.length) bits.push('No price yet: ' + split.unknown.map(function (r) { return r.setName; }).join(', '));
     if (bits.length) wrap.appendChild(el('p', 'muted small', bits.join(' · ')));
   } else {
-    show.forEach(function (r) { wrap.appendChild(optRow(r)); });
+    show.forEach(function (r) { wrap.appendChild(optRow(r, list.id)); });
   }
 }
 
-function optRow(r) {
+function optRow(r, listId) {
   var row = el('div', 'bulk-opt-row');
   var text = el('div', 'set-text');
   text.appendChild(el('div', 'set-name', r.setName + (r.year ? ' (' + r.year + ')' : '')));
   text.appendChild(el('div', 'set-num', optRowText(r)));
   row.appendChild(text);
-  row.addEventListener('click', function () { openSet(r.setKey); });
+  // v3.40: a tap opens the apply popup (only the bulk pieces that
+  // fit this set), not the set's full inventory view.
+  row.addEventListener('click', function () { openOptApply(listId, r.setKey); });
   return row;
 }
 
@@ -3909,6 +3985,9 @@ function renderOptimizerView() {
 function closeOptimizerView(fromPop) {
   if (!optViewId) return;
   optViewId = null;
+  // The apply popup lives above the optimizer view; never leave it
+  // stranded over the bulk list when the view goes away.
+  if (optApplyModal && !optApplyModal.hidden) { optApplyHistoryPushed = false; optApplyModal.hidden = true; optApplyCtx = null; }
   if (optViewHistoryPushed && !fromPop) {
     optViewHistoryPushed = false;
     if (typeof window !== 'undefined' && window.history && window.history.back) {
@@ -3919,6 +3998,135 @@ function closeOptimizerView(fromPop) {
   }
   if (bulkViewId) renderBulkListView();
   else loadSelected();
+}
+
+/* ---------- Optimizer apply popup (v3.40) ----------
+ * Tapping a tracked set in the optimizer opens this popup — a
+ * simplified set view listing ONLY the bulk pieces that fit that
+ * set, each with an Add button. Adding credits the pieces to the
+ * set (found counts up, via the scan-assignment path) and takes
+ * them out of the bulk list. The popup stays open, its rows
+ * refresh, and the optimizer results behind it re-rank. Closing
+ * (X / tap-outside / Escape / phone back) returns to the optimizer
+ * view — the same hide-then-back history shape as the suggestion
+ * lightbox (v3.38), so the popstate handler sees the popup still
+ * open and does not close the optimizer underneath. */
+var optApplyModal = null, optApplyTitle = null, optApplySub = null,
+    optApplyList = null, optApplyNote = null;
+var optApplyCtx = null; // { listId, setKey, setName }
+var optApplyHistoryPushed = false;
+
+function ensureOptApplyModal() {
+  if (optApplyModal) return optApplyModal;
+  var overlay = document.createElement('div');
+  overlay.className = 'confirm-modal opt-apply';
+  overlay.hidden = true;
+  var box = document.createElement('div');
+  box.className = 'confirm-box';
+  var head = document.createElement('div');
+  head.className = 'opt-apply-head';
+  optApplyTitle = document.createElement('h3');
+  head.appendChild(optApplyTitle);
+  var x = document.createElement('button');
+  x.type = 'button'; x.className = 'opt-view-x'; x.textContent = '×';
+  x.setAttribute('aria-label', 'Close');
+  x.addEventListener('click', function () { closeOptApply(); });
+  head.appendChild(x);
+  box.appendChild(head);
+  optApplySub = document.createElement('p');
+  optApplySub.className = 'muted small';
+  box.appendChild(optApplySub);
+  optApplyList = document.createElement('div');
+  box.appendChild(optApplyList);
+  optApplyNote = document.createElement('p');
+  optApplyNote.className = 'muted small';
+  optApplyNote.hidden = true;
+  box.appendChild(optApplyNote);
+  var closeBtn = document.createElement('button');
+  closeBtn.type = 'button'; closeBtn.className = 'btn btn-quiet'; closeBtn.textContent = 'Close';
+  closeBtn.addEventListener('click', function () { closeOptApply(); });
+  box.appendChild(closeBtn);
+  overlay.appendChild(box);
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) closeOptApply(); });
+  document.body.appendChild(overlay);
+  optApplyModal = overlay;
+  return overlay;
+}
+
+function renderOptApplyRows() {
+  var ctx = optApplyCtx;
+  if (!ctx || !optApplyModal) return;
+  var list = findBulkList(ctx.listId);
+  optApplyTitle.textContent = ctx.setName;
+  optApplySub.textContent = 'Pieces from ' + (list ? list.name : 'this bulk list') + ' that fit this set.';
+  optApplyList.innerHTML = '';
+  var rows = list ? bulkAppliesToSet(list, ctx.setKey, bulkOptBlind, bulkOptExcludeMinifig) : [];
+  if (!rows.length) {
+    optApplyNote.textContent = 'No pieces from this bulk list fit ' + ctx.setName + ' right now.';
+    optApplyNote.hidden = false;
+    return;
+  }
+  optApplyNote.hidden = true;
+  rows.forEach(function (r) {
+    var row = el('div', 'opt-apply-row');
+    var text = el('div', 'set-text');
+    text.appendChild(el('div', 'set-name', r.name + ' · ' + r.colour));
+    text.appendChild(el('div', 'set-num', r.cover + ' of ' + r.need + ' from bulk'));
+    row.appendChild(text);
+    var add = el('button', 'btn btn-small opt-apply-add', '+ Add');
+    add.type = 'button';
+    add.addEventListener('click', function () { optApplyAdd(r); });
+    row.appendChild(add);
+    optApplyList.appendChild(row);
+  });
+}
+
+function openOptApply(listId, setKey) {
+  var list = findBulkList(listId);
+  var meta = findSet(setKey);
+  if (!list || !meta) return;
+  var m = ensureOptApplyModal();
+  optApplyCtx = { listId: listId, setKey: setKey, setName: meta.set_name || setKey };
+  renderOptApplyRows();
+  m.hidden = false;
+  if (typeof window !== 'undefined' && window.history && window.history.pushState) {
+    try { window.history.pushState({ bfoptapply: true }, ''); optApplyHistoryPushed = true; } catch (e) { optApplyHistoryPushed = false; }
+  }
+}
+
+function closeOptApply(fromPop) {
+  if (!optApplyModal || optApplyModal.hidden) return;
+  // Strict === true: the X listener wraps this in a closure, so a
+  // click Event can never arrive here as fromPop — but keep the
+  // lightbox's guard anyway. Don't hide yet when there is a history
+  // entry to pop: the popstate that follows is what hides the
+  // popup, and hiding here would blind the popstate handler into
+  // closing the optimizer view underneath (v3.38).
+  if (optApplyHistoryPushed && fromPop !== true) {
+    try { window.history.back(); } catch (e) {}
+    return;
+  }
+  optApplyHistoryPushed = false;
+  optApplyModal.hidden = true;
+  optApplyCtx = null;
+}
+
+function optApplyAdd(row) {
+  var ctx = optApplyCtx;
+  if (!ctx || !row) return;
+  // The set may not be selected, so its counts map may not be in
+  // memory: load it first, or changeRemaining would start that lot
+  // from full qty and save a partial map, wiping the set's counts
+  // (same guard as the scan-assignment flow).
+  if (!remainingBySet[ctx.setKey]) remainingBySet[ctx.setKey] = loadCounts(ctx.setKey);
+  applyFoundToN({ setKey: ctx.setKey, lot: row.lot }, row.cover);
+  // Remove exactly the bulk colours the pool spent — in blind mode
+  // or for an any-colour lot that can be several colours. Skip the
+  // bulk-list view re-render: it would rebuild the optimizer view
+  // underneath and reset its sort mode.
+  row.spent.forEach(function (s) { removeScannedPart(ctx.listId, row.part, s.colour, s.qty, true); });
+  renderOptApplyRows();
+  if (optViewId === ctx.listId) runOptimizer(ctx.listId, bulkOptSort);
 }
 
 // Price mode: fetch every tracked set's cost to complete, then rank.
@@ -5574,7 +5782,7 @@ function bindEvents() {
   document.addEventListener('pointercancel', function () {
     if (dragActive) endSetDrag();
   });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeDrawer(); hideConfirm(); hideHuntChooser(); closeScanAssign(); closeScan(); hideOrderModal(); hideScanPicker(); } });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeDrawer(); hideConfirm(); hideHuntChooser(); closeScanAssign(); closeOptApply(); closeScan(); hideOrderModal(); hideScanPicker(); } });
   $('forgotBtn').addEventListener('click', doForgotPassword);
   $('pwToggleBtn').addEventListener('click', function () {
     var pw = $('authPassword');
@@ -5663,6 +5871,7 @@ function bindEvents() {
       // a second time and leave the site.
       if (viewerItem) { viewerHistoryPushed = false; closeViewer(); }
       else if (suggLightboxEl && !suggLightboxEl.hidden) { suggLightboxHistoryPushed = false; closeSuggLightbox(true); }
+      else if (optApplyModal && !optApplyModal.hidden) { optApplyHistoryPushed = false; closeOptApply(true); }
       else if (optViewId) { optViewHistoryPushed = false; closeOptimizerView(true); }
     });
   }

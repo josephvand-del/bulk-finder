@@ -550,6 +550,14 @@ input, select {
 .bulk-opt-toggle.on { background: #222; color: #fff; border-color: #222; }
 .sugg-add { flex-shrink: 0; }
 
+/* v3.40 — optimizer apply popup: only the bulk pieces that fit
+ * the tapped set, each with an Add button. */
+.opt-apply-head { display: flex; align-items: center; gap: 8px; }
+.opt-apply-head h3 { flex: 1; margin: 0; }
+.opt-apply-row { display: flex; align-items: center; gap: 10px; border: 2px solid #ddd; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+.opt-apply-row .set-text { flex: 1; min-width: 0; }
+.opt-apply-add { flex-shrink: 0; }
+
 /* v3.33 — Order remaining modal: wider box, XML text area. */
 .order-modal .confirm-box { max-width: 560px; }
 .order-xml { width: 100%; font-family: monospace; font-size: 12px; padding: 8px; border: 2px solid #999; border-radius: 8px; resize: vertical; }

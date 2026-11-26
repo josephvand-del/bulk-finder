@@ -2673,6 +2673,107 @@ async function main() {
   check("sugg39: second batch fetched once", sugg39Calls, 2);
   check("sugg39: merge resets to page 1", pager39().children[1].textContent, "Page 1 of 3 · 1–10 of 26");
   check("sugg39: new top sharer leads after the merge", suggRows39()[0], "Sugg 25 (2025)");
+  // --- v3.40: optimizer apply popup — only the bulk pieces that
+  // fit the tapped set, each with an Add button.
+  sandbox.saveCounts("10294-1", { "300126-3001-Black": 4, "4211064-3747-Dark_Stone_Grey": 0, "4541538-30385-Transparent_Blue": 2 });
+  sandbox.saveCounts("10305-1", fullCounts(fixtureInv10305));
+  // Counts are read from localStorage by the popup, but finds are
+  // credited through the in-memory map — reload it so a map an
+  // earlier section loaded cannot shadow the saved counts.
+  sandbox.remainingBySet["10294-1"] = sandbox.loadCounts("10294-1");
+  sandbox.remainingBySet["10305-1"] = sandbox.loadCounts("10305-1");
+  sandbox.bulkOptBlind = false;
+  sandbox.bulkOptExcludeMinifig = false;
+  // Test Ship: 3001 lot still needs 4 of 6, 3747 lot is fully found
+  // (must not appear), 30385 lot still needs both.
+  const applyList = sandbox.createBulkList("Apply test");
+  for (let i = 0; i < 5; i++) sandbox.addScannedPart(applyList.id, "3001", "Brick 2 x 4", "Black");
+  sandbox.addScannedPart(applyList.id, "30385", "Rock 1 x 1 Crystal 5 Point", "Trans-Blue");
+  for (let i = 0; i < 2; i++) sandbox.addScannedPart(applyList.id, "6141", "Tile 1 x 1", "White");
+  sandbox.addScannedPart(applyList.id, "99999", "No Such Part", "Black");
+  const applyRows = () => sandbox.optApplyList.children.filter((c) => c.className.includes("opt-apply-row"));
+  const applyRowText = () => applyRows().map((r) => [r.children[0].children[0].textContent, r.children[0].children[1].textContent]);
+  const optRows40 = () => sandbox.bulkOptWrap.children[2].children.filter((c) => c.className.includes("bulk-opt-row"));
+  const optRowText40 = (name) => { const r = optRows40().find((x) => x.children[0].children[0].textContent === name); return r ? r.children[0].children[1].textContent : null; };
+  sandbox.openBulkList(applyList.id);
+  sandbox.openOptimizerView(applyList.id);
+  sandbox.runOptimizer(applyList.id, "pieces");
+  const shipRow = optRows40().find((r) => r.children[0].children[0].textContent === "Test Ship (2021)");
+  check("apply40: Test Ship row is ranked", !!shipRow, true);
+  check("apply40: Test Ship covers 6 pieces, 2 lots", optRowText40("Test Ship (2021)"), "6 of 10 pieces (60%) · 2 lots");
+  shipRow.listeners.click[0]();
+  check("apply40: tap opens the popup, not the set view", [sandbox.optApplyModal.hidden, sandbox.optViewId], [false, applyList.id]);
+  check("apply40: popup title is the set", sandbox.optApplyTitle.textContent, "Test Ship");
+  check("apply40: popup pushes a history entry", hist37.some((c) => c[0] === "push" && c[1] && c[1].bfoptapply === true), true);
+  check("apply40: only the lots the bulk can still feed", applyRowText(), [
+    ["Brick 2 x 4 · Black", "4 of 4 from bulk"],
+    ["Rock 1 x 1 Crystal 5 Point · Trans-Blue", "1 of 2 from bulk"],
+  ]);
+  // Escape closes it the same way as X: back() first, hidden on popstate.
+  const escBacksBefore = hist37.filter((c) => c[0] === "back").length;
+  sandbox.document.listeners.keydown[0]({ key: "Escape" });
+  check("apply40: Escape pops the history entry, popup still open till popstate", [hist37.filter((c) => c[0] === "back").length, sandbox.optApplyModal.hidden], [escBacksBefore + 1, false]);
+  sandbox._winListeners.popstate();
+  check("apply40: popstate after Escape hides the popup", sandbox.optApplyModal.hidden, true);
+  check("apply40: optimizer view stays open after Escape", sandbox.optViewId, applyList.id);
+  // Reopen and Add the 3001 row: the set is credited 4, the bulk loses 4.
+  optRows40().find((r) => r.children[0].children[0].textContent === "Test Ship (2021)").listeners.click[0]();
+  applyRows()[0].children[1].listeners.click[0]();
+  check("apply40: set credited 4 of the 3001 lot", JSON.parse(sandbox.localStorage.getItem("bf:counts:10294-1"))["300126-3001-Black"], 0);
+  check("apply40: bulk keeps 1 black 2x4", sandbox.findBulkList(applyList.id).parts.find((p) => p.part === "3001").qty, 1);
+  check("apply40: covered lot drops off the popup", applyRowText(), [
+    ["Rock 1 x 1 Crystal 5 Point · Trans-Blue", "1 of 2 from bulk"],
+  ]);
+  check("apply40: popup stays open after Add", sandbox.optApplyModal.hidden, false);
+  check("apply40: optimizer behind it re-ranks", optRowText40("Test Ship (2021)"), "2 of 10 pieces (20%) · 2 lots");
+  // Add the crystal row: the bulk crystal is gone, the popup says
+  // nothing fits now.
+  applyRows()[0].children[1].listeners.click[0]();
+  check("apply40: set credited 1 crystal", JSON.parse(sandbox.localStorage.getItem("bf:counts:10294-1"))["4541538-30385-Transparent_Blue"], 1);
+  check("apply40: bulk crystal is gone", sandbox.findBulkList(applyList.id).parts.find((p) => p.part === "30385"), undefined);
+  check("apply40: popup says nothing fits now", [sandbox.optApplyNote.hidden, sandbox.optApplyNote.textContent], [false, "No pieces from this bulk list fit Test Ship right now."]);
+  check("apply40: optimizer shows 1 piece left to cover", optRowText40("Test Ship (2021)"), "1 of 10 pieces (10%) · 1 lots");
+  // X only pops the history entry — the popup hides on popstate,
+  // and the optimizer view stays open (v3.38 shape).
+  const applyX = sandbox.optApplyModal.children[0].children[0].children.find((c) => c.className === "opt-view-x");
+  const xBacksBefore = hist37.filter((c) => c[0] === "back").length;
+  applyX.listeners.click[0]();
+  check("apply40: X pops the history entry, popup still open till popstate", [hist37.filter((c) => c[0] === "back").length, sandbox.optApplyModal.hidden], [xBacksBefore + 1, false]);
+  check("apply40: optimizer view still open after X", sandbox.optViewId, applyList.id);
+  sandbox._winListeners.popstate();
+  check("apply40: popstate after X hides the popup", sandbox.optApplyModal.hidden, true);
+  check("apply40: popstate after X does not go back a second time", hist37.filter((c) => c[0] === "back").length, xBacksBefore + 1);
+  check("apply40: optimizer view stays open after closing the popup", sandbox.optViewId, applyList.id);
+  // Colour-doesn't-matter: a blue 2x4 covers a red need only when
+  // it is on, and the blue pieces leave the bulk list.
+  sandbox.INVENTORIES["red-1"] = { set: "red-1 Test Red", lots: 1, pieces: 2, items: [{ id: "x-3001-Red", qty: 2, dim: "2 × 4 studs", colour: "Red", any: false, tier: 1, cat: "Bricks", img: "https://example.test/x.jpg", name: "Brick 2 x 4" }] };
+  sandbox.sets.push({ key: "red-1", set_num: "red-1", set_name: "Test Red", total_parts: 2, total_lots: 1 });
+  sandbox.saveCounts("red-1", { "x-3001-Red": 2 });
+  const blindList = sandbox.createBulkList("Blind apply test");
+  sandbox.addScannedPart(blindList.id, "3001", "Brick 2 x 4", "Blue");
+  sandbox.addScannedPart(blindList.id, "3001", "Brick 2 x 4", "Blue");
+  sandbox.openOptApply(blindList.id, "red-1");
+  check("apply40: blind off, blue does not fit a red need", [sandbox.optApplyList.children.length, sandbox.optApplyNote.hidden], [0, false]);
+  sandbox.bulkOptBlind = true;
+  sandbox.openOptApply(blindList.id, "red-1");
+  check("apply40: blind on, blue covers the red need", applyRowText(), [["Brick 2 x 4 · Red", "2 of 2 from bulk"]]);
+  applyRows()[0].children[1].listeners.click[0]();
+  check("apply40: blind Add credits the red lot", JSON.parse(sandbox.localStorage.getItem("bf:counts:red-1"))["x-3001-Red"], 0);
+  check("apply40: blind Add removes the blue pieces", sandbox.findBulkList(blindList.id).parts.length, 0);
+  check("apply40: blind Add leaves the popup with nothing fitting", sandbox.optApplyNote.hidden, false);
+  sandbox.bulkOptBlind = false;
+  sandbox.closeOptApply(true);
+  sandbox.sets = sandbox.sets.filter((s) => s.key !== "red-1");
+  sandbox.saveLocalSets(sandbox.sets);
+  delete sandbox.INVENTORIES["red-1"];
+  // A set whose parts list never loaded still opens the popup with
+  // the plain note instead of crashing.
+  sandbox.sets.push({ key: "noinv-1", set_num: "noinv-1", set_name: "No Inv", total_parts: 0, total_lots: 0 });
+  sandbox.openOptApply(applyList.id, "noinv-1");
+  check("apply40: no inventory, popup says nothing fits", [sandbox.optApplyModal.hidden, sandbox.optApplyNote.hidden, sandbox.optApplyNote.textContent], [false, false, "No pieces from this bulk list fit No Inv right now."]);
+  sandbox.closeOptApply(true);
+  sandbox.sets = sandbox.sets.filter((s) => s.key !== "noinv-1");
+  sandbox.saveLocalSets(sandbox.sets);
   sandbox.closeOptimizerView();
 
   invokeHandler = null;
