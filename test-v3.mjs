@@ -2592,6 +2592,89 @@ async function main() {
   check("side38: once the parts arrive the set renders", sandbox.$("emptyState").hidden, true);
   check("side38: the Loading note is gone", sandbox.$("setView").children.some((c) => c.textContent && c.textContent.includes("Loading")), false);
 
+  // --- v3.39: suggestion paging + sort.
+  sandbox.localStorage.removeItem("bf:suggest");
+  sandbox.localStorage.removeItem("bf:suggSort");
+  sandbox.bulkSuggSort = "bulk";
+  sandbox.bulkOptBlind = false;
+  sandbox.bulkOptExcludeMinifig = false;
+  sandbox.bulkOptSort = "pieces";
+  sandbox.bulkSuggState = { listId: null, status: "idle", candidates: [], queried: [], partial: false, unmapped: [], error: "", remaining: [], cacheKey: null, page: 1 };
+  // 25 candidates: lots shared fall with i, so Most of bulk is i
+  // ascending; missing falls with i too, so Fewest missing is i
+  // descending; years are shuffled, so Newest is neither.
+  const sugg39Cands = [];
+  for (let i = 0; i < 25; i++) {
+    sugg39Cands.push({
+      set_num: "900" + (100 + i) + "-1", name: "Sugg " + i, year: 2010 + ((i * 7) % 15),
+      num_parts: 200 - 7 * i, set_img_url: "https://cdn.rebrickable.com/media/sets/900" + (100 + i) + "-1.jpg",
+      lotsCovered: 25 - i, missingUpper: 175 - 6 * i,
+    });
+  }
+  let sugg39Calls = 0;
+  invokeHandler = async (name) => {
+    if (name === "suggest-sets") {
+      sugg39Calls++;
+      if (sugg39Calls === 1) {
+        return { data: { ok: true, candidates: sugg39Cands, queried: ["3001|Black"], partial: true, unmapped: [] }, error: null };
+      }
+      return { data: { ok: true, candidates: [
+        { set_num: "900125-1", name: "Sugg 25", year: 2025, num_parts: 40, set_img_url: "https://cdn.rebrickable.com/media/sets/900125-1.jpg", lotsCovered: 30, missingUpper: 10 },
+      ], queried: ["3001|Black"], partial: false, unmapped: [] }, error: null };
+    }
+    return { data: null, error: { message: "no handler" } };
+  };
+  const suggRows39 = () => sandbox.bulkSuggWrap.children.filter((c) => c.className.includes("sugg-row")).map((r) => r.children[1].children[0].textContent);
+  const pager39 = () => sandbox.bulkSuggWrap.children.find((c) => c.className && c.className.includes("sugg-pager"));
+  const sortRow39 = () => sandbox.bulkSuggWrap.children.find((c) => c.className && c.className.includes("sugg-sort"));
+  sandbox.openOptimizerView(optList.id);
+  await sleep(50);
+  check("sugg39: default sort is Most of bulk", sandbox.bulkSuggSort, "bulk");
+  check("sugg39: sort row offers three sorts", sortRow39().children.map((b) => b.textContent), ["Most of bulk", "Fewest missing", "Newest"]);
+  check("sugg39: active sort is filled, the others quiet", [sortRow39().children[0].className.includes("btn-quiet"), sortRow39().children[1].className.includes("btn-quiet")], [false, true]);
+  check("sugg39: page 1 shows the 10 biggest sharers", suggRows39(), ["Sugg 0 (2010)", "Sugg 1 (2017)", "Sugg 2 (2024)", "Sugg 3 (2016)", "Sugg 4 (2023)", "Sugg 5 (2015)", "Sugg 6 (2022)", "Sugg 7 (2014)", "Sugg 8 (2021)", "Sugg 9 (2013)"]);
+  check("sugg39: pager label page 1", pager39().children[1].textContent, "Page 1 of 3 · 1–10 of 25");
+  check("sugg39: prev disabled on page 1", pager39().children[0].disabled, true);
+  check("sugg39: next enabled on page 1", pager39().children[2].disabled, false);
+  check("sugg39: no more 'Showing the top' line", sandbox.bulkSuggWrap.children.some((c) => c.textContent && c.textContent.includes("Showing the top")), false);
+  pager39().children[2].listeners.click[0]();
+  check("sugg39: page 2 rows", suggRows39(), ["Sugg 10 (2020)", "Sugg 11 (2012)", "Sugg 12 (2019)", "Sugg 13 (2011)", "Sugg 14 (2018)", "Sugg 15 (2010)", "Sugg 16 (2017)", "Sugg 17 (2024)", "Sugg 18 (2016)", "Sugg 19 (2023)"]);
+  check("sugg39: pager label page 2", pager39().children[1].textContent, "Page 2 of 3 · 11–20 of 25");
+  check("sugg39: prev enabled on page 2", pager39().children[0].disabled, false);
+  check("sugg39: paging does not re-fetch", sugg39Calls, 1);
+  pager39().children[2].listeners.click[0]();
+  check("sugg39: page 3 shows the last 5", suggRows39(), ["Sugg 20 (2015)", "Sugg 21 (2022)", "Sugg 22 (2014)", "Sugg 23 (2021)", "Sugg 24 (2013)"]);
+  check("sugg39: pager label page 3", pager39().children[1].textContent, "Page 3 of 3 · 21–25 of 25");
+  check("sugg39: next disabled on last page", pager39().children[2].disabled, true);
+  pager39().children[0].listeners.click[0]();
+  check("sugg39: prev returns to page 2", suggRows39()[0], "Sugg 10 (2020)");
+  sortRow39().children[1].listeners.click[0]();
+  check("sugg39: Fewest missing sorts by missing, page 1", suggRows39(), ["Sugg 24 (2013)", "Sugg 23 (2021)", "Sugg 22 (2014)", "Sugg 21 (2022)", "Sugg 20 (2015)", "Sugg 19 (2023)", "Sugg 18 (2016)", "Sugg 17 (2024)", "Sugg 16 (2017)", "Sugg 15 (2010)"]);
+  check("sugg39: sort change resets to page 1", pager39().children[1].textContent, "Page 1 of 3 · 1–10 of 25");
+  check("sugg39: sort choice is saved on the device", sandbox.LS.get("bf:suggSort", null), "fewest");
+  pager39().children[2].listeners.click[0]();
+  check("sugg39: sort persists while paging", [sandbox.bulkSuggSort, suggRows39()[0]], ["fewest", "Sugg 14 (2018)"]);
+  sortRow39().children[2].listeners.click[0]();
+  check("sugg39: Newest puts the 2024 sets first", suggRows39(), ["Sugg 2 (2024)", "Sugg 17 (2024)", "Sugg 4 (2023)", "Sugg 19 (2023)", "Sugg 6 (2022)", "Sugg 21 (2022)", "Sugg 8 (2021)", "Sugg 23 (2021)", "Sugg 10 (2020)", "Sugg 12 (2019)"]);
+  sortRow39().children[0].listeners.click[0]();
+  check("sugg39: Most of bulk again starts with Sugg 0", suggRows39()[0], "Sugg 0 (2010)");
+  // Merging a second batch ("Check more parts") resets to page 1
+  // and the new top sharer leads.
+  pager39().children[2].listeners.click[0]();
+  pager39().children[2].listeners.click[0]();
+  check("sugg39: back on page 3 before the merge", pager39().children[1].textContent, "Page 3 of 3 · 21–25 of 25");
+  sandbox.bulkSuggState.remaining = [{ part: "3001", colour: "Black", qty: 1, bl_colour: 11 }];
+  sandbox.bulkSuggState.partial = true;
+  sandbox.renderSuggestionsInto(sandbox.bulkSuggWrap, optList);
+  const moreBtn39 = sandbox.bulkSuggWrap.children.find((c) => c.textContent && c.textContent.indexOf("Check ") === 0);
+  check("sugg39: Check more parts button sits alongside the pager", !!moreBtn39, true);
+  moreBtn39.listeners.click[0]();
+  await sleep(50);
+  check("sugg39: second batch fetched once", sugg39Calls, 2);
+  check("sugg39: merge resets to page 1", pager39().children[1].textContent, "Page 1 of 3 · 1–10 of 26");
+  check("sugg39: new top sharer leads after the merge", suggRows39()[0], "Sugg 25 (2025)");
+  sandbox.closeOptimizerView();
+
   invokeHandler = null;
 
   console.log(failures === 0 ? "\nALL PASS" : "\n" + failures + " FAILURES");

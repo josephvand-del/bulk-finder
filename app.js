@@ -1,4 +1,4 @@
-/* Bulk Finder v3.38 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.39 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -3544,7 +3544,17 @@ var bulkOptPriceBtn = null;
 var bulkOptBlindBtn = null;
 var bulkOptMinifigBtn = null;
 var bulkSuggWrap = null;
-var bulkSuggState = { listId: null, status: 'idle', candidates: [], queried: [], partial: false, unmapped: [], error: '', remaining: [], cacheKey: null };
+var bulkSuggState = { listId: null, status: 'idle', candidates: [], queried: [], partial: false, unmapped: [], error: '', remaining: [], cacheKey: null, page: 1 };
+// Suggestion sort (v3.39): the section has its own ranking now —
+// it used to follow the tracked-set sort, so in price mode the
+// suggestions sorted by fewest-missing even though they carry no
+// prices. 'bulk' (most of the bulk used, by lots shared) is the
+// default: the section exists to show what the bulk pile can build.
+// Saved on this device like the other optimizer settings.
+var bulkSuggSort = (function () {
+  var v = LS.get('bf:suggSort', null);
+  return (v === 'fewest' || v === 'newest' || v === 'bulk') ? v : 'bulk';
+})();
 
 // A minifigure lot, for the optimizer's Exclude minifigures toggle
 // (v3.36): any lot in a Minifig* category — heads, torsos, legs,
@@ -3707,7 +3717,7 @@ function buildOptSortRow(listId) {
   bulkOptBlindBtn.addEventListener('click', function () {
     bulkOptBlind = !bulkOptBlind;
     // Suggestions were fetched for the other matching rule.
-    bulkSuggState = { listId: null, status: 'idle', candidates: [], queried: [], partial: false, unmapped: [], error: '', remaining: [], cacheKey: null };
+    bulkSuggState = { listId: null, status: 'idle', candidates: [], queried: [], partial: false, unmapped: [], error: '', remaining: [], cacheKey: null, page: 1 };
     runOptimizer(listId, bulkOptSort);
   });
   sortRow.appendChild(bulkOptBlindBtn);
@@ -3718,7 +3728,7 @@ function buildOptSortRow(listId) {
   bulkOptMinifigBtn.addEventListener('click', function () {
     bulkOptExcludeMinifig = !bulkOptExcludeMinifig;
     // Suggestions were fetched for the other matching rule.
-    bulkSuggState = { listId: null, status: 'idle', candidates: [], queried: [], partial: false, unmapped: [], error: '', remaining: [], cacheKey: null };
+    bulkSuggState = { listId: null, status: 'idle', candidates: [], queried: [], partial: false, unmapped: [], error: '', remaining: [], cacheKey: null, page: 1 };
     runOptimizer(listId, bulkOptSort);
   });
   sortRow.appendChild(bulkOptMinifigBtn);
@@ -4285,11 +4295,11 @@ async function findSuggestions(listId, more) {
     var key = suggestCacheKeyFor(parts, bulkOptBlind, bulkOptExcludeMinifig);
     var cached = loadSuggestCache()[key];
     if (cached && (Date.now() - cached.at) < SUGGEST_TTL_MS) {
-      bulkSuggState = { listId: listId, status: 'done', candidates: cached.candidates || [], queried: [], partial: false, unmapped: [], error: '', remaining: cached.remaining || [], cacheKey: key };
+      bulkSuggState = { listId: listId, status: 'done', candidates: cached.candidates || [], queried: [], partial: false, unmapped: [], error: '', remaining: cached.remaining || [], cacheKey: key, page: 1 };
       renderSuggestionsInto(bulkSuggWrap, list);
       return;
     }
-    bulkSuggState = { listId: listId, status: 'loading', candidates: [], queried: [], partial: false, unmapped: [], error: '', remaining: parts.slice(), cacheKey: key };
+    bulkSuggState = { listId: listId, status: 'loading', candidates: [], queried: [], partial: false, unmapped: [], error: '', remaining: parts.slice(), cacheKey: key, page: 1 };
     renderSuggestionsInto(bulkSuggWrap, list);
     await fetchSuggestBatch(list, parts.slice(0, SUGGEST_MAX_PARTS), myRun);
     return;
@@ -4326,13 +4336,65 @@ async function fetchSuggestBatch(list, batch, runToken) {
   bulkSuggState.unmapped = (bulkSuggState.unmapped || []).concat(payload.unmapped || []);
   bulkSuggState.remaining = (bulkSuggState.remaining || []).slice(batch.length);
   bulkSuggState.status = 'done';
+  // New candidates arrived, so the ranked list changed underneath
+  // the pager — back to page 1 rather than an empty page (v3.39).
+  bulkSuggState.page = 1;
   saveSuggestState();
   renderSuggestionsInto(bulkSuggWrap, list);
+}
+/* ---------- Suggestion sort + pager (v3.39) ----------
+ * The suggestions section has its own sort row — "Most of bulk"
+ * ranks by lots shared (the honest metric: Rebrickable's
+ * parts-in-sets answers carry no per-set quantities, so the row
+ * already says "Shares N lots"). Changing the sort or turning a
+ * page re-renders only; nothing is re-fetched. */
+function buildSuggSortRow(list) {
+  var row = el('div', 'bulk-actions sugg-sort');
+  function sortBtn(mode, label) {
+    var b = el('button', 'btn btn-small' + (bulkSuggSort === mode ? '' : ' btn-quiet'), label);
+    b.type = 'button';
+    b.addEventListener('click', function () {
+      if (bulkSuggSort === mode) return;
+      bulkSuggSort = mode;
+      LS.set('bf:suggSort', mode);
+      bulkSuggState.page = 1;
+      renderSuggestionsInto(bulkSuggWrap, list);
+    });
+    row.appendChild(b);
+    return b;
+  }
+  sortBtn('bulk', 'Most of bulk');
+  sortBtn('fewest', 'Fewest missing');
+  sortBtn('newest', 'Newest');
+  return row;
+}
+function buildSuggPager(list, page, totalPages, total) {
+  var pager = el('div', 'sugg-pager');
+  var prev = el('button', 'btn btn-small sugg-page-prev', '←');
+  prev.type = 'button';
+  prev.setAttribute('aria-label', 'Previous page of suggestions');
+  prev.disabled = page <= 1;
+  prev.addEventListener('click', function () {
+    if (bulkSuggState.page > 1) { bulkSuggState.page--; renderSuggestionsInto(bulkSuggWrap, list); }
+  });
+  pager.appendChild(prev);
+  var first = (page - 1) * SUGGEST_SHOW + 1;
+  var last = Math.min(page * SUGGEST_SHOW, total);
+  pager.appendChild(el('span', 'sugg-pager-label', 'Page ' + page + ' of ' + totalPages + ' · ' + first + '–' + last + ' of ' + total));
+  var next = el('button', 'btn btn-small sugg-page-next', '→');
+  next.type = 'button';
+  next.setAttribute('aria-label', 'Next page of suggestions');
+  next.disabled = page >= totalPages;
+  next.addEventListener('click', function () {
+    if (bulkSuggState.page < totalPages) { bulkSuggState.page++; renderSuggestionsInto(bulkSuggWrap, list); }
+  });
+  pager.appendChild(next);
+  return pager;
 }
 function renderSuggestionsInto(wrap, list) {
   if (!wrap) return;
   if (!list || bulkSuggState.listId !== list.id) {
-    bulkSuggState = { listId: list ? list.id : null, status: 'idle', candidates: [], queried: [], partial: false, unmapped: [], error: '', remaining: [], cacheKey: null };
+    bulkSuggState = { listId: list ? list.id : null, status: 'idle', candidates: [], queried: [], partial: false, unmapped: [], error: '', remaining: [], cacheKey: null, page: 1 };
   }
   wrap.innerHTML = '';
   wrap.appendChild(el('h3', null, 'Sets you don\'t track yet'));
@@ -4370,14 +4432,22 @@ function renderSuggestionsInto(wrap, list) {
   // bulk pile, and they used to crowd out real sets at the top (the
   // ranking prefers the smallest piece count among equal coverage).
   var fresh = st.candidates.filter(function (c) { return !findSet(c.set_num) && (c.num_parts || 0) > 0; });
-  var ranked = rankSuggestionsLocal(fresh, bulkOptSort);
+  var ranked = rankSuggestionsLocal(fresh, bulkSuggSort);
   if (!ranked.length) {
     var anyUntracked = st.candidates.some(function (c) { return !findSet(c.set_num); });
     wrap.appendChild(el('p', 'muted', anyUntracked
       ? 'The untracked sets sharing parts with this bulk list have no piece count on Rebrickable (product collections and bundles), so they can\'t be ranked as buildable sets.'
       : 'No untracked set shares a part with this bulk list.'));
   } else {
-    ranked.slice(0, SUGGEST_SHOW).forEach(function (c) {
+    wrap.appendChild(buildSuggSortRow(list));
+    var totalPages = Math.max(1, Math.ceil(ranked.length / SUGGEST_SHOW));
+    // Never land on an empty page: clamp after anything that shrank
+    // the pool (an import removes a row). Resets to 1 happen where
+    // the list changes — sort change, new batch, new bulk list.
+    var page = Math.min(Math.max(1, st.page || 1), totalPages);
+    st.page = page;
+    var first = (page - 1) * SUGGEST_SHOW;
+    ranked.slice(first, first + SUGGEST_SHOW).forEach(function (c) {
       var row = el('div', 'bulk-opt-row sugg-row');
       if (c.set_img_url) {
         var thumb = document.createElement('img');
@@ -4392,7 +4462,6 @@ function renderSuggestionsInto(wrap, list) {
       text.appendChild(el('div', 'set-name', c.name + (c.year ? ' (' + c.year + ')' : '')));
       var missing = (typeof c.missingUpper === 'number') ? c.missingUpper : Math.max(0, c.num_parts - c.lotsCovered);
       var sub = 'Shares ' + c.lotsCovered + ' lot' + (c.lotsCovered === 1 ? '' : 's') + ' · ' + c.num_parts + ' pieces total · up to ' + missing + ' missing';
-      if (bulkOptSort === 'price') sub += ' · exact price after import';
       text.appendChild(el('div', 'set-num', sub));
       row.appendChild(text);
       var add = el('button', 'btn btn-small sugg-add', 'Add to My sets');
@@ -4401,8 +4470,8 @@ function renderSuggestionsInto(wrap, list) {
       row.appendChild(add);
       wrap.appendChild(row);
     });
-    if (ranked.length > SUGGEST_SHOW) {
-      wrap.appendChild(el('p', 'muted small', 'Showing the top ' + SUGGEST_SHOW + ' of ' + ranked.length + ' suggestions.'));
+    if (totalPages > 1) {
+      wrap.appendChild(buildSuggPager(list, page, totalPages, ranked.length));
     }
   }
   if (st.partial && st.remaining.length) {
@@ -4445,6 +4514,8 @@ async function addSuggestedSet(setNum, btn) {
   addImportedSet(false);
   bulkSuggState.candidates = bulkSuggState.candidates.filter(function (c) { return c.set_num !== setNum; });
   saveSuggestState();
+  // The ranked list shrank by one row — back to page 1 (v3.39).
+  bulkSuggState.page = 1;
   runOptimizer(bulkSuggState.listId, bulkOptSort);
 }
 

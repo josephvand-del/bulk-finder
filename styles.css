@@ -626,6 +626,11 @@ input, select {
  * sits at the left of the suggestion row like the bulk-row photo;
  * the lightbox shows the set picture large on a dark overlay. */
 .sugg-thumb { width: 52px; height: 52px; object-fit: contain; flex-shrink: 0; border-radius: 6px; background: #fff; cursor: zoom-in; }
+/* v3.39 — suggestion pager: ← / → arrows at the bottom of the
+ * recommended list, page label between them. The sort row reuses
+ * .bulk-actions, so it needs no new style. */
+.sugg-pager { display: flex; gap: 10px; align-items: center; justify-content: center; margin: 12px 0; }
+.sugg-pager-label { font-size: 13px; color: #555; }
 .sugg-lightbox { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.92); z-index: 320; display: flex; align-items: center; justify-content: center; padding: 12px; }
 .sugg-lightbox[hidden] { display: none; }
 .sugg-lightbox-img { max-width: 100%; max-height: 90vh; object-fit: contain; border-radius: 8px; background: #fff; }
