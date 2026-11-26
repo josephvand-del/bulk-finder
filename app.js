@@ -1,4 +1,4 @@
-/* Bulk Finder v3.35 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.36 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -1443,7 +1443,7 @@ async function lookupSet() {
   say('Found it — tap "Add this set" to put it in your list.');
 }
 
-async function addImportedSet() {
+async function addImportedSet(open) {
   var p = pendingImport;
   if (!p) return;
   var msg = $('addSetMsg');
@@ -1476,7 +1476,11 @@ async function addImportedSet() {
   hideAddSetPreview();
   $('setNumInput').value = '';
   renderSets();
-  openSet(meta.key);
+  // Suggestions import in the background (v3.36): the set joins My
+  // sets without yanking the view away from the optimizer. The Add
+  // Set button passes the click event, which is not false, so it
+  // still opens the set as before.
+  if (open !== false) openSet(meta.key);
   say(cloudSaved
     ? 'Added ' + p.set_num + ' — ' + p.inventory.lots + ' lots, ' + p.inventory.pieces + ' pieces. All lots start at full count.'
     : 'Added ' + p.set_num + ' on this device, but the cloud save failed — it is not on your other devices yet. Reopen the set to retry.');
@@ -2011,6 +2015,88 @@ var BRICKLINK_COLOUR = {
   'Light Grey': 86, 'Tan': 2, 'Orange': 4, 'Yellow': 3, 'Lime Green': 34,
   'Clear': 12, 'Trans-Blue': 14, 'Trans-Brown': 13, 'Trans-Green': 20,
   'Trans-Orange': 98, 'Trans-Red': 17
+};
+
+/* Display colour name -> RGB, for scan colour sampling (v3.36).
+ * Values are from Rebrickable's colour table (rebrickable.com/colors,
+ * read 2026-11-26) — the same table the import path's colour names
+ * come from, so the keys match the names the scan picker offers.
+ * Two exceptions: White uses LDraw's #F4F4F4, not Rebrickable's pure
+ * #FFFFFF — a photographed white brick reads ~244, and with pure
+ * white in the table it would tie with Clear (#FCFCFC) and lose.
+ * Trans-Blue has no Rebrickable row of its own; it takes
+ * Trans-Dark Blue's #0020A0, the BrickLink-14 colour the picker
+ * name stands for. Trans/solid twins share an RGB in this table
+ * (Red and Trans-Red are both #C91A09) — a photo's average colour
+ * genuinely can't tell them apart, so the sampled pick is the solid
+ * twin and the top-3 chips are the one-tap correction. Colours with
+ * no entry here are never the sampled pick; the manual picker still
+ * offers them. */
+var LEGO_COLOUR_RGB = {
+  'White': [244, 244, 244], 'Black': [5, 19, 29], 'Blue': [0, 85, 191],
+  'Red': [201, 26, 9], 'Dark Grey': [108, 110, 104], 'Light Grey': [160, 165, 169],
+  'Tan': [228, 205, 158], 'Orange': [254, 138, 24], 'Yellow': [242, 205, 55],
+  'Lime Green': [187, 233, 11], 'Clear': [252, 252, 252],
+  'Trans-Blue': [0, 32, 160], 'Trans-Brown': [99, 95, 82],
+  'Trans-Green': [132, 182, 141], 'Trans-Orange': [240, 143, 28],
+  'Trans-Red': [201, 26, 9],
+  'Trans-Yellow': [245, 205, 47], 'Trans-Light Blue': [174, 239, 236],
+  'Trans-Dark Blue': [0, 32, 160], 'Trans-Purple': [165, 165, 203],
+  'Trans-Pink': [228, 173, 200], 'Trans-Dark Pink': [223, 102, 149],
+  'Trans-Bright Green': [217, 228, 167], 'Trans-Neon Green': [248, 241, 132],
+  'Trans-Neon Yellow': [218, 176, 0], 'Trans-Neon Orange': [255, 128, 13],
+  'Magenta': [146, 57, 120], 'Dark Pink': [200, 112, 160],
+  'Bright Pink': [228, 173, 200], 'Light Pink': [254, 204, 207],
+  'Pink': [252, 151, 172], 'Coral': [255, 105, 143],
+  'Lavender': [225, 213, 237], 'Medium Lavender': [172, 120, 186],
+  'Purple': [129, 0, 123], 'Dark Purple': [63, 54, 145],
+  'Violet': [67, 84, 163], 'Medium Azure': [54, 174, 191],
+  'Dark Azure': [7, 139, 201], 'Bright Light Blue': [159, 195, 233],
+  'Medium Blue': [90, 147, 219], 'Dark Blue': [10, 52, 99],
+  'Light Blue': [180, 210, 227], 'Sky Blue': [125, 191, 221],
+  'Maersk Blue': [53, 146, 195], 'Sand Blue': [96, 116, 161],
+  'Sand Green': [160, 188, 172], 'Dark Green': [24, 70, 50],
+  'Green': [35, 120, 65], 'Bright Green': [75, 159, 74],
+  'Medium Green': [115, 220, 161], 'Light Green': [194, 218, 184],
+  'Olive Green': [155, 154, 90], 'Yellowish Green': [223, 238, 165],
+  'Medium Lime': [199, 210, 60], 'Light Lime': [217, 228, 167],
+  'Dark Tan': [149, 138, 115], 'Reddish Brown': [88, 42, 18],
+  'Dark Brown': [53, 33, 0], 'Brown': [88, 57, 39],
+  'Nougat': [208, 145, 104], 'Medium Nougat': [170, 125, 85],
+  'Light Nougat': [246, 215, 179], 'Dark Nougat': [173, 97, 64],
+  'Sand Red': [214, 117, 114], 'Dark Red': [114, 14, 15],
+  'Dark Orange': [169, 85, 0], 'Reddish Orange': [202, 76, 11],
+  'Bright Light Orange': [248, 187, 61], 'Bright Light Yellow': [255, 240, 58],
+  'Light Yellow': [251, 230, 150], 'Warm Gold': [170, 127, 46],
+  'Chrome Silver': [224, 224, 224], 'Flat Silver': [137, 135, 136],
+  'Metallic Silver': [165, 169, 180], 'Pearl Light Grey': [156, 163, 168],
+  'Pearl Dark Grey': [87, 88, 87], 'Glow In Dark White': [217, 217, 217],
+  'Copper': [174, 122, 89], 'Dark Turquoise': [0, 143, 155],
+  'Aqua': [179, 215, 209], 'Light Aqua': [173, 195, 192],
+  'Chrome Gold': [187, 165, 61], 'Metallic Gold': [219, 172, 52],
+  'Chrome Blue': [108, 150, 191], 'Chrome Green': [60, 179, 113],
+  'Chrome Pink': [170, 77, 142], 'Chrome Black': [27, 42, 52],
+  'Speckle Black Silver': [5, 19, 29], 'Speckle Black Copper': [5, 19, 29],
+  'Speckle Black Gold': [5, 19, 29], 'Speckle Dark Bluish Grey Silver': [108, 110, 104],
+  // Pictured colours: the LEGO segment name (underscores -> spaces)
+  // for any-colour lots, which the picker offers as-is.
+  'Dark Stone Grey': [108, 110, 104], 'Medium Stone Grey': [160, 165, 169],
+  'Very Light Bluish Grey': [230, 227, 224], 'Bright Red': [201, 26, 9],
+  'Bright Blue': [0, 85, 191], 'Bright Yellow': [242, 205, 55],
+  'Bright Orange': [254, 138, 24], 'Brick Yellow': [228, 205, 158],
+  'Transparent': [252, 252, 252], 'Transparent Red': [201, 26, 9],
+  'Transparent Bright Orange': [240, 143, 28], 'Transparent Yellow': [245, 205, 47],
+  'Transparent Green': [132, 182, 141], 'Transparent Blue': [0, 32, 160],
+  'Transparent Dark Blue': [0, 32, 160], 'Transparent Light Blue': [174, 239, 236],
+  'Transparent Bright Green': [217, 228, 167],
+  'Transparent Fluorescent Green': [248, 241, 132],
+  'Transparent Pink': [228, 173, 200],
+  'Transparent Medium Red Violet': [141, 115, 179],
+  'Transparent Black': [99, 95, 82], 'Transparent Brown': [99, 95, 82],
+  'Transparent Fluorescent Red Orange': [255, 128, 13],
+  'Transparent Neon Yellow': [218, 176, 0],
+  'Bright Light Yellow': [255, 240, 58], 'Bright Yellowish Green': [187, 233, 11],
+  'Bright Violet': [129, 0, 123], 'Fabuland Brown': [182, 123, 80]
 };
 
 /* LEGO colour name (the 3rd segment of a lot id, e.g. Dark_Stone_Grey)
@@ -3110,10 +3196,12 @@ var bulkViewId = null; // id of the bulk list open in the main view, or null
 var bulkOptWrap = null;
 var bulkOptPriceBtn = null;
 var bulkOptSort = 'pieces';
-// Price ranking for the optimizer is a disabled "not connected yet"
-// state until a price source is wired (v3.33: no source — see the
-// build report). The spend-budget toggle is omitted: it needs prices.
-var OPTIMIZER_PRICE_MODE = 'not-connected';
+// Price ranking for the optimizer runs through the get-prices Edge
+// Function, which prices the remaining parts through BrickOwl and
+// returns USD totals (v3.36: the key lives in the function, never in
+// the browser). The spend-budget toggle is still omitted: ranking by
+// cheapest to complete is the price mode.
+var OPTIMIZER_PRICE_MODE = 'brickowl';
 
 function loadBulkLists() {
   var v = LS.get('bf:bulkLists', []);
@@ -3147,6 +3235,12 @@ function bulkPartImg(part, colour) {
   var bl = BRICKLINK_COLOUR[colour];
   if (bl === undefined) return '';
   return 'https://img.bricklink.com/ItemImage/PN/' + bl + '/' + part + '.png';
+}
+function bulkListQty(list, part, colour) {
+  if (!list) return 0;
+  var n = 0;
+  (list.parts || []).forEach(function (p) { if (p.part === part && p.colour === colour) n += p.qty; });
+  return n;
 }
 function addScannedPart(listId, part, name, colour) {
   var list = findBulkList(listId);
@@ -3328,8 +3422,41 @@ function renderBulkListView() {
   renderBulkLists();
 }
 
-/* ---------- Optimizer: what sets come out of a bulk list ---------- */
-function rankBulkListSets(list, sortMode) {
+/* ---------- Optimizer: what sets come out of a bulk list (v3.36) ----------
+ * Four sort modes over the tracked sets: Most pieces (pieces of the
+ * bulk list a set uses), Newest (by year), Fewest missing (fewest
+ * pieces left to find — closest to complete), and Cheapest to
+ * complete (the remaining parts priced through BrickOwl, cheapest
+ * first). The "Colour doesn't matter" toggle matches by part number
+ * only, ignoring colour, for every mode — the set's real inventory
+ * still records colour; only the evaluation ignores it. Below the
+ * tracked results, "Sets you don't track yet" suggests sets from the
+ * full Rebrickable catalog that share parts with the bulk list, with
+ * an Add to My sets action that imports through the existing path. */
+var bulkOptSort = 'pieces';
+var bulkOptBlind = false;
+var bulkOptExcludeMinifig = false;
+var bulkOptRun = 0;
+var bulkOptPriceBtn = null;
+var bulkOptBlindBtn = null;
+var bulkOptMinifigBtn = null;
+var bulkSuggWrap = null;
+var bulkSuggState = { listId: null, status: 'idle', candidates: [], queried: [], partial: false, unmapped: [], error: '', remaining: [], cacheKey: null };
+
+// A minifigure lot, for the optimizer's Exclude minifigures toggle
+// (v3.36): any lot in a Minifig* category — heads, torsos, legs,
+// accessories, whole figures — or a lot that exports as a BrickLink
+// minifig (type M, the rock monsters), whatever its stored category
+// says. When the toggle is on, these lots count on neither side of
+// the match: they never cover a bulk piece and never add to missing.
+function isMinifigLot(lot) {
+  if (!lot) return false;
+  if (String(lot.cat || '').indexOf('Minifig') === 0) return true;
+  var blp = brickLinkPartFor(lot, 1);
+  return !!(blp && blp.type === 'M');
+}
+
+function rankBulkListSets(list, sortMode, blind, excludeMinifig) {
   function freshPool() {
     var pool = {};
     (list.parts || []).forEach(function (p) {
@@ -3342,7 +3469,8 @@ function rankBulkListSets(list, sortMode) {
   // Take qty pieces of part pn from the pool: a specific-colour lot
   // takes only its colour; an "any colour" lot takes whatever is
   // there, spending the fullest colour buckets first so later
-  // specific lots see what is really left.
+  // specific lots see what is really left. Colour-doesn't-matter
+  // mode takes any colour for every lot.
   function takeFrom(pool, pn, colour, qty) {
     var b = pool[pn];
     if (!b || b.total <= 0) return 0;
@@ -3370,17 +3498,28 @@ function rankBulkListSets(list, sortMode) {
     if (!inv) return;
     var pool = freshPool();
     var pieces = 0, lots = 0;
+    var totalPieces = 0, totalLots = 0;
     inv.items.forEach(function (lot) {
-      var n = lot.any
+      // Exclude minifigures: the lot counts on neither side — it
+      // never covers a bulk piece, and it adds nothing to the total
+      // the set is measured against.
+      if (excludeMinifig && isMinifigLot(lot)) return;
+      totalPieces += lot.qty;
+      totalLots++;
+      var n = (blind || lot.any)
         ? takeFrom(pool, partNumOf(lot), null, lot.qty)
         : takeFrom(pool, partNumOf(lot), lot.colour, lot.qty);
       if (n > 0) { pieces += n; lots++; }
     });
+    var prog = setFoundTotal(s.key, excludeMinifig);
     results.push({
       setKey: s.key, setName: s.set_name || s.set_num,
       year: (typeof s.year === 'number') ? s.year : null,
       piecesCovered: pieces, lotsCovered: lots,
-      totalPieces: inv.pieces, totalLots: inv.lots
+      totalPieces: excludeMinifig ? totalPieces : inv.pieces,
+      totalLots: excludeMinifig ? totalLots : inv.lots,
+      foundPieces: prog.found, remainingPieces: Math.max(0, prog.total - prog.found),
+      costUsd: null, unpricedLots: 0
     });
   });
   if (sortMode === 'newest') {
@@ -3390,6 +3529,14 @@ function rankBulkListSets(list, sortMode) {
       if (b.piecesCovered !== a.piecesCovered) return b.piecesCovered - a.piecesCovered;
       return a.setName < b.setName ? -1 : 1;
     });
+  } else if (sortMode === 'fewest') {
+    results.sort(function (a, b) {
+      if (a.remainingPieces !== b.remainingPieces) return a.remainingPieces - b.remainingPieces;
+      if (b.piecesCovered !== a.piecesCovered) return b.piecesCovered - a.piecesCovered;
+      return a.setName < b.setName ? -1 : 1;
+    });
+  } else if (sortMode === 'price') {
+    results.sort(priceSort);
   } else {
     results.sort(function (a, b) {
       if (b.piecesCovered !== a.piecesCovered) return b.piecesCovered - a.piecesCovered;
@@ -3399,48 +3546,584 @@ function rankBulkListSets(list, sortMode) {
   }
   return results;
 }
+// Cheapest to complete first; a set with no price at all sorts last,
+// then fewest pieces left, then name.
+function priceSort(a, b) {
+  var ca = (a.costUsd === null || a.costUsd === undefined) ? Infinity : a.costUsd;
+  var cb = (b.costUsd === null || b.costUsd === undefined) ? Infinity : b.costUsd;
+  if (ca !== cb) return ca - cb;
+  if (a.remainingPieces !== b.remainingPieces) return a.remainingPieces - b.remainingPieces;
+  return a.setName < b.setName ? -1 : 1;
+}
 
-function runOptimizer(listId, sortMode) {
-  var list = findBulkList(listId);
-  if (!list || !bulkOptWrap) return;
-  if (sortMode) bulkOptSort = sortMode;
-  var results = rankBulkListSets(list, bulkOptSort);
-  var wrap = bulkOptWrap;
-  wrap.innerHTML = '';
-  wrap.appendChild(el('h3', null, 'Sets this bulk can build'));
+var OPT_HEADING = { pieces: 'Sets this bulk can build', newest: 'Sets this bulk can build', fewest: 'Closest to complete', price: 'Cheapest to complete' };
+
+function buildOptSortRow(listId) {
   var sortRow = el('div', 'bulk-actions');
-  var piecesBtn = el('button', 'btn btn-small' + (bulkOptSort === 'pieces' ? '' : ' btn-quiet'), 'Most pieces');
-  piecesBtn.type = 'button';
-  piecesBtn.addEventListener('click', function () { runOptimizer(listId, 'pieces'); });
-  sortRow.appendChild(piecesBtn);
-  var newBtn = el('button', 'btn btn-small' + (bulkOptSort === 'newest' ? '' : ' btn-quiet'), 'Newest');
-  newBtn.type = 'button';
-  newBtn.addEventListener('click', function () { runOptimizer(listId, 'newest'); });
-  sortRow.appendChild(newBtn);
-  bulkOptPriceBtn = el('button', 'btn btn-small btn-quiet', 'Price — not connected yet');
-  bulkOptPriceBtn.type = 'button';
-  bulkOptPriceBtn.disabled = true;
-  bulkOptPriceBtn.title = 'Price ranking needs a price source — none is connected yet.';
-  sortRow.appendChild(bulkOptPriceBtn);
-  wrap.appendChild(sortRow);
-  var covering = results.filter(function (r) { return r.piecesCovered > 0; });
+  function sortBtn(mode, label) {
+    var b = el('button', 'btn btn-small' + (bulkOptSort === mode ? '' : ' btn-quiet'), label);
+    b.type = 'button';
+    b.addEventListener('click', function () { runOptimizer(listId, mode); });
+    sortRow.appendChild(b);
+    return b;
+  }
+  sortBtn('pieces', 'Most pieces');
+  sortBtn('newest', 'Newest');
+  sortBtn('fewest', 'Fewest missing');
+  bulkOptPriceBtn = sortBtn('price', 'Cheapest to complete');
+  bulkOptPriceBtn.title = 'Rank by the cost of the parts still needed, priced through BrickOwl.';
+  bulkOptBlindBtn = el('button', 'btn btn-small bulk-opt-toggle' + (bulkOptBlind ? ' on' : ''), 'Colour doesn\'t matter');
+  bulkOptBlindBtn.type = 'button';
+  bulkOptBlindBtn.setAttribute('aria-pressed', bulkOptBlind ? 'true' : 'false');
+  bulkOptBlindBtn.title = 'Match parts by number only, ignoring colour. The sets themselves still track colour.';
+  bulkOptBlindBtn.addEventListener('click', function () {
+    bulkOptBlind = !bulkOptBlind;
+    // Suggestions were fetched for the other matching rule.
+    bulkSuggState = { listId: null, status: 'idle', candidates: [], queried: [], partial: false, unmapped: [], error: '', remaining: [], cacheKey: null };
+    runOptimizer(listId, bulkOptSort);
+  });
+  sortRow.appendChild(bulkOptBlindBtn);
+  bulkOptMinifigBtn = el('button', 'btn btn-small bulk-opt-toggle' + (bulkOptExcludeMinifig ? ' on' : ''), 'Exclude minifigures');
+  bulkOptMinifigBtn.type = 'button';
+  bulkOptMinifigBtn.setAttribute('aria-pressed', bulkOptExcludeMinifig ? 'true' : 'false');
+  bulkOptMinifigBtn.title = 'Ignore minifigure lots when matching — a set is not penalised for minifigures the bulk pile lacks.';
+  bulkOptMinifigBtn.addEventListener('click', function () {
+    bulkOptExcludeMinifig = !bulkOptExcludeMinifig;
+    // Suggestions were fetched for the other matching rule.
+    bulkSuggState = { listId: null, status: 'idle', candidates: [], queried: [], partial: false, unmapped: [], error: '', remaining: [], cacheKey: null };
+    runOptimizer(listId, bulkOptSort);
+  });
+  sortRow.appendChild(bulkOptMinifigBtn);
+  return sortRow;
+}
+
+function buildOptFooter(list) {
+  var p = el('p', 'muted small');
+  var blindNote = bulkOptBlind ? ' Colour doesn\'t matter is on — parts match by number only.' : '';
+  var minifigNote = bulkOptExcludeMinifig ? ' Minifigures excluded from the match.' : '';
+  if (bulkOptSort === 'price') {
+    // innerHTML, not createTextNode: the harness stub document has
+    // no createTextNode, and the link is a static string either way.
+    p.innerHTML = 'Prices via <a href="https://www.brickowl.com" target="_blank">BrickOwl</a> — US stores, new condition, cheapest lot found per part. Lots BrickOwl can\'t price are left out and counted.' + (bulkOptBlind ? ' Colour doesn\'t matter is on — each part is priced in its cheapest colour.' : '') + minifigNote;
+  } else if (bulkOptSort === 'fewest') {
+    p.textContent = 'Ranked by fewest pieces left to find. Candidates are the sets in My sets.' + blindNote + minifigNote;
+  } else {
+    p.textContent = 'Candidates are the sets in My sets. Sets added before v3.33 have no year, so they sort last under Newest.' + blindNote + minifigNote;
+  }
+  return p;
+}
+
+function optRowText(r) {
+  if (bulkOptSort === 'fewest') {
+    return r.remainingPieces + ' pieces left · ' + r.foundPieces + ' of ' + r.totalPieces + ' found';
+  }
+  if (bulkOptSort === 'price') {
+    var t = (r.costUsd === null || r.costUsd === undefined)
+      ? 'Cost to complete — no prices yet'
+      : 'Cost to complete ' + fmtUsd(r.costUsd) + ' · ' + r.remainingPieces + ' pieces left';
+    if (r.unpricedLots > 0) t += ' · ' + r.unpricedLots + ' lot' + (r.unpricedLots === 1 ? '' : 's') + ' unpriced';
+    return t;
+  }
+  var pct = r.totalPieces ? Math.round(100 * r.piecesCovered / r.totalPieces) : 0;
+  return r.piecesCovered + ' of ' + r.totalPieces + ' pieces (' + pct + '%) · ' + r.lotsCovered + ' lots';
+}
+
+function renderOptRows(wrap, results, list) {
+  var show = (bulkOptSort === 'fewest' || bulkOptSort === 'price')
+    ? results
+    : results.filter(function (r) { return r.piecesCovered > 0; });
   if (!list.parts.length) {
     wrap.appendChild(el('p', 'muted', 'Scan some pieces first — the optimizer ranks your tracked sets against this list.'));
-  } else if (!covering.length) {
-    wrap.appendChild(el('p', 'muted', 'No tracked set uses any piece from this list yet.'));
+  } else if (!show.length) {
+    wrap.appendChild(el('p', 'muted', (bulkOptSort === 'fewest' || bulkOptSort === 'price')
+      ? 'No tracked sets yet — add a set to rank it here.'
+      : 'No tracked set uses any piece from this list yet.'));
   } else {
-    covering.forEach(function (r) {
+    show.forEach(function (r) {
       var row = el('div', 'bulk-opt-row');
-      var pct = r.totalPieces ? Math.round(100 * r.piecesCovered / r.totalPieces) : 0;
       var text = el('div', 'set-text');
       text.appendChild(el('div', 'set-name', r.setName + (r.year ? ' (' + r.year + ')' : '')));
-      text.appendChild(el('div', 'set-num', r.piecesCovered + ' of ' + r.totalPieces + ' pieces (' + pct + '%) · ' + r.lotsCovered + ' lots'));
+      text.appendChild(el('div', 'set-num', optRowText(r)));
       row.appendChild(text);
       row.addEventListener('click', function () { openSet(r.setKey); });
       wrap.appendChild(row);
     });
   }
-  wrap.appendChild(el('p', 'muted small', 'Candidates are the sets in My sets. ' + sets.length + ' tracked, ' + covering.length + ' use this bulk. Sets added before v3.33 have no year, so they sort last under Newest.'));
+}
+
+function runOptimizer(listId, sortMode) {
+  var list = findBulkList(listId);
+  if (!list || !bulkOptWrap) return;
+  if (sortMode) bulkOptSort = sortMode;
+  bulkOptRun++;
+  var runId = bulkOptRun;
+  var wrap = bulkOptWrap;
+  wrap.innerHTML = '';
+  wrap.appendChild(el('h3', null, OPT_HEADING[bulkOptSort] || OPT_HEADING.pieces));
+  wrap.appendChild(buildOptSortRow(listId));
+  var resultsEl = el('div', 'bulk-opt-results');
+  wrap.appendChild(resultsEl);
+  var suggEl = el('div', 'bulk-opt-sugg');
+  wrap.appendChild(suggEl);
+  bulkSuggWrap = suggEl;
+  wrap.appendChild(buildOptFooter(list));
+  if (bulkOptSort === 'price') {
+    resultsEl.appendChild(el('p', 'muted', 'Getting prices from BrickOwl…'));
+    renderPriceResults(list, resultsEl, runId);
+  } else {
+    renderOptRows(resultsEl, rankBulkListSets(list, bulkOptSort, bulkOptBlind, bulkOptExcludeMinifig), list);
+  }
+  renderSuggestionsInto(suggEl, list);
+}
+
+// Price mode: fetch every tracked set's cost to complete, then rank.
+// A mode switch while fetching abandons the stale render (runId).
+async function renderPriceResults(list, resultsEl, runId) {
+  var results = rankBulkListSets(list, 'price', bulkOptBlind, bulkOptExcludeMinifig);
+  var firstErr = null;
+  for (var i = 0; i < results.length; i++) {
+    var f = await fetchSetPrices(results[i].setKey, bulkOptBlind, bulkOptExcludeMinifig);
+    if (f.error && !firstErr) firstErr = f.error;
+    results[i].costUsd = (typeof f.totalUsd === 'number') ? f.totalUsd : null;
+    results[i].unpricedLots = f.unpricedLots || 0;
+  }
+  if (runId !== bulkOptRun) return;
+  results.sort(priceSort);
+  resultsEl.innerHTML = '';
+  if (firstErr) {
+    resultsEl.appendChild(el('p', 'muted', priceErrorText(firstErr)));
+  }
+  renderOptRows(resultsEl, results, list);
+}
+
+/* ---------- Price mode: BrickOwl through get-prices (v3.36) ----------
+ * The app never calls BrickOwl directly — the key lives in the
+ * get-prices Edge Function. Prices are cached on this device for 7
+ * days (keyed by part+colour, or by part alone when Colour doesn't
+ * matter is on), so a repeat ranking costs no BrickOwl calls. Only
+ * part lots are priced: sticker sheets and minifig lots (the rock
+ * monsters) have no BrickOwl part price, so they are counted as
+ * unpriced and left out of the total, never guessed. */
+var PRICE_TTL_MS = 7 * 24 * 3600 * 1000;
+function loadPriceCache() {
+  var v = LS.get('bf:prices', {});
+  return (v && typeof v === 'object') ? v : {};
+}
+function savePriceCache(c) { LS.set('bf:prices', c); }
+function priceCacheKey(design, blColour, blind) {
+  return blind ? String(design) + '|any' : String(design) + '|' + String(blColour);
+}
+function fmtUsd(n) { return '$' + Number(n).toFixed(2); }
+// Pieces still to find for one lot of one set, read straight from
+// the saved counts (works for sets that aren't selected, whose
+// counts map isn't in memory).
+function remOfLot(setKey, lot) {
+  var counts = LS.get(countsKey(setKey), null);
+  if (!counts || typeof counts[lot.id] !== 'number') return lot.qty;
+  return Math.max(0, Math.min(lot.qty, counts[lot.id]));
+}
+function remainingPriceLines(setKey, blind, excludeMinifig) {
+  var inv = getInventory(setKey);
+  var lines = [], unpriced = 0;
+  if (!inv) return { lines: lines, unpriced: unpriced };
+  var byKey = {};
+  inv.items.forEach(function (lot) {
+    var rem = remOfLot(setKey, lot);
+    if (rem <= 0) return;
+    // Exclude minifigures: the lot is left out of the price and out
+    // of the unpriced count — ignored entirely, on neither side.
+    if (excludeMinifig && isMinifigLot(lot)) return;
+    if (lot.cat === 'Stickers') { unpriced++; return; }
+    var blp = brickLinkPartFor(lot, rem);
+    if (blp.skip || blp.type !== 'P') { unpriced++; return; }
+    var bl = brickLinkColourId(lot);
+    if (bl === undefined) { unpriced++; return; }
+    var key = priceCacheKey(partNumOf(lot), bl, blind);
+    var ln = byKey[key];
+    if (!ln) {
+      ln = { key: key, design_id: partNumOf(lot), bl_colour: bl, qty: 0, lots: 0, blind: blind };
+      byKey[key] = ln;
+      lines.push(ln);
+    }
+    ln.qty += rem;
+    ln.lots++;
+  });
+  return { lines: lines, unpriced: unpriced };
+}
+var GETPRICES_NO_RETRY = { no_api_key: 1, bad_request: 1, unauthorized: 1 };
+async function invokeGetPrices(body) {
+  var lastRes = null;
+  for (var attempt = 0; attempt < 2; attempt++) {
+    var res;
+    try {
+      res = await sb.functions.invoke('get-prices', { body: body });
+    } catch (e) {
+      if (attempt === 0) continue;
+      throw e;
+    }
+    lastRes = res;
+    var payload = (res && res.data) || null;
+    if (payload && payload.ok) return res;
+    var code = (payload && payload.error) || null;
+    if (!code) {
+      var ctx = (res && res.error && res.error.context) || null;
+      code = (ctx && ctx.error) || null;
+    }
+    if (code && GETPRICES_NO_RETRY[code]) return res;
+    if (attempt === 0) continue;
+    return res;
+  }
+  return lastRes;
+}
+function priceErrorText(code) {
+  if (code === 'no_api_key') return 'Price mode isn\'t set up yet — add the BrickOwl key (BRICKOWL_API_KEY) in the Supabase dashboard (Edge Functions > Secrets), then deploy the get-prices function.';
+  if (code === 'unauthorized') return 'Log in first — pricing needs an account.';
+  if (code === 'bad_request') return 'Something odd was sent for pricing — try again.';
+  if (code === 'network') return 'Couldn\'t reach the price service — check your connection and try again.';
+  if (code === 'not_deployed') return 'The get-prices function isn\'t deployed yet — deploy it from the Supabase dashboard (Edge Functions > Deploy get-prices).';
+  return 'Pricing isn\'t available right now — try again.';
+}
+async function fetchSetPrices(setKey, blind, excludeMinifig) {
+  if (!sb || !user) return { error: 'unauthorized', totalUsd: null, unpricedLots: 0 };
+  var r = remainingPriceLines(setKey, blind, excludeMinifig);
+  var cache = loadPriceCache();
+  var now = Date.now();
+  var total = 0, unpriced = r.unpriced, missing = [];
+  var seen = {};
+  r.lines.forEach(function (ln) {
+    var c = cache[ln.key];
+    if (c && typeof c.usd === 'number' && (now - c.at) < PRICE_TTL_MS) {
+      total += ln.qty * c.usd;
+    } else if (!seen[ln.key]) {
+      seen[ln.key] = 1;
+      missing.push(ln);
+    }
+  });
+  if (missing.length) {
+    var res;
+    try {
+      res = await invokeGetPrices({ items: missing, country: 'US' });
+    } catch (e) {
+      return { error: 'network', totalUsd: null, unpricedLots: unpriced };
+    }
+    var payload = (res && res.data) || null;
+    if (!payload || !payload.ok) {
+      var code = (payload && payload.error) || null;
+      if (!code && res && res.error) code = 'not_deployed';
+      return { error: code || 'unknown', totalUsd: null, unpricedLots: unpriced };
+    }
+    var fresh = {};
+    (payload.prices || []).forEach(function (p) {
+      fresh[p.key] = p.usd;
+      cache[p.key] = { usd: p.usd, at: now };
+    });
+    savePriceCache(cache);
+    missing.forEach(function (ln) {
+      if (typeof fresh[ln.key] === 'number') total += ln.qty * fresh[ln.key];
+      else unpriced += ln.lots;
+    });
+  }
+  return { totalUsd: total, unpricedLots: unpriced };
+}
+
+/* ---------- All-sets suggestions: the full catalog (v3.36) ----------
+ * The tracked optimizer only ranks sets already downloaded. This
+ * section asks Rebrickable, through the suggest-sets Edge Function,
+ * which sets in the whole catalog share parts with the bulk list.
+ * The function returns candidates with lotsCovered (distinct bulk
+ * lots the set contains) and num_parts; "missing" is the upper
+ * bound num_parts - lotsCovered, because Rebrickable's parts-in-sets
+ * answers carry no per-set quantity for the part. Exact piece counts
+ * appear once the set is imported — one tap on Add to My sets, which
+ * runs the existing import path. Tracked sets never appear here:
+ * they stay in the section above. Results are cached on this device
+ * for 30 days under a key built from the bulk list's parts, so a
+ * repeat ranking costs no Rebrickable calls. */
+var SUGGEST_TTL_MS = 30 * 24 * 3600 * 1000;
+var SUGGEST_MAX_PARTS = 12;
+var SUGGEST_SHOW = 10;
+function suggestCacheKeyFor(parts, blind, excludeMinifig) {
+  var keys = (parts || []).map(function (p) { return p.part + '|' + p.colour + '|' + p.qty; }).sort();
+  return keys.join(';') + (blind ? '|blind' : '|exact') + (excludeMinifig ? '|nominifig' : '|minifig');
+}
+function loadSuggestCache() {
+  var v = LS.get('bf:suggest', {});
+  return (v && typeof v === 'object') ? v : {};
+}
+function saveSuggestCache(c) { LS.set('bf:suggest', c); }
+function saveSuggestState() {
+  var key = bulkSuggState.cacheKey;
+  if (!key) return;
+  var c = loadSuggestCache();
+  c[key] = { at: Date.now(), candidates: bulkSuggState.candidates, remaining: bulkSuggState.remaining };
+  saveSuggestCache(c);
+}
+// Distinct bulk lots, biggest first (the function checks twelve per
+// call, so the bulkiest parts go first). bl_colour is the BrickLink
+// id when the display colour has one, else null — the function
+// resolves the rest by name. With Exclude minifigures on, bulk parts
+// that are minifigure lots in a tracked set are left out of the
+// query, so minifigures never drive a suggestion match. The
+// candidate sets themselves can't be filtered the same way —
+// Rebrickable's parts-in-sets answers carry no per-set minifig
+// breakdown — so a candidate's missing count still includes its
+// minifigures until the set is imported; the results note says so.
+function isMinifigBulkPart(part, colour, blind) {
+  for (var i = 0; i < sets.length; i++) {
+    var inv = getInventory(sets[i].set_num);
+    if (!inv) continue;
+    for (var j = 0; j < inv.items.length; j++) {
+      var lot = inv.items[j];
+      if (partNumOf(lot) !== part) continue;
+      if (!blind && (lot.colour || '') !== colour) continue;
+      if (isMinifigLot(lot)) return true;
+    }
+  }
+  return false;
+}
+function distinctBulkParts(list, excludeMinifig, blind) {
+  var byKey = {}, order = [];
+  (list.parts || []).forEach(function (p) {
+    if (excludeMinifig && isMinifigBulkPart(p.part, p.colour, blind)) return;
+    var k = p.part + '|' + p.colour;
+    if (!byKey[k]) { byKey[k] = { part: p.part, colour: p.colour, qty: 0, bl_colour: null }; order.push(byKey[k]); }
+    byKey[k].qty += p.qty;
+  });
+  order.forEach(function (it) {
+    var bl = BRICKLINK_COLOUR[it.colour];
+    it.bl_colour = (bl === undefined) ? null : bl;
+  });
+  order.sort(function (a, b) { return b.qty - a.qty; });
+  return order;
+}
+// Same ranking rules as the Edge Function's suggest.ts, so cached
+// candidates re-sort locally when the sort mode changes.
+function rankSuggestionsLocal(cands, mode) {
+  var list = (cands || []).slice();
+  function missing(c) { return (typeof c.missingUpper === 'number') ? c.missingUpper : Math.max(0, c.num_parts - c.lotsCovered); }
+  if (mode === 'newest') {
+    list.sort(function (a, b) {
+      var ya = (a.year === null || a.year === undefined) ? -1 : a.year;
+      var yb = (b.year === null || b.year === undefined) ? -1 : b.year;
+      if (yb !== ya) return yb - ya;
+      if (b.lotsCovered !== a.lotsCovered) return b.lotsCovered - a.lotsCovered;
+      return a.name < b.name ? -1 : 1;
+    });
+  } else if (mode === 'fewest' || mode === 'price') {
+    list.sort(function (a, b) {
+      if (missing(a) !== missing(b)) return missing(a) - missing(b);
+      if (b.lotsCovered !== a.lotsCovered) return b.lotsCovered - a.lotsCovered;
+      return a.name < b.name ? -1 : 1;
+    });
+  } else {
+    list.sort(function (a, b) {
+      if (b.lotsCovered !== a.lotsCovered) return b.lotsCovered - a.lotsCovered;
+      if (a.num_parts !== b.num_parts) return a.num_parts - b.num_parts;
+      return a.name < b.name ? -1 : 1;
+    });
+  }
+  return list;
+}
+// Merge a fresh batch of candidates into the running list. Batches
+// cover disjoint parts, so a set found in both batches adds its lot
+// counts together; missing is recomputed from the new total.
+function mergeCandidates(into, fresh) {
+  var byNum = {};
+  into.forEach(function (c) { byNum[c.set_num] = c; });
+  (fresh || []).forEach(function (c) {
+    var ex = byNum[c.set_num];
+    if (!ex) {
+      var copy = { set_num: c.set_num, name: c.name, year: c.year, num_parts: c.num_parts, set_img_url: c.set_img_url, lotsCovered: c.lotsCovered, missingUpper: c.missingUpper };
+      into.push(copy);
+      byNum[c.set_num] = copy;
+      return;
+    }
+    ex.lotsCovered += c.lotsCovered;
+    ex.missingUpper = Math.max(0, ex.num_parts - ex.lotsCovered);
+  });
+  return into;
+}
+var SUGGEST_NO_RETRY = { no_api_key: 1, bad_request: 1, unauthorized: 1, rate_limited: 1 };
+async function invokeSuggestSets(body) {
+  var lastRes = null;
+  for (var attempt = 0; attempt < 2; attempt++) {
+    var res;
+    try {
+      res = await sb.functions.invoke('suggest-sets', { body: body });
+    } catch (e) {
+      if (attempt === 0) continue;
+      throw e;
+    }
+    lastRes = res;
+    var payload = (res && res.data) || null;
+    if (payload && payload.ok) return res;
+    var code = (payload && payload.error) || null;
+    if (!code) {
+      var ctx = (res && res.error && res.error.context) || null;
+      code = (ctx && ctx.error) || null;
+    }
+    if (code && SUGGEST_NO_RETRY[code]) return res;
+    if (attempt === 0) continue;
+    return res;
+  }
+  return lastRes;
+}
+function suggestErrorText(code) {
+  if (code === 'no_api_key') return 'Suggestions aren\'t set up yet — the Rebrickable key (REBRICKABLE_API_KEY) is missing in the Supabase dashboard (Edge Functions > Secrets).';
+  if (code === 'rate_limited') return 'Rebrickable is busy right now (its limit is about 1 call a second) — wait a minute and try again.';
+  if (code === 'unauthorized') return 'Log in first — suggestions need an account.';
+  if (code === 'bad_request') return 'Something odd was sent for suggestions — try again.';
+  if (code === 'network') return 'Couldn\'t reach the suggestions service — check your connection and try again.';
+  if (code === 'not_deployed') return 'The suggest-sets function isn\'t deployed yet — deploy it from the Supabase dashboard (Edge Functions > Deploy suggest-sets).';
+  return 'Suggestions aren\'t available right now — try again.';
+}
+async function findSuggestions(listId, more) {
+  var list = findBulkList(listId);
+  if (!list) return;
+  var parts = distinctBulkParts(list, bulkOptExcludeMinifig, bulkOptBlind);
+  if (!parts.length) return;
+  if (!more) {
+    var key = suggestCacheKeyFor(parts, bulkOptBlind, bulkOptExcludeMinifig);
+    var cached = loadSuggestCache()[key];
+    if (cached && (Date.now() - cached.at) < SUGGEST_TTL_MS) {
+      bulkSuggState = { listId: listId, status: 'done', candidates: cached.candidates || [], queried: [], partial: false, unmapped: [], error: '', remaining: cached.remaining || [], cacheKey: key };
+      renderSuggestionsInto(bulkSuggWrap, list);
+      return;
+    }
+    bulkSuggState = { listId: listId, status: 'loading', candidates: [], queried: [], partial: false, unmapped: [], error: '', remaining: parts.slice(), cacheKey: key };
+    renderSuggestionsInto(bulkSuggWrap, list);
+    await fetchSuggestBatch(list, parts.slice(0, SUGGEST_MAX_PARTS));
+    return;
+  }
+  var next = bulkSuggState.remaining.slice(0, SUGGEST_MAX_PARTS);
+  if (!next.length) return;
+  bulkSuggState.status = 'loading';
+  renderSuggestionsInto(bulkSuggWrap, list);
+  await fetchSuggestBatch(list, next);
+}
+async function fetchSuggestBatch(list, batch) {
+  var res;
+  try {
+    res = await invokeSuggestSets({ parts: batch, blind: bulkOptBlind });
+  } catch (e) {
+    bulkSuggState.status = 'error';
+    bulkSuggState.error = 'network';
+    renderSuggestionsInto(bulkSuggWrap, list);
+    return;
+  }
+  var payload = (res && res.data) || null;
+  if (!payload || !payload.ok) {
+    var code = (payload && payload.error) || null;
+    bulkSuggState.status = 'error';
+    bulkSuggState.error = code || (res && res.error ? 'not_deployed' : 'unknown');
+    renderSuggestionsInto(bulkSuggWrap, list);
+    return;
+  }
+  mergeCandidates(bulkSuggState.candidates, payload.candidates || []);
+  bulkSuggState.queried = (bulkSuggState.queried || []).concat(payload.queried || []);
+  bulkSuggState.partial = !!payload.partial;
+  bulkSuggState.unmapped = (bulkSuggState.unmapped || []).concat(payload.unmapped || []);
+  bulkSuggState.remaining = (bulkSuggState.remaining || []).slice(batch.length);
+  bulkSuggState.status = 'done';
+  saveSuggestState();
+  renderSuggestionsInto(bulkSuggWrap, list);
+}
+function renderSuggestionsInto(wrap, list) {
+  if (!wrap) return;
+  if (!list || bulkSuggState.listId !== list.id) {
+    bulkSuggState = { listId: list ? list.id : null, status: 'idle', candidates: [], queried: [], partial: false, unmapped: [], error: '', remaining: [], cacheKey: null };
+  }
+  wrap.innerHTML = '';
+  wrap.appendChild(el('h3', null, 'Sets you don\'t track yet'));
+  if (bulkOptExcludeMinifig) {
+    wrap.appendChild(el('p', 'muted small', 'Minifigures excluded from the match — minifig pieces in this bulk list didn\'t drive these suggestions. A candidate\'s missing count still includes its minifigures until you import it.'));
+  }
+  var st = bulkSuggState;
+  if (st.status === 'idle') {
+    wrap.appendChild(el('p', 'muted', 'Suggestions check the full catalog on Rebrickable — the sets sharing parts with this bulk list. Tracked sets stay in the section above; these are new ones.'));
+    var btn = el('button', 'btn btn-small', 'Find sets in the full catalog');
+    btn.type = 'button';
+    btn.addEventListener('click', function () { findSuggestions(list.id, false); });
+    wrap.appendChild(btn);
+    return;
+  }
+  if (st.status === 'loading') {
+    wrap.appendChild(el('p', 'muted', 'Checking the full catalog… Rebrickable answers about one part a second, so a big bulk list takes a while.'));
+    return;
+  }
+  if (st.status === 'error') {
+    wrap.appendChild(el('p', 'muted', suggestErrorText(st.error)));
+    var retry = el('button', 'btn btn-small', 'Try again');
+    retry.type = 'button';
+    retry.addEventListener('click', function () { findSuggestions(list.id, false); });
+    wrap.appendChild(retry);
+    return;
+  }
+  var fresh = st.candidates.filter(function (c) { return !findSet(c.set_num); });
+  var ranked = rankSuggestionsLocal(fresh, bulkOptSort);
+  if (!ranked.length) {
+    wrap.appendChild(el('p', 'muted', 'No untracked set shares a part with this bulk list.'));
+  } else {
+    ranked.slice(0, SUGGEST_SHOW).forEach(function (c) {
+      var row = el('div', 'bulk-opt-row sugg-row');
+      var text = el('div', 'set-text');
+      text.appendChild(el('div', 'set-name', c.name + (c.year ? ' (' + c.year + ')' : '')));
+      var missing = (typeof c.missingUpper === 'number') ? c.missingUpper : Math.max(0, c.num_parts - c.lotsCovered);
+      var sub = 'Shares ' + c.lotsCovered + ' lot' + (c.lotsCovered === 1 ? '' : 's') + ' · ' + c.num_parts + ' pieces total · up to ' + missing + ' missing';
+      if (bulkOptSort === 'price') sub += ' · exact price after import';
+      text.appendChild(el('div', 'set-num', sub));
+      row.appendChild(text);
+      var add = el('button', 'btn btn-small sugg-add', 'Add to My sets');
+      add.type = 'button';
+      add.addEventListener('click', function (e) { if (e && e.stopPropagation) e.stopPropagation(); addSuggestedSet(c.set_num, add); });
+      row.appendChild(add);
+      wrap.appendChild(row);
+    });
+    if (ranked.length > SUGGEST_SHOW) {
+      wrap.appendChild(el('p', 'muted small', 'Showing the top ' + SUGGEST_SHOW + ' of ' + ranked.length + ' suggestions.'));
+    }
+  }
+  if (st.partial && st.remaining.length) {
+    var more = el('button', 'btn btn-small', 'Check ' + st.remaining.length + ' more part' + (st.remaining.length === 1 ? '' : 's'));
+    more.type = 'button';
+    more.addEventListener('click', function () { findSuggestions(list.id, true); });
+    wrap.appendChild(more);
+    wrap.appendChild(el('p', 'muted small', 'Only the first parts have been checked so far — more parts may surface more sets.'));
+  } else if (st.partial) {
+    wrap.appendChild(el('p', 'muted small', 'Rebrickable was busy, so some parts weren\'t checked — try again in a bit.'));
+  }
+  if (st.unmapped.length) {
+    wrap.appendChild(el('p', 'muted small', 'Not checked (' + st.unmapped.length + '): ' + st.unmapped.map(function (u) { return u.part + ' ' + u.colour; }).join(', ') + '.'));
+  }
+}
+async function addSuggestedSet(setNum, btn) {
+  if (findSet(setNum)) { btn.textContent = 'Added ✓'; btn.disabled = true; return; }
+  btn.disabled = true;
+  btn.textContent = 'Adding…';
+  var res;
+  try {
+    res = await invokeImportSet({ set_num: setNum }, null);
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Add to My sets';
+    return;
+  }
+  var payload = (res && res.data) || null;
+  if (!payload || !payload.ok) {
+    btn.disabled = false;
+    btn.textContent = 'Add to My sets';
+    return;
+  }
+  pendingImport = {
+    set_num: payload.set.set_num, name: payload.set.name, year: payload.set.year,
+    num_parts: payload.set.num_parts, set_img_url: payload.set.set_img_url,
+    inventory: payload.inventory, lots: payload.lots, pieces: payload.pieces,
+    cached: !!payload.cached
+  };
+  addImportedSet(false);
+  bulkSuggState.candidates = bulkSuggState.candidates.filter(function (c) { return c.set_num !== setNum; });
+  saveSuggestState();
+  runOptimizer(bulkSuggState.listId, bulkOptSort);
 }
 
 /* ---------- Camera scan ---------- */
@@ -3449,6 +4132,8 @@ var scanOverlay = null, scanVideo = null, scanCanvas = null, scanStatusEl = null
     scanCaptureBtn = null, scanConfirmEl = null, scanPhotoEl = null,
     scanPartNumEl = null, scanPartNameEl = null, scanScoreEl = null,
     scanColourSel = null, scanMetaEl = null, scanDoneBtn = null, scanCancelBtn = null,
+    scanQtyEl = null, scanQtyMinusBtn = null, scanQtyPlusBtn = null,
+    scanChipsEl = null,
     scanControlsEl = null, scanFileInput = null, scanViewListBtn = null;
 var scanPickerModal = null, scanPickerList = null, scanNewNameInput = null, scanPickerMsg = null, scanCreateBtn = null;
 
@@ -3581,6 +4266,12 @@ function ensureScanOverlay() {
   scanScoreEl = document.createElement('div');
   scanScoreEl.className = 'scan-score muted small';
   scanConfirmEl.appendChild(scanScoreEl);
+  // Sampled-colour chips (v3.36): one-tap corrections above the
+  // picker. Empty and hidden until a scan samples a colour.
+  scanChipsEl = document.createElement('div');
+  scanChipsEl.className = 'scan-chips';
+  scanChipsEl.hidden = true;
+  scanConfirmEl.appendChild(scanChipsEl);
   var colourLabel = document.createElement('label');
   colourLabel.className = 'scan-colour-label';
   colourLabel.textContent = 'Colour ';
@@ -3589,6 +4280,25 @@ function ensureScanOverlay() {
   scanColourSel.addEventListener('change', function (e) { onScanColourChange(e.target.value); });
   colourLabel.appendChild(scanColourSel);
   scanConfirmEl.appendChild(colourLabel);
+  // Quantity stepper (v3.36): how many of this piece were scanned.
+  // Default 1, floor 1. It moves the bulk-list count live, so Done
+  // and Cancel both see the right number of copies.
+  var qtyRow = document.createElement('div');
+  qtyRow.className = 'scan-qty-row';
+  qtyRow.appendChild(el('span', 'scan-qty-label', 'Quantity '));
+  scanQtyMinusBtn = el('button', 'build-step-btn', '−');
+  scanQtyMinusBtn.type = 'button';
+  scanQtyMinusBtn.setAttribute('aria-label', 'One fewer of this piece');
+  scanQtyMinusBtn.addEventListener('click', function () { setScanQty((scanState.pending ? scanState.pending.qty : 1) - 1); });
+  qtyRow.appendChild(scanQtyMinusBtn);
+  scanQtyEl = el('span', 'scan-qty', '1');
+  qtyRow.appendChild(scanQtyEl);
+  scanQtyPlusBtn = el('button', 'build-step-btn', '+');
+  scanQtyPlusBtn.type = 'button';
+  scanQtyPlusBtn.setAttribute('aria-label', 'One more of this piece');
+  scanQtyPlusBtn.addEventListener('click', function () { setScanQty((scanState.pending ? scanState.pending.qty : 1) + 1); });
+  qtyRow.appendChild(scanQtyPlusBtn);
+  scanConfirmEl.appendChild(qtyRow);
   scanMetaEl = document.createElement('p');
   scanMetaEl.className = 'scan-meta muted small';
   scanConfirmEl.appendChild(scanMetaEl);
@@ -3682,19 +4392,129 @@ function onScanFile(file) {
     return;
   }
   var reader = new FileReader();
-  reader.onload = function () { identifyPart(file, String(reader.result || '')); };
+  reader.onload = function () {
+    var dataUrl = String(reader.result || '');
+    // Draw the picked photo onto the sampling canvas first, so the
+    // Brickognize bounding box (in the photo's own pixels) maps
+    // onto the canvas 1:1, exactly like the camera frame does.
+    drawPhotoToSampleCanvas(dataUrl, function () { identifyPart(file, dataUrl); });
+  };
   reader.onerror = function () { scanStatusEl.textContent = 'Couldn\'t read that photo — try another.'; };
   reader.readAsDataURL(file);
 }
 
-// Brickognize's answer: { items: [{ id, name, score }] } — the best
-// match first, empty items when nothing was recognised. No colour in
-// the response, which is why the confirm card asks for one.
+// Draw a data-URL photo onto the sampling canvas at its natural
+// size. Calls done() once drawn — or at once when the image can't
+// be drawn in this browser, so identification still runs, just
+// without colour sampling.
+function drawPhotoToSampleCanvas(dataUrl, done) {
+  if (typeof Image === 'undefined') { done(); return; }
+  var img = new Image();
+  img.onload = function () {
+    try {
+      if (!scanCanvas) scanCanvas = document.createElement('canvas');
+      var ctx = scanCanvas.getContext ? scanCanvas.getContext('2d') : null;
+      if (ctx && img.naturalWidth) {
+        scanCanvas.width = img.naturalWidth;
+        scanCanvas.height = img.naturalHeight;
+        ctx.drawImage(img, 0, 0);
+      }
+    } catch (e) {}
+    done();
+  };
+  img.onerror = function () { done(); };
+  img.src = dataUrl;
+}
+
+// Brickognize's answer: { items: [{ id, name, score }], bounding_box }
+// — the best match first, empty items when nothing was recognised.
+// No colour in the response, which is why the confirm card asks for
+// one — but the top-level bounding_box (pixel coordinates in the
+// submitted image, verified live 2026-11-26: { left, upper, right,
+// lower, image_width, image_height }) tells the sampler where the
+// piece is, so the colour can be read off the photo.
 function parseBrickognizeResponse(json) {
   if (!json || !json.items || !json.items.length) return null;
   var it = json.items[0];
   if (!it || it.id === undefined || it.id === null || String(it.id) === '') return null;
-  return { part: String(it.id), name: String(it.name || ''), score: (typeof it.score === 'number') ? it.score : null };
+  var bb = (json && json.bounding_box) || null;
+  var box = null;
+  if (bb && isFinite(bb.left) && isFinite(bb.upper) && isFinite(bb.right) && isFinite(bb.lower) && bb.image_width > 0 && bb.image_height > 0) {
+    box = { left: bb.left, upper: bb.upper, right: bb.right, lower: bb.lower, image_width: bb.image_width, image_height: bb.image_height };
+  }
+  return { part: String(it.id), name: String(it.name || ''), score: (typeof it.score === 'number') ? it.score : null, box: box };
+}
+
+// Nearest LEGO colours to a sampled RGB, closest first, among the
+// colours the picker can offer. Options with no RGB entry are never
+// picked. Ties break alphabetically, so the solid twin wins over
+// its transparent twin (Red before Trans-Red — same RGB).
+function nearestLegoColours(rgb, options, n) {
+  var scored = [];
+  (options || []).forEach(function (name) {
+    var ref = LEGO_COLOUR_RGB[name];
+    if (!ref) return;
+    var dr = rgb.r - ref[0], dg = rgb.g - ref[1], db = rgb.b - ref[2];
+    scored.push({ colour: name, d: dr * dr + dg * dg + db * db });
+  });
+  scored.sort(function (a, b) { return (a.d - b.d) || (a.colour < b.colour ? -1 : 1); });
+  return scored.slice(0, n || 3).map(function (s) { return s.colour; });
+}
+
+// Average colour of a canvas region, ignoring near-white pixels so
+// a pale surface doesn't wash the piece out. box is in the image's
+// own pixels (a Brickognize bounding_box); it is scaled onto the
+// canvas when the two differ in size. No box means the centre 40%
+// square — the piece is usually centred. Returns { r, g, b } or
+// null when nothing usable was sampled (no canvas, no pixels, or
+// every pixel near-white, as with a white piece on a white surface
+// photographed too bright — then the caller falls back to the
+// last-used colour). Large regions are stride-sampled to ~40k
+// pixels so a full video frame doesn't stall the confirm card.
+function sampleCanvasColour(canvas, box) {
+  if (!canvas || !canvas.getContext) return null;
+  var ctx = canvas.getContext('2d');
+  if (!ctx || !ctx.getImageData || !canvas.width || !canvas.height) return null;
+  var x0, y0, x1, y1;
+  if (box && isFinite(box.left) && isFinite(box.upper) && isFinite(box.right) && isFinite(box.lower) && box.image_width > 0 && box.image_height > 0) {
+    var sx = canvas.width / box.image_width, sy = canvas.height / box.image_height;
+    x0 = Math.max(0, Math.floor(box.left * sx));
+    y0 = Math.max(0, Math.floor(box.upper * sy));
+    x1 = Math.min(canvas.width, Math.ceil(box.right * sx));
+    y1 = Math.min(canvas.height, Math.ceil(box.lower * sy));
+  } else {
+    var w = Math.floor(canvas.width * 0.4), h = Math.floor(canvas.height * 0.4);
+    x0 = Math.floor((canvas.width - w) / 2);
+    y0 = Math.floor((canvas.height - h) / 2);
+    x1 = x0 + w;
+    y1 = y0 + h;
+  }
+  if (x1 <= x0 || y1 <= y0) return null;
+  var img;
+  try { img = ctx.getImageData(x0, y0, x1 - x0, y1 - y0); } catch (e) { return null; }
+  var d = img && img.data;
+  if (!d || !d.length) return null;
+  var step = Math.max(1, Math.floor(Math.sqrt((x1 - x0) * (y1 - y0) / 40000)));
+  var r = 0, g = 0, b = 0, n = 0;
+  for (var i = 0; i + 2 < d.length; i += 4 * step) {
+    var pr = d[i], pg = d[i + 1], pb = d[i + 2];
+    if (pr > 250 && pg > 250 && pb > 250) continue;
+    r += pr; g += pg; b += pb; n++;
+  }
+  if (!n) return null;
+  return { r: Math.round(r / n), g: Math.round(g / n), b: Math.round(b / n) };
+}
+
+// Sample the colour of the piece just identified, off the captured
+// frame (scanCanvas holds the exact frame that was submitted for
+// the camera path, and the picked photo at natural size for the
+// file path). Returns { colour, top3, rgb } or null.
+function sampleScanColour(box, options) {
+  var rgb = sampleCanvasColour(scanCanvas, box);
+  if (!rgb) return null;
+  var top = nearestLegoColours(rgb, options, 3);
+  if (!top.length) return null;
+  return { colour: top[0], top3: top, rgb: rgb };
 }
 
 async function identifyPart(blob, photo) {
@@ -3719,7 +4539,7 @@ async function identifyPart(blob, photo) {
       scanStatusEl.textContent = 'No part recognised — try again, closer up on a plain background.';
       return;
     }
-    handleIdentified(scanState.listId, found.part, found.name, found.score, photo);
+    handleIdentified(scanState.listId, found.part, found.name, found.score, photo, found.box);
   } catch (e) {
     scanStatusEl.textContent = 'Identification failed — check your connection and try again.';
   } finally {
@@ -3729,16 +4549,27 @@ async function identifyPart(blob, photo) {
 }
 
 // The piece is added the moment it is identified; the confirm card
-// lets Joseph fix the colour, and Cancel takes it back out.
-function handleIdentified(listId, part, name, score, photo) {
+// lets Joseph fix the colour and the quantity, and Cancel takes it
+// back out. pending.qty is this scan's copies; pending.base is how
+// many of this part+colour were already in the list, so the stepper
+// and Cancel both count from the right starting point. The colour
+// starts as the sampled colour when the photo gives one (v3.36) —
+// the top-3 chips sit above the picker for a one-tap correction —
+// else the last-used colour, else Black. pending.sampledTop3 keeps
+// the chips around so a colour change re-renders their active state.
+function handleIdentified(listId, part, name, score, photo, box) {
   ensureScanOverlay();
   var list = findBulkList(listId);
   if (!list) return;
   var options = scanColourOptions();
-  var colour = (scanState.lastColour && options.indexOf(scanState.lastColour) >= 0)
-    ? scanState.lastColour : 'Black';
+  var sampled = sampleScanColour(box, options);
+  var colour = sampled ? sampled.colour
+    : ((scanState.lastColour && options.indexOf(scanState.lastColour) >= 0)
+      ? scanState.lastColour : 'Black');
+  if (sampled) scanState.lastColour = colour;
+  var base = bulkListQty(list, part, colour);
   addScannedPart(listId, part, name, colour);
-  scanState.pending = { listId: listId, part: part, name: name, colour: colour };
+  scanState.pending = { listId: listId, part: part, name: name, colour: colour, qty: 1, base: base, sampledTop3: sampled ? sampled.top3 : null };
   scanPhotoEl.src = photo || '';
   scanPartNumEl.textContent = part;
   scanPartNameEl.textContent = name || 'Unknown part';
@@ -3753,10 +4584,47 @@ function handleIdentified(listId, part, name, score, photo) {
     scanColourSel.appendChild(opt);
   });
   scanColourSel.value = colour;
+  renderScanChips(scanState.pending.sampledTop3);
+  syncScanQty();
   updateScanMeta();
   scanControlsEl.hidden = true;
   scanVideo.hidden = true;
   scanConfirmEl.hidden = false;
+}
+// The sampled-colour chips: the top-3 nearest colours as one-tap
+// buttons above the picker. The manual picker stays the override —
+// a chip tap is just a faster way to pick. Hidden when the photo
+// gave no sample.
+function renderScanChips(names) {
+  if (!scanChipsEl) return;
+  scanChipsEl.innerHTML = '';
+  if (!names || !names.length) { scanChipsEl.hidden = true; return; }
+  scanChipsEl.hidden = false;
+  scanChipsEl.appendChild(el('span', 'scan-chips-label', 'Looks like: '));
+  names.forEach(function (name) {
+    var b = el('button', 'btn btn-small scan-chip' + ((scanState.pending && scanState.pending.colour === name) ? ' on' : ''), name);
+    b.type = 'button';
+    b.addEventListener('click', function () { onScanColourChange(name); });
+    scanChipsEl.appendChild(b);
+  });
+}
+// Quantity stepper: the bulk list holds base + qty copies of this
+// scan's part+colour. The floor is 1 — a scan always adds at least
+// one piece; Cancel is how a scan is undone entirely.
+function setScanQty(n) {
+  var p = scanState.pending;
+  if (!p) return;
+  n = Math.max(1, n);
+  p.qty = n;
+  setScannedQty(p.listId, p.part, p.colour, p.base + n);
+  syncScanQty();
+  updateScanMeta();
+}
+function syncScanQty() {
+  var p = scanState.pending;
+  var n = p ? p.qty : 1;
+  if (scanQtyEl) scanQtyEl.textContent = String(n);
+  if (scanQtyMinusBtn) scanQtyMinusBtn.disabled = n <= 1;
 }
 function updateScanMeta() {
   if (!scanState.pending) return;
@@ -3768,10 +4636,18 @@ function updateScanMeta() {
 function onScanColourChange(newColour) {
   var p = scanState.pending;
   if (!p || !newColour || newColour === p.colour) return;
-  removeScannedPart(p.listId, p.part, p.colour, 1);
-  addScannedPart(p.listId, p.part, p.name, newColour);
+  // Move this scan's copies (not the whole row) to the new colour.
+  setScannedQty(p.listId, p.part, p.colour, p.base);
+  var list = findBulkList(p.listId);
+  var baseNew = list ? bulkListQty(list, p.part, newColour) : 0;
+  for (var i = 0; i < p.qty; i++) addScannedPart(p.listId, p.part, p.name, newColour);
   p.colour = newColour;
+  p.base = baseNew;
   scanState.lastColour = newColour;
+  // A chip tap changes the colour without touching the select, so
+  // keep the picker and the chips showing the same colour.
+  if (scanColourSel) scanColourSel.value = newColour;
+  renderScanChips(p.sampledTop3);
   updateScanMeta();
 }
 function confirmScanDone() {
@@ -3785,7 +4661,9 @@ function confirmScanDone() {
 }
 function cancelScanPending() {
   var p = scanState.pending;
-  if (p) removeScannedPart(p.listId, p.part, p.colour, 1);
+  // Take this scan's copies back out, leaving whatever was already
+  // in the list (base) untouched.
+  if (p) setScannedQty(p.listId, p.part, p.colour, p.base);
   scanState.pending = null;
   scanConfirmEl.hidden = true;
   scanControlsEl.hidden = false;
@@ -3851,14 +4729,18 @@ function closeScanAssign() { // Cancel / overlay / Escape: the piece stays in th
   resumeScanAfterAssign();
 }
 // Found / total pieces for one tracked set, from the saved counts
-// (the same numbers the sidebar percent is built from).
-function setFoundTotal(setKey) {
+// (the same numbers the sidebar percent is built from). With
+// excludeMinifig, minifigure lots are left out of both numbers, so
+// the optimizer's remaining count drops by exactly the minifig
+// pieces still to find.
+function setFoundTotal(setKey, excludeMinifig) {
   var inv = getInventory(setKey);
   if (!inv) return { found: 0, total: 0 };
   var meta = findSet(setKey);
   var counts = LS.get(countsKey(meta ? meta.set_num : setKey), null);
   var found = 0, total = 0;
   inv.items.forEach(function (it) {
+    if (excludeMinifig && isMinifigLot(it)) return;
     total += it.qty;
     var rem = (counts && typeof counts[it.id] === 'number') ? Math.max(0, Math.min(it.qty, counts[it.id])) : it.qty;
     found += (it.qty - rem);
@@ -3896,13 +4778,46 @@ function setsNeedingScannedPart(part, colour) {
   });
   return out;
 }
+// Credit n finds of this piece to a set, spilling across that
+// set's lots of the same part+colour when the first lot runs out
+// (a set can hold the same part in two lots). One changeRemaining
+// call per lot touched, so the sounds and the card refresh fire once
+// per lot, not once per piece.
+function applyFoundToN(candidate, n) {
+  var setKey = candidate.setKey;
+  var pk = partKeyOf(candidate.lot);
+  var left = n;
+  var inv = getInventory(setKey);
+  if (inv) {
+    for (var i = 0; i < inv.items.length && left > 0; i++) {
+      var lot = inv.items[i];
+      if (partNumOf(lot) + '|' + (lot.colour || '') !== pk) continue;
+      var copy = {};
+      for (var k in lot) copy[k] = lot[k];
+      copy.setKey = setKey;
+      var rem = remOf(copy);
+      if (rem <= 0) continue;
+      var d = Math.min(rem, left);
+      changeRemaining(copy, -d);
+      left -= d;
+    }
+  }
+  lastMinusSet[pk] = setKey;
+  if (setRemForPart(setKey, pk) === 0) {
+    var prefs = loadHuntPrefs();
+    if (prefs[pk]) { delete prefs[pk]; saveHuntPrefs(prefs); }
+  }
+}
 function assignScannedToSet(candidate, p) {
   // The set may not be selected, so its counts map may not be in
   // memory: load it first, or changeRemaining would start that lot
   // from full qty and save a partial map, wiping the set's counts.
   if (!remainingBySet[candidate.setKey]) remainingBySet[candidate.setKey] = loadCounts(candidate.setKey);
-  applyFoundTo(candidate);
-  removeScannedPart(p.listId, p.part, p.colour, 1);
+  // Credit up to what the set still needs — never over-credit. Any
+  // remainder of the scanned quantity stays in the bulk list.
+  var n = Math.min(p.qty || 1, candidate.rem);
+  applyFoundToN(candidate, n);
+  removeScannedPart(p.listId, p.part, p.colour, n);
   hideScanAssign();
   resumeScanAfterAssign();
 }
@@ -3910,7 +4825,7 @@ function showScanAssign(p) {
   var m = ensureScanAssignModal();
   scanAssignPending = p;
   var list = findBulkList(p.listId);
-  scanAssignSub.textContent = p.part + ' · ' + (p.name || 'Unknown part') + ' · ' + p.colour;
+  scanAssignSub.textContent = p.part + ' · ' + (p.name || 'Unknown part') + ' · ' + p.colour + ((p.qty || 1) > 1 ? ' ×' + p.qty : '');
   scanAssignList.innerHTML = '';
   // Bulk list first, always — the piece is already there.
   var bulkBtn = document.createElement('button');

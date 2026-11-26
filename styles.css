@@ -529,6 +529,27 @@ input, select {
 .scan-new-row { display: flex; gap: 8px; margin: 10px 0; }
 .scan-new-row input { flex: 1; min-width: 0; }
 
+/* v3.36 — scan quantity stepper: minus / number / plus, same
+ * stepper buttons as the build panel. */
+.scan-qty-row { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.scan-qty { font-size: 18px; min-width: 28px; text-align: center; }
+
+/* v3.36 — sampled-colour chips above the colour picker: the top-3
+ * nearest colours as one-tap corrections. The active chip (the
+ * colour the piece is currently filed under) reads as a filled
+ * button, like the active sort buttons. */
+.scan-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.scan-chips[hidden] { display: none; }
+.scan-chips-label { font-size: 14px; color: #555; }
+.scan-chip.on { background: #222; color: #fff; border-color: #222; }
+
+/* v3.36 — optimizer toggles: Colour doesn't matter / Exclude
+ * minifigures. The on-state is a filled button so the state is
+ * obvious at a glance. The Add button in suggestion rows keeps
+ * its own column instead of stretching the row. */
+.bulk-opt-toggle.on { background: #222; color: #fff; border-color: #222; }
+.sugg-add { flex-shrink: 0; }
+
 /* v3.33 — Order remaining modal: wider box, XML text area. */
 .order-modal .confirm-box { max-width: 560px; }
 .order-xml { width: 100%; font-family: monospace; font-size: 12px; padding: 8px; border: 2px solid #999; border-radius: 8px; resize: vertical; }

@@ -1821,10 +1821,14 @@ async function main() {
 
   // --- v3.33: Brickognize response parsing (live shape verified
   // 2026-11-25: { items: [{ id, name, score }] }, empty when nothing).
-  check("brickognize: parses the best match", sandbox.parseBrickognizeResponse({ items: [{ id: "3001", name: "Brick 2 x 4", score: 0.97 }] }), { part: "3001", name: "Brick 2 x 4", score: 0.97 });
+  check("brickognize: parses the best match", sandbox.parseBrickognizeResponse({ items: [{ id: "3001", name: "Brick 2 x 4", score: 0.97 }] }), { part: "3001", name: "Brick 2 x 4", score: 0.97, box: null });
   check("brickognize: empty items is null", sandbox.parseBrickognizeResponse({ items: [] }), null);
   check("brickognize: missing items is null", sandbox.parseBrickognizeResponse({}), null);
   check("brickognize: match without an id is null", sandbox.parseBrickognizeResponse({ items: [{ name: "Brick 2 x 4" }] }), null);
+  // v3.36: the top-level bounding_box rides along (live shape verified
+  // 2026-11-26: pixel coords in the submitted image).
+  check("brickognize: bounding_box is kept", sandbox.parseBrickognizeResponse({ items: [{ id: "3001", name: "Brick 2 x 4", score: 0.74 }], bounding_box: { left: 1.6, upper: 25.2, right: 191.8, lower: 165.8, image_width: 192, image_height: 192, score: 0.98 } }), { part: "3001", name: "Brick 2 x 4", score: 0.74, box: { left: 1.6, upper: 25.2, right: 191.8, lower: 165.8, image_width: 192, image_height: 192 } });
+  check("brickognize: a partial box is dropped", sandbox.parseBrickognizeResponse({ items: [{ id: "3001", name: "Brick 2 x 4", score: 0.74 }], bounding_box: { left: 1, upper: 2 } }), { part: "3001", name: "Brick 2 x 4", score: 0.74, box: null });
 
   // --- v3.33: scan confirm card — added on identify, Cancel undoes it.
   const scanList = sandbox.createBulkList("Scan test");
@@ -1961,10 +1965,301 @@ async function main() {
   check("opt: 10305-1 covers 5 pieces, 2 lots", [byKey["10305-1"].piecesCovered, byKey["10305-1"].lotsCovered], [5, 2]);
   const rankedByNewest = sandbox.rankBulkListSets(optList, "newest").map((r) => r.setKey);
   check("opt: newest puts 2022 first, then 2021, year-less last", rankedByNewest.indexOf("10305-1") < rankedByNewest.indexOf("10294-1") && rankedByNewest.indexOf("10294-1") < rankedByNewest.indexOf("8961-1"), true);
-  check("opt: price mode is not connected", sandbox.OPTIMIZER_PRICE_MODE, "not-connected");
+  check("opt: price mode is BrickOwl", sandbox.OPTIMIZER_PRICE_MODE, "brickowl");
   sandbox.openBulkList(optList.id);
   sandbox.runOptimizer(optList.id, "pieces");
-  check("opt: price button is disabled", sandbox.bulkOptPriceBtn.disabled, true);
+  check("opt: price button is enabled", sandbox.bulkOptPriceBtn.disabled, false);
+
+  // --- v3.36: quantity stepper, blind toggle, fewest ranking,
+  // price mode, suggestions, exclude-minifigures, colour sampling.
+  // Reset the counts the earlier sections moved, so every check
+  // below starts from full sets.
+  const fullCounts = (inv) => { const m = {}; inv.items.forEach((it) => { m[it.id] = it.qty; }); return m; };
+  sandbox.saveCounts("8961-1", fullCounts(sandbox.getInventory("8961-1")));
+  sandbox.saveCounts("10294-1", fullCounts(fixtureInv10294));
+  sandbox.saveCounts("10305-1", fullCounts(fixtureInv10305));
+  sandbox.bulkOptBlind = false;
+  sandbox.bulkOptExcludeMinifig = false;
+  sandbox.localStorage.removeItem("bf:prices");
+  sandbox.localStorage.removeItem("bf:suggest");
+  sandbox.closeScanAssign();
+  sandbox.scanState.lastColour = "Black";
+  sandbox.scanCanvas = null;
+
+  // Quantity stepper: default 1, floor 1, moves the bulk list live.
+  const qtyList = sandbox.createBulkList("Qty test");
+  sandbox.handleIdentified(qtyList.id, "3001", "Brick 2 x 4", 0.97, "data:image/jpeg;base64,q1");
+  check("qty: default 1", sandbox.scanState.pending.qty, 1);
+  check("qty: number shows 1", sandbox.scanQtyEl.textContent, "1");
+  check("qty: minus disabled at 1", sandbox.scanQtyMinusBtn.disabled, true);
+  sandbox.scanQtyPlusBtn.listeners.click[0]();
+  sandbox.scanQtyPlusBtn.listeners.click[0]();
+  check("qty: plus twice is 3", sandbox.scanState.pending.qty, 3);
+  check("qty: bulk list holds 3", sandbox.findBulkList(qtyList.id).parts[0].qty, 3);
+  check("qty: minus enabled above 1", sandbox.scanQtyMinusBtn.disabled, false);
+  sandbox.scanQtyMinusBtn.listeners.click[0]();
+  check("qty: minus back to 2", sandbox.scanState.pending.qty, 2);
+  sandbox.scanQtyMinusBtn.listeners.click[0]();
+  sandbox.scanQtyMinusBtn.listeners.click[0]();
+  check("qty: minus never goes below 1", sandbox.scanState.pending.qty, 1);
+  check("qty: bulk list back to 1", sandbox.findBulkList(qtyList.id).parts[0].qty, 1);
+  // Colour change moves the whole quantity, not one copy.
+  sandbox.scanQtyPlusBtn.listeners.click[0]();
+  sandbox.scanColourSel.value = "Red";
+  sandbox.scanColourSel.listeners.change[0]({ target: sandbox.scanColourSel });
+  check("qty: colour change moves both copies", sandbox.findBulkList(qtyList.id).parts, [{ part: "3001", name: "Brick 2 x 4", colour: "Red", qty: 2, img: "https://img.bricklink.com/ItemImage/PN/5/3001.png" }]);
+  // Cancel restores the base the scan started from.
+  const cancelList = sandbox.createBulkList("Cancel qty test");
+  for (let i = 0; i < 5; i++) sandbox.addScannedPart(cancelList.id, "3001", "Brick 2 x 4", "Black");
+  sandbox.scanState.lastColour = "Black";
+  sandbox.handleIdentified(cancelList.id, "3001", "Brick 2 x 4", 0.97, "data:image/jpeg;base64,q2");
+  sandbox.scanQtyPlusBtn.listeners.click[0]();
+  check("qty: base 5 plus scan 2 is 7", sandbox.findBulkList(cancelList.id).parts[0].qty, 7);
+  sandbox.scanCancelBtn.listeners.click[0]();
+  check("qty: Cancel leaves the base 5", sandbox.findBulkList(cancelList.id).parts[0].qty, 5);
+  // Assigning N credits up to the set's need; the rest stays in bulk.
+  sandbox.saveCounts("10305-1", { "300126-3001-Black": 2, "614126-6141-White": 2 });
+  const assignQtyList = sandbox.createBulkList("Assign qty test");
+  sandbox.scanState.lastColour = "Black";
+  sandbox.handleIdentified(assignQtyList.id, "3001", "Brick 2 x 4", 0.97, "data:image/jpeg;base64,q3");
+  sandbox.scanQtyPlusBtn.listeners.click[0]();
+  sandbox.scanQtyPlusBtn.listeners.click[0]();
+  sandbox.scanDoneBtn.listeners.click[0]();
+  check("qty-assign: popup opens", sandbox.scanAssignModal.hidden, false);
+  const assignQtyRow = sandbox.scanAssignList.children.slice(1).find((b) => b.textContent === "Test Set 2");
+  check("qty-assign: Test Set 2 row shows its need of 2", assignQtyRow.children[0].textContent, "Needs 2 · 1/5 pieces found");
+  assignQtyRow.listeners.click[0]();
+  check("qty-assign: set credited up to its need of 2", JSON.parse(sandbox.localStorage.getItem("bf:counts:10305-1"))["300126-3001-Black"], 0);
+  check("qty-assign: remainder 1 stays in the bulk list", sandbox.findBulkList(assignQtyList.id).parts, [{ part: "3001", name: "Brick 2 x 4", colour: "Black", qty: 1, img: "https://img.bricklink.com/ItemImage/PN/11/3001.png" }]);
+  check("qty-assign: popup closes after assigning", sandbox.scanAssignModal.hidden, true);
+  sandbox.saveCounts("10305-1", fullCounts(fixtureInv10305));
+
+  // Colour-doesn't-matter toggle: a blue 2x4 covers a red need
+  // only when it is on. Temporary fixture set, removed afterwards.
+  sandbox.INVENTORIES["red-1"] = { set: "red-1 Test Red", lots: 1, pieces: 2, items: [{ id: "x-3001-Red", qty: 2, dim: "2 × 4 studs", colour: "Red", any: false, tier: 1, cat: "Bricks", img: "https://example.test/x.jpg", name: "Brick 2 x 4" }] };
+  sandbox.sets.push({ key: "red-1", set_num: "red-1", set_name: "Test Red", total_parts: 2, total_lots: 1 });
+  sandbox.saveCounts("red-1", { "x-3001-Red": 2 });
+  const blueList = sandbox.createBulkList("Blue test");
+  sandbox.addScannedPart(blueList.id, "3001", "Brick 2 x 4", "Blue");
+  sandbox.addScannedPart(blueList.id, "3001", "Brick 2 x 4", "Blue");
+  const redOff = sandbox.rankBulkListSets(blueList, "pieces", false).find((r) => r.setKey === "red-1");
+  check("blind: off, blue 2x4 does not cover a red need", [redOff.piecesCovered, redOff.lotsCovered], [0, 0]);
+  const redOn = sandbox.rankBulkListSets(blueList, "pieces", true).find((r) => r.setKey === "red-1");
+  check("blind: on, blue 2x4 covers the red need", [redOn.piecesCovered, redOn.lotsCovered], [2, 1]);
+  sandbox.runOptimizer(optList.id, "pieces");
+  sandbox.bulkOptBlindBtn.listeners.click[0]();
+  check("blind: toggle button shows on", sandbox.bulkOptBlindBtn.className.includes("on") && sandbox.bulkOptBlindBtn.attributes["aria-pressed"] === "true", true);
+  sandbox.bulkOptBlindBtn.listeners.click[0]();
+  check("blind: toggle button shows off again", !sandbox.bulkOptBlindBtn.className.includes("on") && sandbox.bulkOptBlindBtn.attributes["aria-pressed"] === "false", true);
+  sandbox.sets = sandbox.sets.filter((s) => s.key !== "red-1");
+  sandbox.saveLocalSets(sandbox.sets);
+  delete sandbox.INVENTORIES["red-1"];
+
+  // Fewest-missing ranking: fewest pieces left first.
+  sandbox.saveCounts("10305-1", { "300126-3001-Black": 1, "614126-6141-White": 0 });
+  const rankedFewest = sandbox.rankBulkListSets(optList, "fewest").map((r) => r.setKey);
+  check("fewest: one piece left ranks first, then 3, 10, 430", rankedFewest, ["10305-1", "test-2", "10294-1", "8961-1"]);
+  sandbox.saveCounts("10305-1", fullCounts(fixtureInv10305));
+
+  // Price mode: mocked get-prices, $0.05 / $0.50 / $1.00 / $0.10
+  // per part, $0.10 default for everything else.
+  const PRICE_BY_DESIGN = { "3001": 0.05, "3747": 0.5, "30385": 1.0, "6141": 0.1 };
+  let priceCalls = 0;
+  const priceHandler = async (name, opts) => {
+    if (name === "get-prices") {
+      priceCalls++;
+      return { data: { ok: true, prices: (opts.body.items || []).map((it) => ({ key: it.key, usd: PRICE_BY_DESIGN[it.design_id] === undefined ? 0.1 : PRICE_BY_DESIGN[it.design_id] })) }, error: null };
+    }
+    return { data: null, error: { message: "no handler" } };
+  };
+  invokeHandler = priceHandler;
+  const usd = (n) => Math.round(n * 100) / 100;
+  const price10294 = await sandbox.fetchSetPrices("10294-1", false);
+  check("price: 10294-1 costs $3.30 to complete", usd(price10294.totalUsd), 3.3);
+  check("price: 10294-1 has no unpriced lots", price10294.unpricedLots, 0);
+  const price10305 = await sandbox.fetchSetPrices("10305-1", false);
+  check("price: 10305-1 costs $0.35 to complete", usd(price10305.totalUsd), 0.35);
+  const priceTest2 = await sandbox.fetchSetPrices("test-2", false);
+  check("price: test-2 costs $0.10, rock monster unpriced", [usd(priceTest2.totalUsd), priceTest2.unpricedLots], [0.1, 1]);
+  // The cache is shared across sets: 3001's price, fetched for
+  // 10294-1, is reused by 10305-1 and test-2, so only two invokes.
+  check("price: two invokes cover three sets (shared cache)", priceCalls, 2);
+  sandbox.runOptimizer(optList.id, "price");
+  await sleep(50);
+  const priceRows = sandbox.bulkOptWrap.children[2].children.map((r) => r.children[0].children[0].textContent);
+  check("price: rows sort cheapest first", priceRows, ["test-2", "Test Set 2 (2022)", "Test Ship (2021)", "Crystal Sweeper"]);
+  const priceSub = sandbox.bulkOptWrap.children[2].children.map((r) => r.children[0].children[1].textContent);
+  check("price: test-2 row shows cost and the unpriced lot", priceSub[0], "Cost to complete $0.10 · 3 pieces left · 1 lot unpriced");
+  check("price: 10305-1 row shows $0.35", priceSub[1], "Cost to complete $0.35 · 5 pieces left");
+  check("price: 8961-1 row counts its unpriced lots", priceSub[3].includes("unpriced"), true);
+  check("price: render adds one invoke, for 8961-1's uncached lines", priceCalls, 3);
+  // Cache reuse: a failing handler still returns the cached total.
+  invokeHandler = async () => { throw new Error("must not be called"); };
+  const priceCached = await sandbox.fetchSetPrices("10294-1", false);
+  check("price: cached total survives a dead handler", usd(priceCached.totalUsd), 3.3);
+  check("price: no new invoke while cached", priceCalls, 3);
+  // No-key error surfaces as a setup message, not a silent zero.
+  sandbox.localStorage.removeItem("bf:prices");
+  invokeHandler = async (name) => (name === "get-prices" ? { data: { ok: false, error: "no_api_key" }, error: null } : { data: null, error: { message: "no handler" } });
+  const priceNoKey = await sandbox.fetchSetPrices("10305-1", false);
+  check("price: no-key returns the error, no total", [priceNoKey.error, priceNoKey.totalUsd], ["no_api_key", null]);
+  check("price: no-key message names the secret", sandbox.priceErrorText("no_api_key").includes("BRICKOWL_API_KEY"), true);
+  // Blind mode prices by part alone: keys are design|any.
+  invokeHandler = priceHandler;
+  sandbox.localStorage.removeItem("bf:prices");
+  const priceBlind = await sandbox.fetchSetPrices("10305-1", true);
+  check("price: blind total is the same $0.35", usd(priceBlind.totalUsd), 0.35);
+  check("price: blind cache keys drop the colour", Object.keys(sandbox.loadPriceCache()).sort(), ["3001|any", "6141|any"]);
+  // Minifigures excluded from pricing: the 30385 crystal drops out.
+  const priceNoMini = await sandbox.fetchSetPrices("10294-1", false, true);
+  check("price: minifigures excluded, 10294-1 is $1.30", [priceNoMini.totalUsd, priceNoMini.unpricedLots], [1.3, 0]);
+
+  // All-sets suggestions: mocked suggest-sets + import-set.
+  invokeHandler = async (name, opts) => {
+    if (name === "suggest-sets") {
+      return { data: { ok: true, candidates: [
+        { set_num: "99999-1", name: "Fake Set A", year: 2023, num_parts: 50, set_img_url: "", lotsCovered: 3, missingUpper: 47 },
+        { set_num: "99998-1", name: "Fake Set B", year: 2020, num_parts: 20, set_img_url: "", lotsCovered: 2, missingUpper: 18 },
+        { set_num: "10294-1", name: "Test Ship", year: 2021, num_parts: 10, set_img_url: "", lotsCovered: 3, missingUpper: 7 },
+      ], queried: ["3001|Black"], partial: false, unmapped: [] }, error: null };
+    }
+    if (name === "import-set") {
+      return { data: { ok: true, cached: false, set: { set_num: "99999-1", name: "Fake Set A", year: 2023, num_parts: 50, set_img_url: "" }, inventory: { set: "99999-1", lots: 1, pieces: 50, items: [{ id: "z-3001-Black", qty: 50, colour: "Black", any: false, tier: 2, cat: "Bricks", img: "", name: "Brick 2 x 4" }] }, lots: 1, pieces: 50 }, error: null };
+    }
+    return { data: null, error: { message: "no handler" } };
+  };
+  sandbox.runOptimizer(optList.id, "pieces");
+  await sandbox.findSuggestions(optList.id, false);
+  check("sugg: state is done with 3 candidates", [sandbox.bulkSuggState.status, sandbox.bulkSuggState.candidates.length], ["done", 3]);
+  const suggRows = sandbox.bulkSuggWrap.children.filter((c) => c.className.includes("sugg-row"));
+  check("sugg: tracked sets are filtered out of the rows", suggRows.map((r) => r.children[0].children[0].textContent), ["Fake Set A (2023)", "Fake Set B (2020)"]);
+  check("sugg: row shows lots, total and missing", suggRows[0].children[0].children[1].textContent, "Shares 3 lots · 50 pieces total · up to 47 missing");
+  check("sugg: local ranking puts fewest missing first", sandbox.rankSuggestionsLocal(sandbox.bulkSuggState.candidates, "fewest").map((c) => c.set_num), ["10294-1", "99998-1", "99999-1"]);
+  check("sugg: cache key changes with the minifig toggle", sandbox.suggestCacheKeyFor(sandbox.distinctBulkParts(optList), false, false) !== sandbox.suggestCacheKeyFor(sandbox.distinctBulkParts(optList), false, true), true);
+  const origOpenSet = sandbox.openSet;
+  let openedKeys = [];
+  sandbox.openSet = (k) => { openedKeys.push(k); };
+  suggRows[0].children[1].listeners.click[0]({ stopPropagation() {} });
+  await sleep(50);
+  check("sugg: Add imports without opening the set", openedKeys, []);
+  check("sugg: set is in My sets", sandbox.findSet("99999-1") && sandbox.findSet("99999-1").set_num, "99999-1");
+  check("sugg: imported set leaves the suggestions", sandbox.bulkSuggState.candidates.some((c) => c.set_num === "99999-1"), false);
+  sandbox.openSet = origOpenSet;
+  sandbox.sets = sandbox.sets.filter((s) => s.key !== "99999-1");
+  sandbox.saveLocalSets(sandbox.sets);
+  delete sandbox.INVENTORIES["99999-1"];
+
+  // Exclude minifigures: the toggle drops minifig lots on both sides.
+  check("minifig: rock monster lot is a minifig lot", sandbox.isMinifigLot({ id: "b-64786-Trans-Blue", cat: "Minifig / Accessories", colour: "Trans-Blue" }), true);
+  check("minifig: minifig-category lot is a minifig lot", sandbox.isMinifigLot({ id: "4541538-30385-Transparent_Blue", cat: "Minifig Accessories", colour: "Trans-Blue" }), true);
+  check("minifig: plain brick is not", sandbox.isMinifigLot({ id: "300126-3001-Black", cat: "Bricks", colour: "Black" }), false);
+  const rankedMiniOff = sandbox.rankBulkListSets(optList, "pieces", false, false).find((r) => r.setKey === "10294-1");
+  const rankedMiniOn = sandbox.rankBulkListSets(optList, "pieces", false, true).find((r) => r.setKey === "10294-1");
+  check("minifig: off, 10294-1 covers 9 pieces in 3 lots", [rankedMiniOff.piecesCovered, rankedMiniOff.lotsCovered], [9, 3]);
+  check("minifig: on, coverage ignores the minifig lot", [rankedMiniOn.piecesCovered, rankedMiniOn.lotsCovered], [8, 2]);
+  check("minifig: off, 10 pieces left", rankedMiniOff.remainingPieces, 10);
+  check("minifig: on, missing drops by the 2 minifig pieces", rankedMiniOn.remainingPieces, 8);
+  check("minifig: on, total drops to the 8 non-minifig pieces", rankedMiniOn.totalPieces, 8);
+  check("minifig: off, the crystal is queried for suggestions", sandbox.distinctBulkParts(optList, false, false).map((p) => p.part), ["3001", "3747", "6141", "30385"]);
+  check("minifig: on, the crystal is not queried", sandbox.distinctBulkParts(optList, true, false).map((p) => p.part), ["3001", "3747", "6141"]);
+  const miniList = sandbox.createBulkList("Minifig test");
+  sandbox.addScannedPart(miniList.id, "64786", "Rock Monster", "Trans-Blue");
+  sandbox.addScannedPart(miniList.id, "3001", "Brick 2 x 4", "Black");
+  check("minifig: on, a rock monster never drives a suggestion", sandbox.distinctBulkParts(miniList, true, false).map((p) => p.part), ["3001"]);
+  sandbox.runOptimizer(optList.id, "pieces");
+  check("minifig: toggle button starts off", sandbox.bulkOptMinifigBtn.textContent, "Exclude minifigures");
+  sandbox.bulkOptMinifigBtn.listeners.click[0]();
+  check("minifig: toggle button shows on", sandbox.bulkOptMinifigBtn.className.includes("on") && sandbox.bulkOptMinifigBtn.attributes["aria-pressed"] === "true", true);
+  check("minifig: footer says minifigures were excluded", sandbox.bulkOptWrap.children[4].textContent.includes("Minifigures excluded from the match."), true);
+  check("minifig: suggestions note the exclusion", sandbox.bulkSuggWrap.children.some((c) => c.textContent && c.textContent.includes("Minifigures excluded from the match")), true);
+  sandbox.bulkOptMinifigBtn.listeners.click[0]();
+  check("minifig: toggle button shows off again", !sandbox.bulkOptMinifigBtn.className.includes("on"), true);
+
+  // Colour sampling: a fake canvas stands in for the captured frame.
+  const makeTestCanvas = (w, h, px) => ({
+    width: w, height: h,
+    getContext: () => ({
+      getImageData(x, y, rw, rh) {
+        const data = new Uint8ClampedArray(rw * rh * 4);
+        for (let j = 0; j < rh; j++) for (let i = 0; i < rw; i++) {
+          const c = px(x + i, y + j);
+          const o = (j * rw + i) * 4;
+          data[o] = c[0]; data[o + 1] = c[1]; data[o + 2] = c[2]; data[o + 3] = 255;
+        }
+        return { data, width: rw, height: rh };
+      },
+      drawImage() {},
+    }),
+  });
+  const sampleList = sandbox.createBulkList("Sample test");
+  const redBox = { left: 0, upper: 0, right: 100, lower: 100, image_width: 100, image_height: 100 };
+  sandbox.scanState.lastColour = "Black";
+  sandbox.scanCanvas = makeTestCanvas(100, 100, () => [201, 26, 9]);
+  sandbox.handleIdentified(sampleList.id, "3001", "Brick 2 x 4", 0.97, "data:image/jpeg;base64,s1", redBox);
+  check("sample: red frame pre-selects Red", sandbox.scanColourSel.value, "Red");
+  check("sample: piece filed as Red", sandbox.findBulkList(sampleList.id).parts, [{ part: "3001", name: "Brick 2 x 4", colour: "Red", qty: 1, img: "https://img.bricklink.com/ItemImage/PN/5/3001.png" }]);
+  check("sample: chips shown", sandbox.scanChipsEl.hidden, false);
+  const chipNames = () => sandbox.scanChipsEl.children.filter((c) => c.tagName === "BUTTON").map((c) => c.textContent);
+  check("sample: top-3 chips are Red, Trans-Red, Trans-Orange", chipNames(), ["Red", "Trans-Red", "Trans-Orange"]);
+  check("sample: the sampled chip reads active", sandbox.scanChipsEl.children.filter((c) => c.tagName === "BUTTON")[0].className.includes("on"), true);
+  // A chip tap corrects the colour; the picker follows.
+  sandbox.scanChipsEl.children.filter((c) => c.tagName === "BUTTON")[1].listeners.click[0]();
+  check("sample: chip tap files the piece as Trans-Red", sandbox.findBulkList(sampleList.id).parts[0].colour, "Trans-Red");
+  check("sample: picker follows the chip", sandbox.scanColourSel.value, "Trans-Red");
+  check("sample: active chip moves to Trans-Red", chipNames().indexOf("Trans-Red") === 1 && sandbox.scanChipsEl.children.filter((c) => c.tagName === "BUTTON")[1].className.includes("on"), true);
+  sandbox.scanCancelBtn.listeners.click[0]();
+  // Blue frame, and near-white background pixels don't wash it out.
+  sandbox.scanState.lastColour = "Black";
+  sandbox.scanCanvas = makeTestCanvas(100, 100, () => [0, 85, 191]);
+  sandbox.handleIdentified(sampleList.id, "3001", "Brick 2 x 4", 0.97, "data:image/jpeg;base64,s2", redBox);
+  check("sample: blue frame pre-selects Blue", sandbox.scanColourSel.value, "Blue");
+  check("sample: blue top-3", chipNames(), ["Blue", "Trans-Blue", "Dark Grey"]);
+  sandbox.scanCancelBtn.listeners.click[0]();
+  sandbox.scanCanvas = makeTestCanvas(100, 100, (x, y) => (x >= 30 && x < 70 && y >= 30 && y < 70 ? [201, 26, 9] : [255, 255, 255]));
+  sandbox.handleIdentified(sampleList.id, "3001", "Brick 2 x 4", 0.97, "data:image/jpeg;base64,s3", redBox);
+  check("sample: white background is ignored, red centre wins", sandbox.scanColourSel.value, "Red");
+  sandbox.scanCancelBtn.listeners.click[0]();
+  // No bounding box: the centre 40% is sampled instead.
+  sandbox.handleIdentified(sampleList.id, "3001", "Brick 2 x 4", 0.97, "data:image/jpeg;base64,s4");
+  check("sample: no box falls back to the frame centre", sandbox.scanColourSel.value, "Red");
+  sandbox.scanCancelBtn.listeners.click[0]();
+  // The manual picker still overrides a sample.
+  sandbox.scanState.lastColour = "Black";
+  sandbox.scanCanvas = makeTestCanvas(100, 100, () => [0, 85, 191]);
+  sandbox.handleIdentified(sampleList.id, "3001", "Brick 2 x 4", 0.97, "data:image/jpeg;base64,s5", redBox);
+  sandbox.scanColourSel.value = "Black";
+  sandbox.scanColourSel.listeners.change[0]({ target: sandbox.scanColourSel });
+  check("sample: manual picker overrides the sample", sandbox.findBulkList(sampleList.id).parts[0].colour, "Black");
+  sandbox.scanCancelBtn.listeners.click[0]();
+  // An all-white frame samples nothing: last-used colour, no chips.
+  sandbox.scanState.lastColour = "Black";
+  sandbox.scanCanvas = makeTestCanvas(100, 100, () => [255, 255, 255]);
+  sandbox.handleIdentified(sampleList.id, "3001", "Brick 2 x 4", 0.97, "data:image/jpeg;base64,s6", redBox);
+  check("sample: all-white falls back to the last colour", sandbox.scanColourSel.value, "Black");
+  check("sample: all-white shows no chips", sandbox.scanChipsEl.hidden, true);
+  sandbox.scanCancelBtn.listeners.click[0]();
+  sandbox.scanCanvas = null;
+  // File-input path: the picked photo is drawn to the sampling
+  // canvas at natural size before identification runs.
+  class FakeImage {
+    constructor() { this.naturalWidth = 192; this.naturalHeight = 192; this._src = ""; }
+    set src(v) { this._src = v; if (this.onload) this.onload(); }
+    get src() { return this._src; }
+  }
+  class FakeFileReader {
+    readAsDataURL() { this.result = "data:image/jpeg;base64,file1"; if (this.onload) this.onload(); }
+  }
+  sandbox.Image = FakeImage;
+  sandbox.FileReader = FakeFileReader;
+  let drawn = null;
+  sandbox.scanCanvas = { width: 0, height: 0, getContext: () => ({ drawImage(img, x, y) { drawn = { img, x, y }; }, getImageData() { return { data: new Uint8ClampedArray(0) }; } }) };
+  sandbox.onScanFile({ name: "part.jpg" });
+  check("sample: file photo is drawn to the canvas", drawn && drawn.img instanceof FakeImage && drawn.x === 0 && drawn.y === 0, true);
+  check("sample: canvas sized to the photo", [sandbox.scanCanvas.width, sandbox.scanCanvas.height], [192, 192]);
+  sandbox.scanCanvas = null;
+  delete sandbox.Image;
+  delete sandbox.FileReader;
+  invokeHandler = null;
 
   console.log(failures === 0 ? "\nALL PASS" : "\n" + failures + " FAILURES");
   process.exit(failures === 0 ? 0 : 1);
