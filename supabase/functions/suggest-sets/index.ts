@@ -10,21 +10,29 @@
 // {color}/sets/?page_size=100, first page only, one call per part
 // at Rebrickable's ~1 call/second -> aggregate the set lists into
 // candidates (see suggest.ts). Tracked sets are filtered out by the
-// app, which knows its own list.
+// app, which knows its own list. The response also carries
+// partCounts — the true total set count per queried part+colour
+// (page.count, not just the first page) — so the app can rank the
+// rarest bulk lots first on the next run, and shared lots per
+// candidate, so the app can show the bulk pieces used.
 //
 // Rebrickable notes (verified live 2026-11-25):
 //   - parts/{part}/colors/{color}/sets/ is the ONLY parts-in-sets
 //     endpoint; there is no colour-less one. Colour-doesn't-matter
-//     mode therefore discovers through the bulk list's own colours
-//     and aggregates by part number — a set holding the part only in
-//     another colour is not discovered, and the app says so.
+//     mode (v3.42) therefore queries each part in its most common
+//     other colours too (parts/{part}/colors/ reports num_sets per
+//     colour), so a set holding the part only in another colour IS
+//     discovered now — at one extra Rebrickable call per colour,
+//     which is why blind batches are capped at 4 parts.
 //   - A set entry carries num_parts but NO per-set quantity for the
 //     part, so coverage is counted in distinct lots, not pieces, and
 //     "missing" is the upper bound num_parts - lotsCovered. Exact
 //     piece counts appear once the set is imported (one tap).
 //   - Only the first 100 sets per part are read. A very common part
 //     (a 2x4 brick is in 1,000+ sets) is truncated to its first
-//     page; rarer parts surface the high-coverage candidates.
+//     page; rarer parts surface the high-coverage candidates. The
+//     page.count total is still reported per part, so the app can
+//     tell a part in 3 sets from one in 1,200.
 //   - Free-tier limit is about 1 call a second; this function waits
 //     1.1s between calls like import-set does. A 429 ends the run
 //     with partial results instead of waiting 60s — suggestions are
@@ -40,7 +48,9 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import {
   aggregateCandidates,
   colorTableFromList,
+  partColoursFromList,
   resolveRbColourId,
+  topPartColours,
 } from "./suggest.ts";
 
 const RB = "https://rebrickable.com/api/v3";
@@ -53,7 +63,12 @@ const CORS = {
 // Twelve parts per call keeps one invocation near 15 seconds
 // (12 x 1.1s spacing plus the colours call). The app sends the
 // next batch when the user asks for more.
+// Blind mode checks each part in its most common other colours
+// too — 1 colours call + up to 3 sets calls per part — so a blind
+// batch is capped at 4 parts to stay near 20 seconds.
 const MAX_PARTS_PER_REQUEST = 12;
+const BLIND_MAX_PARTS = 4;
+const BLIND_EXTRA_COLOURS = 2;
 // The first page only: the sets most likely to be buildable are the
 // ones sharing the rarer parts, and those lists are short.
 const SETS_PAGE_SIZE = 100;
@@ -163,48 +178,85 @@ Deno.serve(async (req) => {
   const queried: string[] = [];
   const unmapped: { part: string; colour: string; reason: string }[] = [];
   const partResults: { part: string; colour: string; qty: number; sets: never[] }[] = [];
+  // True set totals per queried part+colour, for the app's
+  // rare-first ordering on the next run.
+  const partCounts: { part: string; colour: string; sets: number }[] = [];
   let partial = false;
+  let hitLimit = false;
   let calls = 1; // the colours call above
 
-  const batch = parts.slice(0, MAX_PARTS_PER_REQUEST);
-  if (parts.length > MAX_PARTS_PER_REQUEST) partial = true;
+  const batch = parts.slice(0, blind ? BLIND_MAX_PARTS : MAX_PARTS_PER_REQUEST);
+  if (parts.length > batch.length) partial = true;
   for (const p of batch) {
     const rbColor = resolveRbColourId(p.colour, p.bl_colour, colors);
     if (rbColor === null) {
       unmapped.push({ part: p.part, colour: p.colour, reason: "no Rebrickable colour for " + p.colour });
       continue;
     }
-    let page;
-    try {
-      const res = await rbFetch(
-        RB + "/lego/parts/" + encodeURIComponent(p.part) + "/colors/" + rbColor + "/sets/?page_size=" + SETS_PAGE_SIZE,
-        key,
-      );
-      calls++;
-      if (res.status === 404) {
-        unmapped.push({ part: p.part, colour: p.colour, reason: "Rebrickable has no such part in this colour" });
-        continue;
+    // The colours to check for this part: its own bulk colour, and
+    // — in blind mode — its most common other colours, so sets
+    // holding the part only in another colour are discovered too.
+    const queries: { colourId: number; colourName: string }[] = [{ colourId: rbColor, colourName: p.colour }];
+    if (blind) {
+      try {
+        const cres = await rbFetch(RB + "/lego/parts/" + encodeURIComponent(p.part) + "/colors/?page_size=100", key);
+        calls++;
+        if (cres.ok) {
+          const cdata = await cres.json();
+          topPartColours(partColoursFromList((cdata.results || []) as never), rbColor, BLIND_EXTRA_COLOURS)
+            .forEach((c) => queries.push({ colourId: c.id, colourName: c.name }));
+        }
+        // A 404 here just means Rebrickable has no such part — the
+        // bulk-colour query below reports it as unmapped instead.
+      } catch (e) {
+        if (e instanceof RateLimited) {
+          partial = true;
+          hitLimit = true;
+          break;
+        }
+        // Any other failure on the colours list: skip the extras
+        // and still try the bulk colour below.
       }
-      if (!res.ok) {
-        return json({ ok: false, error: "rebrickable_error", message: "Rebrickable answered " + res.status + " on parts. Try again in a minute." }, 502);
-      }
-      page = await res.json();
-    } catch (e) {
-      if (e instanceof RateLimited) {
-        partial = true;
-        break;
-      }
-      return json({ ok: false, error: "rebrickable_unreachable", message: "Couldn't reach Rebrickable: " + (e instanceof Error ? e.message : String(e)) }, 502);
     }
-    const sets = ((page.results || []) as Record<string, unknown>[]).map((s) => ({
-      set_num: String(s.set_num || ""),
-      name: String(s.name || ""),
-      year: typeof s.year === "number" ? s.year : null,
-      num_parts: typeof s.num_parts === "number" ? s.num_parts : 0,
-      set_img_url: (typeof s.set_img_url === "string" && s.set_img_url) || null,
-    }));
-    queried.push(p.part + "|" + p.colour);
-    partResults.push({ part: p.part, colour: p.colour, qty: p.qty, sets: sets as never[] });
+    for (const q of queries) {
+      let page;
+      try {
+        const res = await rbFetch(
+          RB + "/lego/parts/" + encodeURIComponent(p.part) + "/colors/" + q.colourId + "/sets/?page_size=" + SETS_PAGE_SIZE,
+          key,
+        );
+        calls++;
+        if (res.status === 404) {
+          if (q.colourId === rbColor) {
+            unmapped.push({ part: p.part, colour: p.colour, reason: "Rebrickable has no such part in this colour" });
+          }
+          continue;
+        }
+        if (!res.ok) {
+          return json({ ok: false, error: "rebrickable_error", message: "Rebrickable answered " + res.status + " on parts. Try again in a minute." }, 502);
+        }
+        page = await res.json();
+      } catch (e) {
+        if (e instanceof RateLimited) {
+          partial = true;
+          hitLimit = true;
+          break;
+        }
+        return json({ ok: false, error: "rebrickable_unreachable", message: "Couldn't reach Rebrickable: " + (e instanceof Error ? e.message : String(e)) }, 502);
+      }
+      const results = (page.results || []) as Record<string, unknown>[];
+      const sets = results.map((s) => ({
+        set_num: String(s.set_num || ""),
+        name: String(s.name || ""),
+        year: typeof s.year === "number" ? s.year : null,
+        num_parts: typeof s.num_parts === "number" ? s.num_parts : 0,
+        set_img_url: (typeof s.set_img_url === "string" && s.set_img_url) || null,
+      }));
+      partCounts.push({ part: p.part, colour: q.colourName, sets: (typeof page.count === "number" ? page.count : results.length) });
+      queried.push(p.part + "|" + q.colourName);
+      partResults.push({ part: p.part, colour: q.colourName, qty: p.qty, sets: sets as never[] });
+    }
+    if (hitLimit) break;
   }
 
   const candidates = aggregateCandidates(partResults, blind).slice(0, MAX_CANDIDATES);
@@ -215,5 +267,6 @@ Deno.serve(async (req) => {
     partial,
     unmapped,
     calls,
+    partCounts,
   });
 });

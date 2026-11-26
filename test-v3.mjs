@@ -2207,7 +2207,7 @@ async function main() {
   check("sample: piece filed as Red", sandbox.findBulkList(sampleList.id).parts, [{ part: "3001", name: "Brick 2 x 4", colour: "Red", qty: 1, img: "https://img.bricklink.com/ItemImage/PN/5/3001.png" }]);
   check("sample: chips shown", sandbox.scanChipsEl.hidden, false);
   const chipNames = () => sandbox.scanChipsEl.children.filter((c) => c.tagName === "BUTTON").map((c) => c.textContent);
-  check("sample: top-3 chips are Red, Trans-Red, Trans-Orange", chipNames(), ["Red", "Trans-Red", "Trans-Orange"]);
+  check("sample: top-3 chips are Red, Trans-Red, Reddish Orange", chipNames(), ["Red", "Trans-Red", "Reddish Orange"]);
   check("sample: the sampled chip reads active", sandbox.scanChipsEl.children.filter((c) => c.tagName === "BUTTON")[0].className.includes("on"), true);
   // A chip tap corrects the colour; the picker follows.
   sandbox.scanChipsEl.children.filter((c) => c.tagName === "BUTTON")[1].listeners.click[0]();
@@ -2220,7 +2220,7 @@ async function main() {
   sandbox.scanCanvas = makeTestCanvas(100, 100, () => [0, 85, 191]);
   sandbox.handleIdentified(sampleList.id, "3001", "Brick 2 x 4", 0.97, "data:image/jpeg;base64,s2", redBox);
   check("sample: blue frame pre-selects Blue", sandbox.scanColourSel.value, "Blue");
-  check("sample: blue top-3", chipNames(), ["Blue", "Trans-Blue", "Dark Grey"]);
+  check("sample: blue top-3", chipNames(), ["Blue", "Dark Azure", "Trans-Blue"]);
   sandbox.scanCancelBtn.listeners.click[0]();
   sandbox.scanCanvas = makeTestCanvas(100, 100, (x, y) => (x >= 30 && x < 70 && y >= 30 && y < 70 ? [201, 26, 9] : [255, 255, 255]));
   sandbox.handleIdentified(sampleList.id, "3001", "Brick 2 x 4", 0.97, "data:image/jpeg;base64,s3", redBox);
@@ -2793,6 +2793,118 @@ async function main() {
   check("export41: Export list sits right after Find optimal sets", expRow.children.map((b) => b.textContent), ["📷 Add more", "Find optimal sets", "Export list", "Delete list", "← Back to sets"]);
   expRow.children[2].listeners.click[0]();
   check("export41: download fallback tells the user", sandbox.bulkExportStatusEl.textContent, "Export didn't work here — take a screenshot of the list instead.");
+
+  // --- v3.42 A: rare-first suggestion order ---
+  const rareList = sandbox.createBulkList("Rarity test");
+  [["3001", "Brick 2 x 4", "Black", 6], ["3747", "Slope 45 2 x 1", "Dark Grey", 2], ["30385", "Rock 1 x 1 Crystal 5 Point", "Trans-Blue", 1], ["6141", "Tile 1 x 1", "White", 2]].forEach(([part, name, colour, qty]) => { for (let i = 0; i < qty; i++) sandbox.addScannedPart(rareList.id, part, name, colour); });
+  check("rare42: fresh list orders by qty", sandbox.distinctBulkParts(rareList, false, false).map((p) => p.part), ["3001", "3747", "6141", "30385"]);
+  sandbox.notePartCounts([
+    { part: "3001", colour: "Black", sets: 1200 },
+    { part: "3747", colour: "Dark Grey", sets: 3 },
+    { part: "30385", colour: "Trans-Blue", sets: 45 },
+  ]);
+  check("rare42: rarest first once counts arrive", sandbox.distinctBulkParts(rareList, false, false).map((p) => p.part), ["3747", "30385", "3001", "6141"]);
+  check("rare42: unknown-rarity parts sort last", sandbox.distinctBulkParts(rareList, false, false)[3].part, "6141");
+  sandbox.localStorage.setItem("bf:partRarity", JSON.stringify({ "3001|Black": { sets: 1, at: Date.now() - 91 * 24 * 3600 * 1000 } }));
+  check("rare42: stale counts expire after 90 days", sandbox.readPartRarity()["3001|Black"], undefined);
+
+  // --- v3.42 B: fix a wrong colour on a bulk row ---
+  const colourList = sandbox.createBulkList("Colour fix test");
+  sandbox.addScannedPart(colourList.id, "85861", "Plate 1 x 1", "Trans-Brown");
+  sandbox.addScannedPart(colourList.id, "85861", "Plate 1 x 1", "Trans-Brown");
+  sandbox.addScannedPart(colourList.id, "85861", "Plate 1 x 1", "Dark Grey");
+  check("colour42: two rows before the fix", sandbox.findBulkList(colourList.id).parts.map((p) => p.colour + "×" + p.qty), ["Trans-Brown×2", "Dark Grey×1"]);
+  sandbox.setScannedColour(colourList.id, "85861", "Trans-Brown", "Dark Grey");
+  const colourParts = sandbox.findBulkList(colourList.id).parts;
+  check("colour42: fixing merges into the existing row", [colourParts.length, colourParts[0].colour, colourParts[0].qty], [1, "Dark Grey", 3]);
+  sandbox.setScannedColour(colourList.id, "85861", "Dark Grey", "Black");
+  check("colour42: fixing to a fresh colour moves the row", [sandbox.findBulkList(colourList.id).parts.length, sandbox.findBulkList(colourList.id).parts[0].colour, sandbox.findBulkList(colourList.id).parts[0].qty], [1, "Black", 3]);
+  sandbox.setScannedColour(colourList.id, "85861", "Black", "Black");
+  check("colour42: same-colour change is a no-op", sandbox.findBulkList(colourList.id).parts[0].colour, "Black");
+  sandbox.openBulkList(colourList.id);
+  const colourWrap = sandbox.$("setView").children.find((c) => c.className === "bulk-parts");
+  const colourRow = colourWrap.children[0];
+  const colourText = colourRow.children.find((c) => c.className === "set-text");
+  const colourSel = colourText.children[1].children[0];
+  check("colour42: row shows a colour picker", colourSel.tagName, "SELECT");
+  check("colour42: picker shows the current colour", colourSel.value, "Black");
+  check("colour42: picker offers other colours", colourSel.children.map((o) => o.value).includes("Red"), true);
+  colourSel.value = "Red";
+  colourSel.listeners.change[0]();
+  check("colour42: picker change re-colours the row", sandbox.findBulkList(colourList.id).parts[0].colour, "Red");
+
+  // --- v3.42 C: centre/brightest colour sampling ---
+  const darkBox = { left: 0, upper: 0, right: 100, lower: 100, image_width: 100, image_height: 100 };
+  sandbox.scanCanvas = makeTestCanvas(100, 100, (x, y) => (x >= 25 && x < 75 && y >= 25 && y < 75 ? [108, 110, 104] : [80, 60, 40]));
+  check("sample42: warm dark edges don't drag Dark Grey to Brown", sandbox.sampleCanvasColour(sandbox.scanCanvas, darkBox), { r: 108, g: 110, b: 104 });
+  sandbox.scanCanvas = makeTestCanvas(100, 100, (x, y) => (x >= 25 && x < 75 && y >= 25 && y < 75 ? [149, 138, 115] : [60, 40, 20]));
+  check("sample42: dark edges don't drag Dark Tan to Brown", sandbox.sampleCanvasColour(sandbox.scanCanvas, darkBox), { r: 149, g: 138, b: 115 });
+  const sampleList42 = sandbox.createBulkList("Sample42 test");
+  sandbox.scanState.lastColour = "Black";
+  sandbox.scanCanvas = makeTestCanvas(100, 100, (x, y) => (x >= 25 && x < 75 && y >= 25 && y < 75 ? [149, 138, 115] : [60, 40, 20]));
+  sandbox.handleIdentified(sampleList42.id, "3001", "Brick 2 x 4", 0.97, "data:image/jpeg;base64,s42", darkBox);
+  check("sample42: shadowed Dark Tan frame pre-selects Dark Tan", sandbox.scanColourSel.value, "Dark Tan");
+  sandbox.scanCancelBtn.listeners.click[0]();
+  sandbox.scanCanvas = null;
+
+  // --- v3.42 D: bulk pieces on suggestion rows ---
+  const piecesList = sandbox.createBulkList("Pieces test");
+  [["3001", "Brick 2 x 4", "Black", 6], ["3001", "Brick 2 x 4", "White", 3], ["3747", "Slope 45 2 x 1", "Dark Grey", 2], ["30385", "Rock 1 x 1 Crystal 5 Point", "Trans-Blue", 1]].forEach(([part, name, colour, qty]) => { for (let i = 0; i < qty; i++) sandbox.addScannedPart(piecesList.id, part, name, colour); });
+  const candD = { set_num: "99999-1", name: "Fake Set A", year: 2023, num_parts: 50, set_img_url: "", lotsCovered: 2, missingUpper: 48, shared: ["3001|Black", "3747|Dark Grey"] };
+  check("pieces42: exact mode sums the shared lots", sandbox.bulkPiecesForCandidate(candD, piecesList, false), 8);
+  check("pieces42: blind mode sums every colour of the part", sandbox.bulkPiecesForCandidate({ ...candD, shared: ["3001"], lotsCovered: 1 }, piecesList, true), 9);
+  check("pieces42: no shared keys means no piece count", sandbox.bulkPiecesForCandidate({ ...candD, shared: undefined }, piecesList, false), null);
+  const mergedD = sandbox.mergeCandidates(
+    [{ set_num: "99999-1", name: "Fake Set A", year: 2023, num_parts: 50, set_img_url: "", lotsCovered: 2, missingUpper: 48, shared: ["3001|Black"] }],
+    [
+      { set_num: "99999-1", name: "Fake Set A", year: 2023, num_parts: 50, set_img_url: "", lotsCovered: 1, missingUpper: 49, shared: ["3747|Dark Grey"] },
+      { set_num: "99998-1", name: "Fake Set B", year: 2020, num_parts: 20, set_img_url: "", lotsCovered: 1, missingUpper: 19, shared: ["30385|Trans-Blue"] },
+    ]);
+  check("pieces42: merge unions shared lots", mergedD.find((c) => c.set_num === "99999-1").shared, ["3001|Black", "3747|Dark Grey"]);
+  check("pieces42: merge adds lotsCovered", mergedD.find((c) => c.set_num === "99999-1").lotsCovered, 3);
+  check("pieces42: merge keeps the new set", mergedD.length, 2);
+  invokeHandler = async (name, opts) => {
+    if (name === "suggest-sets") {
+      return { data: { ok: true, candidates: [
+        { set_num: "99999-1", name: "Fake Set A", year: 2023, num_parts: 50, set_img_url: "https://cdn.rebrickable.com/media/sets/99999-1.jpg", lotsCovered: 2, missingUpper: 48, shared: ["3001|Black", "3747|Dark Grey"] },
+      ], queried: ["3001|Black", "3747|Dark Grey"], partial: false, unmapped: [], partCounts: [{ part: "3001", colour: "Black", sets: 1200 }, { part: "3747", colour: "Dark Grey", sets: 3 }] }, error: null };
+    }
+    return { data: null, error: { message: "no handler" } };
+  };
+  sandbox.runOptimizer(piecesList.id, "pieces");
+  await sandbox.findSuggestions(piecesList.id, false);
+  const piecesRows = sandbox.bulkSuggWrap.children.filter((c) => c.className.includes("sugg-row"));
+  check("pieces42: row shows pieces from bulk", piecesRows[0].children[1].children[1].textContent, "Shares 2 lots · 8 pieces from bulk · 50 pieces total · up to 48 missing");
+  check("rare42: partCounts feed the rarity cache", sandbox.readPartRarity()["3747|Dark Grey"].sets, 3);
+
+  // --- v3.42 E: blind discovery widens the net ---
+  let blindBodies = [];
+  invokeHandler = async (name, opts) => {
+    if (name === "suggest-sets") {
+      blindBodies.push(opts.body);
+      return { data: { ok: true, candidates: [], queried: [], partial: true, unmapped: [], partCounts: [] }, error: null };
+    }
+    return { data: null, error: { message: "no handler" } };
+  };
+  sandbox.runOptimizer(optList.id, "pieces");
+  sandbox.bulkOptBlindBtn.listeners.click[0]();
+  check("blind42: toggle turns blind on", sandbox.bulkOptBlind, true);
+  check("blind42: blind batch size is 4", sandbox.suggestBatchSize(), 4);
+  blindBodies = [];
+  await sandbox.findSuggestions(optList.id, false);
+  check("blind42: blind batches are capped at 4 parts", blindBodies.length > 0 && blindBodies.every((b) => b.blind === true && b.parts.length <= 4), true);
+  invokeHandler = async (name, opts) => {
+    if (name === "suggest-sets") return { data: { ok: true, candidates: [], queried: [], partial: false, unmapped: [] }, error: null };
+    return { data: null, error: { message: "no handler" } };
+  };
+  const blindNoteList = sandbox.createBulkList("Blind note test");
+  sandbox.addScannedPart(blindNoteList.id, "3001", "Brick 2 x 4", "Black");
+  sandbox.runOptimizer(blindNoteList.id, "pieces");
+  await sandbox.findSuggestions(blindNoteList.id, false);
+  check("blind42: old function shows the redeploy note", sandbox.bulkSuggWrap.children.some((c) => c.textContent && c.textContent.includes("redeploy it from the Supabase dashboard")), true);
+  sandbox.bulkOptBlindBtn.listeners.click[0]();
+  check("blind42: toggle turns blind off", sandbox.bulkOptBlind, false);
+  check("blind42: exact batch size is 12", sandbox.suggestBatchSize(), 12);
 
   invokeHandler = null;
 

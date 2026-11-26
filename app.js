@@ -1,4 +1,4 @@
-/* Bulk Finder v3.41 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.42 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -2140,10 +2140,42 @@ var LEGO_COLOUR_RGB = {
   'Transparent Pink': [228, 173, 200],
   'Transparent Medium Red Violet': [141, 115, 179],
   'Transparent Black': [99, 95, 82], 'Transparent Brown': [99, 95, 82],
+  'Trans-Black': [99, 95, 82],
   'Transparent Fluorescent Red Orange': [255, 128, 13],
   'Transparent Neon Yellow': [218, 176, 0],
   'Bright Light Yellow': [255, 240, 58], 'Bright Yellowish Green': [187, 233, 11],
   'Bright Violet': [129, 0, 123], 'Fabuland Brown': [182, 123, 80]
+};
+
+// RGB-table name -> the display colour the app files a piece under
+// (v3.42). The table mixes display names ('Red') with aliases that
+// share their RGB ('Bright Red', 'Transparent Red') and with names
+// the import transform folds ('Reddish Brown' files as 'Brown',
+// 'Trans-Dark Blue' samples as 'Trans-Blue' — the two share one
+// RGB value, so a photo can't tell them apart, and the old picker
+// offered only 'Trans-Blue'). Without the fold, a red piece sampled
+// as 'Bright Red' — an alias no tracked set uses, so it never
+// matched anything. Names not listed here file as themselves: the
+// transform's fallback is the LEGO name with underscores as spaces,
+// which is how 'Dark Tan', 'Medium Nougat' and 'Pearl Light Grey'
+// become fileable display colours. Authority is the import
+// transform's LEGO_TO_DISPLAY (supabase/functions/import-set/).
+var SCAN_COLOUR_FOLD = {
+  'Bright Red': 'Red', 'Transparent Red': 'Trans-Red',
+  'Bright Blue': 'Blue', 'Bright Yellow': 'Yellow', 'Bright Orange': 'Orange',
+  'Bright Yellowish Green': 'Lime Green', 'Brick Yellow': 'Tan',
+  'Medium Stone Grey': 'Light Grey', 'Dark Stone Grey': 'Dark Grey',
+  'Transparent': 'Clear', 'Trans-Dark Blue': 'Trans-Blue',
+  'Transparent Blue': 'Trans-Blue', 'Transparent Dark Blue': 'Trans-Dark Blue',
+  'Transparent Black': 'Trans-Black', 'Transparent Brown': 'Trans-Brown',
+  'Transparent Green': 'Trans-Green', 'Transparent Bright Orange': 'Trans-Orange',
+  'Transparent Yellow': 'Trans-Yellow', 'Transparent Light Blue': 'Trans-Light Blue',
+  'Transparent Bright Green': 'Trans-Bright Green', 'Light Lime': 'Trans-Bright Green',
+  'Transparent Pink': 'Trans-Pink', 'Bright Pink': 'Pink',
+  'Transparent Fluorescent Green': 'Trans-Green',
+  'Transparent Fluorescent Red Orange': 'Trans-Neon Orange',
+  'Transparent Neon Yellow': 'Trans-Neon Yellow',
+  'Bright Violet': 'Violet', 'Reddish Brown': 'Brown'
 };
 
 /* LEGO colour name (the 3rd segment of a lot id, e.g. Dark_Stone_Grey)
@@ -3374,23 +3406,65 @@ function setScannedQty(listId, part, colour, qty) {
   renderBulkLists();
   if (bulkViewId === listId) renderBulkListView();
 }
+// Fix a wrong colour on a bulk row after the fact (tweak B): the
+// scan guessed the colour wrong, and re-scanning is the slow fix —
+// change it here instead. If the list already holds this part in
+// the new colour, the two rows merge into one (the quantities add);
+// the photo follows the new colour, since it is resolved per
+// part+colour at render time. The suggestion cache key is built
+// from the parts, so the next ranking re-checks with the corrected
+// colours — and the rare-first order (tweak A) then puts the
+// identifying lots in the first batch.
+function setScannedColour(listId, part, oldColour, newColour) {
+  var list = findBulkList(listId);
+  if (!list || !newColour || newColour === oldColour) return;
+  var row = null, other = null;
+  (list.parts || []).forEach(function (p) {
+    if (p.part !== part) return;
+    if (p.colour === oldColour) row = p;
+    if (p.colour === newColour) other = p;
+  });
+  if (!row) return;
+  if (other) {
+    other.qty += row.qty;
+    list.parts.splice(list.parts.indexOf(row), 1);
+  } else {
+    row.colour = newColour;
+    row.img = bulkPartImg(part, newColour);
+  }
+  saveBulkLists();
+  renderBulkLists();
+  if (bulkViewId === listId) renderBulkListView();
+}
 
-// Colours the picker offers: the app's known display colours, plus
-// every colour that appears in the tracked sets' inventories — the
-// exact vocabulary the optimizer can match against.
+// Colours the picker offers: every colour the sampler knows
+// (LEGO_COLOUR_RGB), folded to display names (SCAN_COLOUR_FOLD)
+// and deduped, plus every colour that appears in the tracked sets'
+// inventories — the exact vocabulary the optimizer can match
+// against. It used to be only the 16 base colours plus inventory
+// colours, which meant the sampler could never return a colour
+// outside that list: a correct Dark Tan sample still landed on
+// Dark Grey, and the row picker (v3.42) couldn't offer the true
+// colour either. The list is long (~90) but a <select> jumps on
+// first-letter typing, and the sampled colour is pre-selected.
 function scanColourOptions() {
   var seen = {};
   var out = [];
-  Object.keys(BRICKLINK_COLOUR).forEach(function (c) { if (!seen[c]) { seen[c] = 1; out.push(c); } });
+  function add(c) {
+    var d = SCAN_COLOUR_FOLD[c] || c;
+    if (!seen[d]) { seen[d] = 1; out.push(d); }
+  }
+  Object.keys(BRICKLINK_COLOUR).forEach(add);
+  Object.keys(LEGO_COLOUR_RGB).forEach(add);
   sets.forEach(function (s) {
     var inv = getInventory(s.set_num);
     if (!inv) return;
     inv.items.forEach(function (it) {
       var c = it.colour || '';
-      if (c && !seen[c]) { seen[c] = 1; out.push(c); }
+      if (c) add(c);
       if (it.any) {
         var pc = picturedColour(it);
-        if (pc && !seen[pc]) { seen[pc] = 1; out.push(pc); }
+        if (pc) add(pc);
       }
     });
   });
@@ -3444,7 +3518,23 @@ function buildBulkRow(list, p) {
   }
   var text = el('div', 'set-text');
   text.appendChild(el('div', 'set-name', (p.name || 'Part ' + p.part)));
-  text.appendChild(el('div', 'set-num', p.part + ' · ' + p.colour));
+  var sub = el('div', 'set-num', p.part + ' · ');
+  var colourSel = document.createElement('select');
+  colourSel.className = 'bulk-row-colour';
+  colourSel.setAttribute('aria-label', 'Colour of ' + p.part);
+  var options = scanColourOptions();
+  if (options.indexOf(p.colour) === -1) options.unshift(p.colour);
+  options.forEach(function (c) {
+    var opt = document.createElement('option');
+    opt.value = c;
+    opt.textContent = c;
+    if (c === p.colour) opt.selected = true;
+    colourSel.appendChild(opt);
+  });
+  colourSel.value = p.colour;
+  colourSel.addEventListener('change', function () { setScannedColour(list.id, p.part, p.colour, colourSel.value); });
+  sub.appendChild(colourSel);
+  text.appendChild(sub);
   row.appendChild(text);
   var minus = el('button', 'build-step-btn', '−');
   minus.type = 'button';
@@ -3827,7 +3917,7 @@ function buildOptSortRow(listId) {
   bulkOptBlindBtn = el('button', 'btn btn-small bulk-opt-toggle' + (bulkOptBlind ? ' on' : ' btn-quiet'), 'Colour doesn\'t matter');
   bulkOptBlindBtn.type = 'button';
   bulkOptBlindBtn.setAttribute('aria-pressed', bulkOptBlind ? 'true' : 'false');
-  bulkOptBlindBtn.title = 'Match parts by number only, ignoring colour. The sets themselves still track colour.';
+  bulkOptBlindBtn.title = 'Match parts by number and check each part in its most common other colours too, so a set holding the part only in another colour is found. Slower — a few seconds per part.';
   bulkOptBlindBtn.addEventListener('click', function () {
     bulkOptBlind = !bulkOptBlind;
     // Suggestions were fetched for the other matching rule.
@@ -3851,7 +3941,7 @@ function buildOptSortRow(listId) {
 
 function buildOptFooter(list) {
   var p = el('p', 'muted small');
-  var blindNote = bulkOptBlind ? ' Colour doesn\'t matter is on — parts match by number only.' : '';
+  var blindNote = bulkOptBlind ? ' Colour doesn\'t matter is on — parts match by number, and each part is also checked in its most common other colours.' : '';
   var minifigNote = bulkOptExcludeMinifig ? ' Minifigures excluded from the match.' : '';
   if (bulkOptSort === 'price') {
     // innerHTML, not createTextNode: the harness stub document has
@@ -4395,6 +4485,11 @@ async function fetchSetPrices(setKey, blind, excludeMinifig) {
  * repeat ranking costs no Rebrickable calls. */
 var SUGGEST_TTL_MS = 30 * 24 * 3600 * 1000;
 var SUGGEST_MAX_PARTS = 12;
+// Blind mode checks each part in its most common other colours too
+// (tweak E) — 1 colours call + up to 3 sets calls per part — so a
+// blind batch is capped at 4 parts to stay near 20 seconds.
+var SUGGEST_MAX_PARTS_BLIND = 4;
+function suggestBatchSize() { return bulkOptBlind ? SUGGEST_MAX_PARTS_BLIND : SUGGEST_MAX_PARTS; }
 var SUGGEST_SHOW = 10;
 function suggestCacheKeyFor(parts, blind, excludeMinifig) {
   var keys = (parts || []).map(function (p) { return p.part + '|' + p.colour + '|' + p.qty; }).sort();
@@ -4435,6 +4530,58 @@ function isMinifigBulkPart(part, colour, blind) {
   }
   return false;
 }
+// Rarity cache (tweak A): the suggest-sets function returns the true
+// set count per queried part+colour (page.count) as partCounts. A
+// part in 3 sets identifies its set far faster than one in 1,200,
+// so the next suggestion run queries the rarest bulk lots first
+// instead of the biggest. Counts live 90 days — set membership
+// barely moves, and the app re-checks any part it queries anyway.
+// Entries are keyed "part|colour" -> {sets, at}; the value is kept
+// whole so a future caller can show the count.
+var PART_RARITY_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+function readPartRarity() {
+  try {
+    var raw = localStorage.getItem('bf:partRarity');
+    if (!raw) return {};
+    var obj = JSON.parse(raw);
+    if (!obj || typeof obj !== 'object') return {};
+    var now = Date.now(), kept = {}, changed = false;
+    Object.keys(obj).forEach(function (k) {
+      var v = obj[k];
+      if (v && typeof v.sets === 'number' && typeof v.at === 'number' && now - v.at <= PART_RARITY_TTL_MS) kept[k] = v;
+      else changed = true;
+    });
+    if (changed) { try { localStorage.setItem('bf:partRarity', JSON.stringify(kept)); } catch (e) {} }
+    return kept;
+  } catch (e) { return {}; }
+}
+function notePartCounts(partCounts) {
+  if (!partCounts || !partCounts.length) return;
+  var map = readPartRarity(), now = Date.now();
+  partCounts.forEach(function (pc) {
+    if (!pc || !pc.part || !pc.colour || typeof pc.sets !== 'number') return;
+    map[pc.part + '|' + pc.colour] = { sets: pc.sets, at: now };
+  });
+  try { localStorage.setItem('bf:partRarity', JSON.stringify(map)); } catch (e) {}
+}
+// Rare-first ordering for the distinct bulk parts: known-rarity
+// parts first, fewest sets first (a tie goes to the bigger lot);
+// parts with no cached count after, biggest first. The first run
+// on a fresh list still goes biggest-first and fills the cache; the
+// re-check after a colour fix is the one that runs rare-first.
+function orderBulkPartsByRarity(parts) {
+  var map = readPartRarity();
+  return parts.slice().sort(function (a, b) {
+    var ra = map[a.part + '|' + a.colour], rb = map[b.part + '|' + b.colour];
+    if (ra && rb) {
+      if (ra.sets !== rb.sets) return ra.sets - rb.sets;
+      return b.qty - a.qty;
+    }
+    if (ra) return -1;
+    if (rb) return 1;
+    return b.qty - a.qty;
+  });
+}
 function distinctBulkParts(list, excludeMinifig, blind) {
   var byKey = {}, order = [];
   (list.parts || []).forEach(function (p) {
@@ -4447,8 +4594,7 @@ function distinctBulkParts(list, excludeMinifig, blind) {
     var bl = BRICKLINK_COLOUR[it.colour];
     it.bl_colour = (bl === undefined) ? null : bl;
   });
-  order.sort(function (a, b) { return b.qty - a.qty; });
-  return order;
+  return orderBulkPartsByRarity(order);
 }
 // Same ranking rules as the Edge Function's suggest.ts, so cached
 // candidates re-sort locally when the sort mode changes.
@@ -4480,22 +4626,51 @@ function rankSuggestionsLocal(cands, mode) {
 }
 // Merge a fresh batch of candidates into the running list. Batches
 // cover disjoint parts, so a set found in both batches adds its lot
-// counts together; missing is recomputed from the new total.
+// counts together; missing is recomputed from the new total. The
+// shared lot keys union the same way, so the pieces count (tweak D)
+// stays right across batches; when either side has no shared keys
+// (a pre-v3.42 cache entry), the union is empty and the row falls
+// back to the old lots-only text instead of a wrong number.
 function mergeCandidates(into, fresh) {
   var byNum = {};
   into.forEach(function (c) { byNum[c.set_num] = c; });
   (fresh || []).forEach(function (c) {
     var ex = byNum[c.set_num];
     if (!ex) {
-      var copy = { set_num: c.set_num, name: c.name, year: c.year, num_parts: c.num_parts, set_img_url: c.set_img_url, lotsCovered: c.lotsCovered, missingUpper: c.missingUpper };
+      var copy = { set_num: c.set_num, name: c.name, year: c.year, num_parts: c.num_parts, set_img_url: c.set_img_url, lotsCovered: c.lotsCovered, missingUpper: c.missingUpper, shared: (c.shared || []).slice() };
       into.push(copy);
       byNum[c.set_num] = copy;
       return;
     }
     ex.lotsCovered += c.lotsCovered;
     ex.missingUpper = Math.max(0, ex.num_parts - ex.lotsCovered);
+    if (Array.isArray(ex.shared) && Array.isArray(c.shared)) {
+      var seen = {};
+      ex.shared.forEach(function (k) { seen[k] = 1; });
+      c.shared.forEach(function (k) { if (!seen[k]) { seen[k] = 1; ex.shared.push(k); } });
+      ex.shared.sort();
+    } else {
+      ex.shared = [];
+    }
   });
   return into;
+}
+// Bulk pieces used by one suggestion (tweak D): the sum of the bulk
+// quantities for the lots this set shares. Exact mode matches by
+// part+colour; blind mode matches by part number and sums every
+// colour of that part in the bulk list, since the match may have
+// come through another colour. Returns null when the candidate
+// carries no shared keys — a pre-v3.42 cache entry — so the caller
+// keeps the old lots-only text.
+function bulkPiecesForCandidate(c, list, blind) {
+  if (!c || !Array.isArray(c.shared) || !c.shared.length || !list) return null;
+  var total = 0;
+  (list.parts || []).forEach(function (p) {
+    var key = blind ? p.part : p.part + '|' + p.colour;
+    if (c.shared.indexOf(key) === -1) return;
+    total += p.qty;
+  });
+  return total;
 }
 var SUGGEST_NO_RETRY = { no_api_key: 1, bad_request: 1, unauthorized: 1, rate_limited: 1 };
 // Generation counter for suggestion fetches (v3.38): the results
@@ -4547,12 +4722,12 @@ async function findSuggestions(listId, more) {
       renderSuggestionsInto(bulkSuggWrap, list);
       return;
     }
-    bulkSuggState = { listId: listId, status: 'loading', candidates: [], queried: [], partial: false, unmapped: [], error: '', remaining: parts.slice(), cacheKey: key, page: 1 };
+    bulkSuggState = { listId: listId, status: 'loading', candidates: [], queried: [], partial: false, unmapped: [], error: '', remaining: parts.slice(), cacheKey: key, page: 1, fnV42: null };
     renderSuggestionsInto(bulkSuggWrap, list);
-    await fetchSuggestBatch(list, parts.slice(0, SUGGEST_MAX_PARTS), myRun);
+    await fetchSuggestBatch(list, parts.slice(0, suggestBatchSize()), myRun);
     return;
   }
-  var next = bulkSuggState.remaining.slice(0, SUGGEST_MAX_PARTS);
+  var next = bulkSuggState.remaining.slice(0, suggestBatchSize());
   if (!next.length) return;
   bulkSuggState.status = 'loading';
   renderSuggestionsInto(bulkSuggWrap, list);
@@ -4584,6 +4759,11 @@ async function fetchSuggestBatch(list, batch, runToken) {
   bulkSuggState.unmapped = (bulkSuggState.unmapped || []).concat(payload.unmapped || []);
   bulkSuggState.remaining = (bulkSuggState.remaining || []).slice(batch.length);
   bulkSuggState.status = 'done';
+  // Rarity cache (tweak A): the true set counts feed the rare-first
+  // order on the next run. fnV42 records whether the deployed
+  // function is the v3.42 one — blind discovery needs it (tweak E).
+  notePartCounts(payload.partCounts);
+  bulkSuggState.fnV42 = Array.isArray(payload.partCounts);
   // New candidates arrived, so the ranked list changed underneath
   // the pager — back to page 1 rather than an empty page (v3.39).
   bulkSuggState.page = 1;
@@ -4664,7 +4844,7 @@ function renderSuggestionsInto(wrap, list) {
     return;
   }
   if (st.status === 'loading') {
-    wrap.appendChild(el('p', 'muted', 'Checking the full catalog… Rebrickable answers about one part a second, so a big bulk list takes a while.'));
+    wrap.appendChild(el('p', 'muted', 'Checking the full catalog… Rebrickable answers about one part a second, so a big bulk list takes a while.' + (bulkOptBlind ? ' Colour doesn\'t matter is on, so each part is also checked in its most common other colours — that takes a few seconds per part.' : '')));
     return;
   }
   if (st.status === 'error') {
@@ -4709,7 +4889,8 @@ function renderSuggestionsInto(wrap, list) {
       var text = el('div', 'set-text');
       text.appendChild(el('div', 'set-name', c.name + (c.year ? ' (' + c.year + ')' : '')));
       var missing = (typeof c.missingUpper === 'number') ? c.missingUpper : Math.max(0, c.num_parts - c.lotsCovered);
-      var sub = 'Shares ' + c.lotsCovered + ' lot' + (c.lotsCovered === 1 ? '' : 's') + ' · ' + c.num_parts + ' pieces total · up to ' + missing + ' missing';
+      var pieces = bulkPiecesForCandidate(c, list, bulkOptBlind);
+      var sub = 'Shares ' + c.lotsCovered + ' lot' + (c.lotsCovered === 1 ? '' : 's') + (pieces === null ? '' : ' · ' + pieces + ' piece' + (pieces === 1 ? '' : 's') + ' from bulk') + ' · ' + c.num_parts + ' pieces total · up to ' + missing + ' missing';
       text.appendChild(el('div', 'set-num', sub));
       row.appendChild(text);
       var add = el('button', 'btn btn-small sugg-add', 'Add to My sets');
@@ -4733,6 +4914,9 @@ function renderSuggestionsInto(wrap, list) {
   }
   if (st.unmapped.length) {
     wrap.appendChild(el('p', 'muted small', 'Not checked (' + st.unmapped.length + '): ' + st.unmapped.map(function (u) { return u.part + ' ' + u.colour; }).join(', ') + '.'));
+  }
+  if (bulkOptBlind && st.status === 'done' && !st.remaining.length && st.fnV42 === false) {
+    wrap.appendChild(el('p', 'muted small', 'Colour doesn\'t matter needs the updated suggest-sets function — redeploy it from the Supabase dashboard (Edge Functions > Deploy suggest-sets) and these results will widen to other colours.'));
   }
 }
 async function addSuggestedSet(setNum, btn) {
@@ -5185,19 +5369,38 @@ function sampleCanvasColour(canvas, box) {
     y1 = y0 + h;
   }
   if (x1 <= x0 || y1 <= y0) return null;
+  // Centre half only (v3.42): the box edges hold the table, the
+  // shadow and the neighbouring pieces — the piece itself fills the
+  // middle. A uniform frame is unaffected: its centre is the same
+  // colour as the whole.
+  var cw = x1 - x0, ch = y1 - y0;
+  x0 = Math.floor(x0 + cw * 0.25);
+  y0 = Math.floor(y0 + ch * 0.25);
+  x1 = Math.ceil(x1 - cw * 0.25);
+  y1 = Math.ceil(y1 - ch * 0.25);
+  if (x1 <= x0 || y1 <= y0) return null;
   var img;
   try { img = ctx.getImageData(x0, y0, x1 - x0, y1 - y0); } catch (e) { return null; }
   var d = img && img.data;
   if (!d || !d.length) return null;
   var step = Math.max(1, Math.floor(Math.sqrt((x1 - x0) * (y1 - y0) / 40000)));
-  var r = 0, g = 0, b = 0, n = 0;
+  // Average only the brightest half of the non-near-white samples,
+  // by lightness (r+g+b). Shadowed and edge pixels are the dark
+  // half — dropping them is what stops a Dark Grey piece reading
+  // as Trans-Brown and a Dark Tan one as Brown: the audit's dark
+  // samples sat within a few RGB points of the wrong colour.
+  var samples = [];
   for (var i = 0; i + 2 < d.length; i += 4 * step) {
     var pr = d[i], pg = d[i + 1], pb = d[i + 2];
     if (pr > 250 && pg > 250 && pb > 250) continue;
-    r += pr; g += pg; b += pb; n++;
+    samples.push([pr, pg, pb]);
   }
-  if (!n) return null;
-  return { r: Math.round(r / n), g: Math.round(g / n), b: Math.round(b / n) };
+  if (!samples.length) return null;
+  samples.sort(function (a, b) { return (b[0] + b[1] + b[2]) - (a[0] + a[1] + a[2]); });
+  var half = Math.max(1, Math.ceil(samples.length / 2));
+  var r = 0, g = 0, b = 0;
+  for (var j = 0; j < half; j++) { r += samples[j][0]; g += samples[j][1]; b += samples[j][2]; }
+  return { r: Math.round(r / half), g: Math.round(g / half), b: Math.round(b / half) };
 }
 
 // Sample the colour of the piece just identified, off the captured

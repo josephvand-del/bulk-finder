@@ -496,6 +496,10 @@ input, select {
 .bulk-row .set-text { flex: 1; min-width: 0; }
 .bulk-row-img { width: 52px; height: 52px; object-fit: contain; flex-shrink: 0; border-radius: 6px; background: #fff; }
 .bulk-row-qty { font-size: 18px; font-weight: 700; min-width: 28px; text-align: center; }
+/* v3.42 — the colour on a bulk row is a picker, not fixed text: it
+ * looks like the row text until tapped, then opens the colour list
+ * to fix a wrong scan guess. */
+.bulk-row-colour { border: none; background: transparent; color: inherit; font: inherit; max-width: 140px; text-decoration: underline dotted; cursor: pointer; padding: 0; }
 .bulk-opt-row {
   display: flex;
   align-items: center;

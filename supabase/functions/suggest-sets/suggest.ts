@@ -15,6 +15,13 @@
 // Exact piece counts appear once the set is imported (one tap),
 // when the tracked optimizer takes over with its real inventory.
 //
+// Blind mode (v3.42) DOES widen discovery now: the function also
+// queries each part in its most common other colours (see
+// topPartColours), so a set holding the part only in another colour
+// is found. It costs one extra Rebrickable call per extra colour,
+// which is why blind batches are capped at 4 parts per request
+// (index.ts) — slower, but the app says so while it loads.
+//
 // Colour resolution: a bulk part's colour is a display name ("Dark
 // Grey", "Trans-Blue"). The function resolves it to a Rebrickable
 // colour id in three steps — BrickLink external id, exact
@@ -51,6 +58,11 @@ export interface Candidate {
   set_img_url: string | null;
   lotsCovered: number;
   missingUpper: number;
+  // The bulk lots this set shares, as the aggregation keys that
+  // matched it — "part|colour" in exact mode, the bare part number
+  // in blind mode (v3.42). The app turns these into the bulk pieces
+  // used, which it alone knows (it holds the quantities).
+  shared: string[];
 }
 
 // Rebrickable colour name -> LEGO colour name (copied from
@@ -313,8 +325,8 @@ export function aggregateCandidates(
   const out = Object.keys(bySet).map((k) => {
     const c = bySet[k];
     const missing = Math.max(0, c.num_parts - c.lotsCovered);
-    const { keys: _keys, ...rest } = c as Candidate & { keys: Record<string, number> };
-    return { ...rest, missingUpper: missing };
+    const { keys, ...rest } = c as Candidate & { keys: Record<string, number> };
+    return { ...rest, missingUpper: missing, shared: Object.keys(keys).sort() };
   });
   out.sort((a, b) => {
     if (b.lotsCovered !== a.lotsCovered) return b.lotsCovered - a.lotsCovered;
@@ -368,4 +380,38 @@ export function suggestCacheKey(
     .map((p) => p.part + "|" + p.colour + "|" + p.qty)
     .sort();
   return keys.join(";") + (blind ? "|blind" : "|exact");
+}
+
+// One colour a part comes in, from /lego/parts/{part}/colors/ —
+// the endpoint reports how many sets hold the part in each colour,
+// which is how blind mode picks the extra colours worth checking.
+export interface RbPartColour {
+  id: number;
+  name: string;
+  numSets: number;
+}
+
+export function partColoursFromList(
+  results: { color_id?: unknown; color_name?: unknown; num_sets?: unknown }[],
+): RbPartColour[] {
+  return (results || [])
+    .map((c) => ({
+      id: Number(c.color_id),
+      name: String(c.color_name || ""),
+      numSets: typeof c.num_sets === "number" ? c.num_sets : 0,
+    }))
+    .filter((c) => isFinite(c.id) && c.id >= 0);
+}
+
+// The colours of a part worth checking blind, most sets first —
+// the bulk colour is already covered by the caller's own query, so
+// it is excluded here. A part in one colour returns nothing extra.
+export function topPartColours(
+  colours: RbPartColour[],
+  excludeId: number | null,
+  n: number,
+): RbPartColour[] {
+  const list = (colours || []).filter((c) => c.id !== excludeId);
+  list.sort((a, b) => (b.numSets - a.numSets) || (a.name < b.name ? -1 : 1));
+  return list.slice(0, Math.max(0, n));
 }

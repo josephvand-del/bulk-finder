@@ -3,9 +3,11 @@
 import {
   aggregateCandidates,
   colorTableFromList,
+  partColoursFromList,
   rankSuggestions,
   resolveRbColourId,
   suggestCacheKey,
+  topPartColours,
 } from "./suggest.ts";
 
 let failures = 0;
@@ -85,6 +87,34 @@ const PARTS = [{ part: "3001", colour: "Black", qty: 6 }, { part: "3747", colour
 check("key: stable across part order", suggestCacheKey(PARTS, false), suggestCacheKey([PARTS[1], PARTS[0]], false));
 check("key: blind differs from exact", suggestCacheKey(PARTS, true) !== suggestCacheKey(PARTS, false), true);
 check("key: different qty differs", suggestCacheKey(PARTS, false) !== suggestCacheKey([{ part: "3001", colour: "Black", qty: 5 }, PARTS[1]], false), true);
+
+// v3.42 — the aggregation output carries the shared lot keys, so the
+// app can show the bulk pieces used per suggestion (tweak D).
+const aggA = aggregateCandidates(PART_RESULTS, false).find((c) => c.set_num === "1000-1");
+check("agg shared lists the bulk lots", aggA.shared, ["3001|Black", "3747|Dark Grey"]);
+const aggB = aggregateCandidates(PART_RESULTS, false).find((c) => c.set_num === "2000-1");
+check("agg shared has one lot for B", aggB.shared, ["3001|Black"]);
+const aggBlind = aggregateCandidates(BLIND_RESULTS, true);
+check("agg blind shared keys by part number", aggBlind[0].shared, ["3001"]);
+check("agg blind lotsCovered counts parts not lots", aggBlind[0].lotsCovered, 1);
+
+// v3.42 — blind mode colour picking (tweak E): the colours endpoint
+// rows flatten to {id, name, numSets} and the top picks by num_sets
+// skip the bulk colour itself.
+const pc = partColoursFromList([
+  { color_id: 0, color_name: "Black", num_sets: 500 },
+  { color_id: 11, color_name: "Trans-Black", num_sets: 12 },
+  { color_id: 85, color_name: "Dark Bluish Gray", num_sets: 300 },
+  { color_id: "x", color_name: "Junk", num_sets: 9 },
+  { color_id: 1, color_name: "Blue", num_sets: 200 },
+]);
+check("partColoursFromList flattens rows", pc.length, 4);
+check("partColoursFromList keeps numSets", pc.find((c) => c.id === 0), { id: 0, name: "Black", numSets: 500 });
+check("partColoursFromList drops non-numeric ids", pc.some((c) => c.name === "Junk"), false);
+check("topPartColours picks most sets first", topPartColours(pc, 0, 2).map((c) => c.id), [85, 1]);
+check("topPartColours excludes the bulk colour", topPartColours(pc, 85, 5).some((c) => c.id === 85), false);
+check("topPartColours returns empty for one-colour parts", topPartColours([{ id: 0, name: "Black", numSets: 3 }], 0, 2).length, 0);
+check("topPartColours honours n", topPartColours(pc, null, 1).length, 1);
 
 console.log(failures === 0 ? "\nALL PASS" : "\n" + failures + " FAILURES");
 process.exit(failures === 0 ? 0 : 1);
