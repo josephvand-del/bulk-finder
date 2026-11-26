@@ -1,4 +1,4 @@
-/* Bulk Finder v3.34 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.35 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -2059,6 +2059,55 @@ var LEGO_TO_BRICKLINK = {
   'Speckle_Black_Gold': 151, 'Speckle_Dark_Bluish_Grey_Silver': 117
 };
 
+/* ---------- Rebrickable → BrickLink part numbers (v3.35) ----------
+ * Joseph hit this live 2026-11-25: BrickLink rejected 18 lines from
+ * a pasted XML export — "items in the XML file are invalid or do not
+ * exist in the BrickLink Catalog." The export used Rebrickable part
+ * numbers, and for these 14 parts Rebrickable's number is not
+ * BrickLink's. Most Rebrickable numbers ARE BrickLink numbers, so a
+ * part not in this map passes through unchanged; an entry here is a
+ * plain BrickLink id for a renumber / mold split (3747b, 60470b), a
+ * per-colour minifig map (the rock monsters: BrickLink sells the
+ * whole monster as a minifig, pm002–pm005, keyed by the LEGO colour
+ * segment — Trans-Red Meltrox pm003, Trans-Blue Glaciator pm004,
+ * Trans-Bright-Orange Firox pm002, Trans-Fluorescent-Green Sulfurix
+ * pm005; LEGO elements 4538017 / 4541465 / 4541468 / 4541475), or a
+ * quantity multiplier (the chain: Rebrickable 60169 is a 16-long
+ * chain of 21 links; BrickLink 3711 is sold per link, so one chain
+ * orders 21 — over-ordering links is harmless spares, under-ordering
+ * would leave the chain short). A part whose BrickLink id can't be
+ * determined (a rock monster in a colour with no known minifig) is
+ * skipped and reported, never exported blindly. */
+var REBRICKABLE_TO_BRICKLINK = {
+  '30367': '553', '30385': '52', '30499': '3684', '3747': '3747b',
+  '41669': 'x346', '54196': '2654', '60169': { id: '3711', qtyMult: 21 },
+  '60470': '60470b', '60779': '2335', '6143': '3941',
+  '64786': { minifigByColour: { 'Transparent_Red': 'pm003', 'Transparent_Blue': 'pm004', 'Transparent_Bright_Orange': 'pm002', 'Transparent_Fluorescent_Green': 'pm005' } },
+  '73587': '4592c02', '86209': '60601', '88072': '4623a'
+};
+
+// The BrickLink identity for one inventory lot, or a skip reason.
+// Returns { id, type, colour, qty }: type 'P' for parts, 'M' for
+// minifigs (a BrickLink wanted list takes minifigs with colour 0);
+// qty is the remaining count, times any per-link multiplier. A
+// return of { skip: reason } means the lot can't be represented on
+// BrickLink and the caller must report it, not export it.
+function brickLinkPartFor(lot, rem) {
+  var part = partNumOf(lot);
+  var entry = REBRICKABLE_TO_BRICKLINK[part];
+  if (entry && typeof entry === 'object' && entry.minifigByColour) {
+    var pm = entry.minifigByColour[legoSegOf(lot)];
+    if (!pm) return { skip: 'rock monster in ' + displayColour(lot) + ' — no known BrickLink minifig number' };
+    return { id: pm, type: 'M', colour: 0, qty: rem };
+  }
+  var bl = brickLinkColourId(lot);
+  if (bl === undefined) return { skip: 'no BrickLink colour id for this colour' };
+  if (entry && typeof entry === 'object' && entry.qtyMult) {
+    return { id: entry.id, type: 'P', colour: bl, qty: rem * entry.qtyMult };
+  }
+  return { id: (typeof entry === 'string') ? entry : part, type: 'P', colour: bl, qty: rem };
+}
+
 // The LEGO colour name in the lot id (3rd segment). For "any colour"
 // lots this is the colour pictured in the photo.
 function legoSegOf(item) {
@@ -3726,8 +3775,10 @@ function onScanColourChange(newColour) {
   updateScanMeta();
 }
 function confirmScanDone() {
+  var p = scanState.pending;
   scanState.pending = null;
   scanConfirmEl.hidden = true;
+  if (p) { showScanAssign(p); return; }
   scanControlsEl.hidden = false;
   scanVideo.hidden = false;
   scanStatusEl.textContent = 'Point the camera at the next piece and tap Scan piece.';
@@ -3742,6 +3793,152 @@ function cancelScanPending() {
   scanStatusEl.textContent = 'Piece removed — scan the next one when ready.';
 }
 
+/* ---------- Scan assignment popup (v3.35) ----------
+ * Done on the confirm card asks where this piece goes. The bulk
+ * list is always the first row — the piece is already there, so
+ * that tap just keeps it. Below it, every tracked set that still
+ * needs this exact part + colour, each with its need for the piece
+ * and its overall progress. A tap on a set moves the piece out of
+ * the bulk list and credits it as found there, through the same
+ * applyFoundTo path the All-view minus tap uses. If no tracked set
+ * needs it, the bulk-list row stands alone with a note saying so.
+ * Unlike setsNeedingPart (selected sets only, for the minus tap),
+ * this covers all tracked sets — and it reads the saved counts
+ * straight from local storage, because a set that isn't selected
+ * has no counts map in memory yet. */
+var scanAssignModal = null, scanAssignList = null, scanAssignSub = null, scanAssignNote = null;
+var scanAssignPending = null;
+function ensureScanAssignModal() {
+  if (scanAssignModal) return scanAssignModal;
+  var overlay = document.createElement('div');
+  overlay.className = 'confirm-modal scan-assign';
+  overlay.hidden = true;
+  var box = document.createElement('div');
+  box.className = 'confirm-box';
+  var title = document.createElement('h3');
+  title.textContent = 'Where should this piece go?';
+  box.appendChild(title);
+  scanAssignSub = document.createElement('p');
+  box.appendChild(scanAssignSub);
+  scanAssignList = document.createElement('div');
+  box.appendChild(scanAssignList);
+  scanAssignNote = document.createElement('p');
+  scanAssignNote.className = 'muted small';
+  scanAssignNote.hidden = true;
+  box.appendChild(scanAssignNote);
+  var cancel = document.createElement('button');
+  cancel.type = 'button'; cancel.className = 'btn btn-quiet'; cancel.textContent = 'Cancel';
+  cancel.addEventListener('click', closeScanAssign);
+  box.appendChild(cancel);
+  overlay.appendChild(box);
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) closeScanAssign(); });
+  document.body.appendChild(overlay);
+  scanAssignModal = overlay;
+  return overlay;
+}
+function hideScanAssign() {
+  if (scanAssignModal) scanAssignModal.hidden = true;
+  scanAssignPending = null;
+}
+function resumeScanAfterAssign() {
+  scanControlsEl.hidden = false;
+  scanVideo.hidden = false;
+  scanStatusEl.textContent = 'Point the camera at the next piece and tap Scan piece.';
+}
+function closeScanAssign() { // Cancel / overlay / Escape: the piece stays in the bulk list
+  if (!scanAssignModal || scanAssignModal.hidden) return;
+  hideScanAssign();
+  resumeScanAfterAssign();
+}
+// Found / total pieces for one tracked set, from the saved counts
+// (the same numbers the sidebar percent is built from).
+function setFoundTotal(setKey) {
+  var inv = getInventory(setKey);
+  if (!inv) return { found: 0, total: 0 };
+  var meta = findSet(setKey);
+  var counts = LS.get(countsKey(meta ? meta.set_num : setKey), null);
+  var found = 0, total = 0;
+  inv.items.forEach(function (it) {
+    total += it.qty;
+    var rem = (counts && typeof counts[it.id] === 'number') ? Math.max(0, Math.min(it.qty, counts[it.id])) : it.qty;
+    found += (it.qty - rem);
+  });
+  return { found: found, total: total };
+}
+// Every tracked set that still needs this exact scanned piece — one
+// entry per set, with the set's total need for the piece and its
+// overall progress. A set holding the same part in two lots gets one
+// row, and the credited lot is the first lot of the piece with room.
+function setsNeedingScannedPart(part, colour) {
+  var pk = part + '|' + colour;
+  var out = [];
+  sets.forEach(function (meta) {
+    var key = meta.key || meta.set_num;
+    var inv = getInventory(key);
+    if (!inv) return;
+    var counts = LS.get(countsKey(meta.set_num), null);
+    var rem = 0, lot = null;
+    inv.items.forEach(function (l) {
+      if (partNumOf(l) + '|' + (l.colour || '') !== pk) return;
+      var r = (counts && typeof counts[l.id] === 'number') ? Math.max(0, Math.min(l.qty, counts[l.id])) : l.qty;
+      if (r <= 0) return;
+      if (!lot) {
+        var copy = {};
+        for (var k in l) copy[k] = l[k];
+        copy.setKey = key;
+        lot = copy;
+      }
+      rem += r;
+    });
+    if (rem <= 0 || !lot) return;
+    var prog = setFoundTotal(key);
+    out.push({ setKey: key, setName: meta.set_name || key, lot: lot, rem: rem, found: prog.found, total: prog.total });
+  });
+  return out;
+}
+function assignScannedToSet(candidate, p) {
+  // The set may not be selected, so its counts map may not be in
+  // memory: load it first, or changeRemaining would start that lot
+  // from full qty and save a partial map, wiping the set's counts.
+  if (!remainingBySet[candidate.setKey]) remainingBySet[candidate.setKey] = loadCounts(candidate.setKey);
+  applyFoundTo(candidate);
+  removeScannedPart(p.listId, p.part, p.colour, 1);
+  hideScanAssign();
+  resumeScanAfterAssign();
+}
+function showScanAssign(p) {
+  var m = ensureScanAssignModal();
+  scanAssignPending = p;
+  var list = findBulkList(p.listId);
+  scanAssignSub.textContent = p.part + ' · ' + (p.name || 'Unknown part') + ' · ' + p.colour;
+  scanAssignList.innerHTML = '';
+  // Bulk list first, always — the piece is already there.
+  var bulkBtn = document.createElement('button');
+  bulkBtn.type = 'button'; bulkBtn.className = 'hunt-choice assign-bulk';
+  bulkBtn.textContent = 'Add to bulk list';
+  var bulkDetail = document.createElement('div');
+  bulkDetail.className = 'assign-detail';
+  bulkDetail.textContent = list ? list.name + ' · ' + bulkListPieces(list) + ' pieces' : 'Bulk list';
+  bulkBtn.appendChild(bulkDetail);
+  bulkBtn.addEventListener('click', function () { hideScanAssign(); resumeScanAfterAssign(); });
+  scanAssignList.appendChild(bulkBtn);
+  var candidates = setsNeedingScannedPart(p.part, p.colour);
+  candidates.forEach(function (c) {
+    var btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'hunt-choice';
+    btn.textContent = c.setName;
+    var detail = document.createElement('div');
+    detail.className = 'assign-detail';
+    detail.textContent = 'Needs ' + c.rem + ' · ' + c.found + '/' + c.total + ' pieces found';
+    btn.appendChild(detail);
+    btn.addEventListener('click', function () { assignScannedToSet(c, p); });
+    scanAssignList.appendChild(btn);
+  });
+  scanAssignNote.textContent = candidates.length ? '' : 'No tracked set still needs this piece.';
+  scanAssignNote.hidden = candidates.length > 0;
+  m.hidden = false;
+}
+
 /* ---------- Order remaining: BrickLink XML wanted list (v3.33) ----------
  * (v3.34 adds the same lines as a BrickStore .bsx, the file
  * BrickLink's upload picker takes — the picker rejects .xml.)
@@ -3750,9 +3947,14 @@ function cancelScanPending() {
  * Rebrickable's wanted-list import takes: ITEMTYPE P, ITEMID the part
  * number, COLOR the BrickLink colour id, MINQTY the remaining count,
  * CONDITION N. Export only — nothing opens Rebrickable. Any-colour
- * lots are ordered in the colour pictured in the photo. Lots the
- * export can't represent — sticker sheets, and colours with no
- * verified BrickLink id — are left out and listed, never guessed. */
+ * lots are ordered in the colour pictured in the photo. Part numbers
+ * go through the Rebrickable → BrickLink map (v3.35): most numbers
+ * pass through unchanged, the 14 renumbered parts are translated,
+ * minifigs export as type M with colour 0, and the chain orders per
+ * link (×21). Lots the export can't represent — sticker sheets,
+ * colours with no verified BrickLink id, and parts with no known
+ * BrickLink number (a rock monster in an unmapped colour) — are left
+ * out and listed, never guessed. */
 function remainingLines() {
   var byKey = {};
   var order = [];
@@ -3772,19 +3974,21 @@ function remainingLines() {
         skipped.push({ part: partNumOf(lot), colour: displayColour(lot), qty: rem, reason: 'sticker sheet — order by set number on BrickLink' });
         return;
       }
-      var bl = LEGO_TO_BRICKLINK[legoSegOf(lot)];
-      if (bl === undefined) {
-        skipped.push({ part: partNumOf(lot), colour: displayColour(lot), qty: rem, reason: 'no BrickLink colour id for this colour' });
+      var blp = brickLinkPartFor(lot, rem);
+      if (blp.skip) {
+        skipped.push({ part: partNumOf(lot), colour: displayColour(lot), qty: rem, reason: blp.skip });
         return;
       }
-      var k = partNumOf(lot) + '|' + bl;
-      if (!byKey[k]) { byKey[k] = { part: partNumOf(lot), colour: bl, qty: 0 }; order.push(byKey[k]); }
-      byKey[k].qty += rem;
+      var k = blp.id + '|' + blp.type + '|' + blp.colour;
+      if (!byKey[k]) { byKey[k] = { part: blp.id, type: blp.type, colour: blp.colour, qty: 0 }; order.push(byKey[k]); }
+      byKey[k].qty += blp.qty;
     });
   });
   order.sort(function (a, b) {
     var c = String(a.part).localeCompare(String(b.part), undefined, { numeric: true });
-    return c !== 0 ? c : a.colour - b.colour;
+    if (c !== 0) return c;
+    if (a.type !== b.type) return a.type < b.type ? -1 : 1;
+    return a.colour - b.colour;
   });
   return { items: order, pieces: pieces, skipped: skipped };
 }
@@ -3793,7 +3997,7 @@ function remainingXml() {
   var lines = ['<INVENTORY>'];
   r.items.forEach(function (it) {
     lines.push('  <ITEM>');
-    lines.push('    <ITEMTYPE>P</ITEMTYPE>');
+    lines.push('    <ITEMTYPE>' + (it.type || 'P') + '</ITEMTYPE>');
     lines.push('    <ITEMID>' + it.part + '</ITEMID>');
     lines.push('    <COLOR>' + it.colour + '</COLOR>');
     lines.push('    <MINQTY>' + it.qty + '</MINQTY>');
@@ -3822,7 +4026,7 @@ function remainingBsx() {
   r.items.forEach(function (it) {
     lines.push('    <Item>');
     lines.push('      <ItemID>' + it.part + '</ItemID>');
-    lines.push('      <ItemTypeID>P</ItemTypeID>');
+    lines.push('      <ItemTypeID>' + (it.type || 'P') + '</ItemTypeID>');
     lines.push('      <ColorID>' + it.colour + '</ColorID>');
     lines.push('      <Qty>' + it.qty + '</Qty>');
     lines.push('      <Condition>N</Condition>');
@@ -4005,7 +4209,7 @@ function bindEvents() {
   document.addEventListener('pointercancel', function () {
     if (dragActive) endSetDrag();
   });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeDrawer(); hideConfirm(); hideHuntChooser(); closeScan(); hideOrderModal(); hideScanPicker(); } });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeDrawer(); hideConfirm(); hideHuntChooser(); closeScanAssign(); closeScan(); hideOrderModal(); hideScanPicker(); } });
   $('forgotBtn').addEventListener('click', doForgotPassword);
   $('pwToggleBtn').addEventListener('click', function () {
     var pw = $('authPassword');

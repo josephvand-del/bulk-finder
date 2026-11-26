@@ -71,7 +71,7 @@ const fixtureInv10294 = {
   tiers: { 1: "MOST LIKELY IN BULK", 2: "MEDIUM — WORTH A DIG", 3: "LEAST LIKELY IN BULK" },
   items: [
     { id: "300126-3001-Black", qty: 6, dim: "2 × 4 studs", colour: "Black", any: false, tier: 1, cat: "Bricks", img: "https://example.test/300126.jpg", name: "Brick 2 x 4" },
-    { id: "4211064-3747-Dark_Stone_Grey", qty: 2, dim: "2 × 1 studs", colour: "Dark Grey", any: false, tier: 2, cat: "Sloped Bricks", img: "https://example.test/4211064.jpg", name: "Slope 45 2 x 1" },
+    { id: "4211064-3747-Dark_Stone_Grey", qty: 2, dim: "2 × 3 studs", colour: "Dark Grey", any: false, tier: 2, cat: "Sloped Bricks", img: "https://example.test/4211064.jpg", name: "Slope, Inverted 33 3 x 2" },
     { id: "4541538-30385-Transparent_Blue", qty: 2, dim: "1 × 1 stud", colour: "Trans-Blue", any: false, tier: 2, cat: "Minifig Accessories", img: "https://example.test/4541538.jpg", name: "Rock 1 x 1 Crystal 5 Point" },
   ],
 };
@@ -1724,6 +1724,77 @@ async function main() {
     return out;
   }
   check("order-bsx: parses back to the same lines as the XML", parseBsx(b.bsx), parseBlXml(x.xml));
+
+  // --- v3.35: Rebrickable → BrickLink part numbers. Joseph hit the
+  // bad numbers live 2026-11-25: BrickLink rejected 18 lines from a
+  // pasted XML export. The 8961-1 export above (full counts, 3001
+  // Black at 6, 6141 done) must contain none of the 14 bad numbers
+  // as exact item ids — 3747b and 60470b contain "3747"/"60470" as
+  // substrings, so the check runs on parsed item ids, not raw text —
+  // and must contain the mapped numbers instead.
+  const bad14 = ["30367", "30385", "30499", "3747", "41669", "54196", "60169", "60470", "60779", "6143", "64786", "73587", "86209", "88072"];
+  const xmlById = {};
+  parseBlXml(x.xml).forEach((l) => { (xmlById[l.part] = xmlById[l.part] || []).push(l); });
+  check("bl-map: none of the 14 bad Rebrickable numbers is exported", bad14.some((p) => xmlById[p]), false);
+  check("bl-map: 30367 is BrickLink 553 in both colours", xmlById["553"], [{ part: "553", colour: 11, qty: 2 }, { part: "553", colour: 85, qty: 2 }]);
+  check("bl-map: 30385 is BrickLink 52 in three colours", xmlById["52"], [{ part: "52", colour: 14, qty: 2 }, { part: "52", colour: 17, qty: 2 }, { part: "52", colour: 98, qty: 2 }]);
+  check("bl-map: 30499 is BrickLink 3684", xmlById["3684"], [{ part: "3684", colour: 34, qty: 1 }]);
+  check("bl-map: 3747 is BrickLink 3747b", xmlById["3747b"], [{ part: "3747b", colour: 85, qty: 8 }]);
+  check("bl-map: 41669 is BrickLink x346", xmlById["x346"], [{ part: "x346", colour: 4, qty: 24 }]);
+  check("bl-map: 54196 is BrickLink 2654", xmlById["2654"], [{ part: "2654", colour: 12, qty: 2 }]);
+  check("bl-map: 60169 orders 21 links of BrickLink 3711 per chain", xmlById["3711"], [{ part: "3711", colour: 85, qty: 21 }]);
+  check("bl-map: 60470 is BrickLink 60470b", xmlById["60470b"], [{ part: "60470b", colour: 11, qty: 4 }]);
+  check("bl-map: 60779 is BrickLink 2335", xmlById["2335"], [{ part: "2335", colour: 1, qty: 2 }]);
+  check("bl-map: 6143 is BrickLink 3941", xmlById["3941"], [{ part: "3941", colour: 86, qty: 1 }]);
+  check("bl-map: 64786 Trans-Red is Meltrox pm003", xmlById["pm003"], [{ part: "pm003", colour: 0, qty: 1 }]);
+  check("bl-map: 64786 Trans-Blue is Glaciator pm004", xmlById["pm004"], [{ part: "pm004", colour: 0, qty: 1 }]);
+  check("bl-map: 73587 is BrickLink 4592c02 (black lever)", xmlById["4592c02"], [{ part: "4592c02", colour: 1, qty: 4 }]);
+  check("bl-map: 86209 is BrickLink 60601", xmlById["60601"], [{ part: "60601", colour: 13, qty: 1 }]);
+  check("bl-map: 88072 is BrickLink 4623a", xmlById["4623a"], [{ part: "4623a", colour: 11, qty: 2 }]);
+  // The minifig lines carry ITEMTYPE M (ItemTypeID M in the .bsx).
+  const pm003Start = x.xml.lastIndexOf("<ITEM>", x.xml.indexOf("<ITEMID>pm003</ITEMID>"));
+  const pm003Block = x.xml.slice(pm003Start, x.xml.indexOf("</ITEM>", pm003Start));
+  check("bl-map: pm003 line is a minifig, colour 0", pm003Block.includes("<ITEMTYPE>M</ITEMTYPE>") && pm003Block.includes("<COLOR>0</COLOR>") && pm003Block.includes("<MINQTY>1</MINQTY>"), true);
+  const pm004Start = x.xml.lastIndexOf("<ITEM>", x.xml.indexOf("<ITEMID>pm004</ITEMID>"));
+  const pm004Block = x.xml.slice(pm004Start, x.xml.indexOf("</ITEM>", pm004Start));
+  check("bl-map: pm004 line is a minifig, colour 0", pm004Block.includes("<ITEMTYPE>M</ITEMTYPE>") && pm004Block.includes("<COLOR>0</COLOR>") && pm004Block.includes("<MINQTY>1</MINQTY>"), true);
+  const bsxPm003 = b.bsx.slice(b.bsx.indexOf("<ItemID>pm003</ItemID>"), b.bsx.indexOf("</Item>", b.bsx.indexOf("<ItemID>pm003</ItemID>")));
+  check("bl-map: .bsx pm003 line is a minifig, colour 0", bsxPm003.includes("<ItemTypeID>M</ItemTypeID>") && bsxPm003.includes("<ColorID>0</ColorID>"), true);
+  // The resolver itself, one line per bad number, plus the
+  // pass-through and skip cases.
+  check("bl-map: resolver 30367 → 553", sandbox.brickLinkPartFor({ id: "4161674-30367-Dark_Stone_Grey", colour: "Dark Grey" }, 2), { id: "553", type: "P", colour: 85, qty: 2 });
+  check("bl-map: resolver 30385 → 52", sandbox.brickLinkPartFor({ id: "4541538-30385-Transparent_Blue", colour: "Trans-Blue" }, 2), { id: "52", type: "P", colour: 14, qty: 2 });
+  check("bl-map: resolver 30499 → 3684", sandbox.brickLinkPartFor({ id: "4537923-30499-Bright_Yellowish_Green", colour: "Lime Green" }, 1), { id: "3684", type: "P", colour: 34, qty: 1 });
+  check("bl-map: resolver 3747 → 3747b", sandbox.brickLinkPartFor({ id: "4211064-3747-Dark_Stone_Grey", colour: "Dark Grey" }, 8), { id: "3747b", type: "P", colour: 85, qty: 8 });
+  check("bl-map: resolver 41669 → x346", sandbox.brickLinkPartFor({ id: "4281515-41669-Bright_Orange", colour: "Orange" }, 24), { id: "x346", type: "P", colour: 4, qty: 24 });
+  check("bl-map: resolver 54196 → 2654", sandbox.brickLinkPartFor({ id: "4278412-54196-Transparent", colour: "Clear" }, 2), { id: "2654", type: "P", colour: 12, qty: 2 });
+  check("bl-map: resolver 60169 → 3711 ×21", sandbox.brickLinkPartFor({ id: "4516456-60169-Dark_Stone_Grey", colour: "Dark Grey" }, 1), { id: "3711", type: "P", colour: 85, qty: 21 });
+  check("bl-map: resolver 60470 → 60470b", sandbox.brickLinkPartFor({ id: "4556158-60470-Black", colour: "" }, 4), { id: "60470b", type: "P", colour: 11, qty: 4 });
+  check("bl-map: resolver 60779 → 2335", sandbox.brickLinkPartFor({ id: "4523403-60779-White", colour: "White" }, 2), { id: "2335", type: "P", colour: 1, qty: 2 });
+  check("bl-map: resolver 6143 → 3941", sandbox.brickLinkPartFor({ id: "4211526-6143-Medium_Stone_Grey", colour: "Light Grey" }, 1), { id: "3941", type: "P", colour: 86, qty: 1 });
+  check("bl-map: resolver 64786 Trans-Red → pm003", sandbox.brickLinkPartFor({ id: "4538017-64786-Transparent_Red", colour: "Trans-Red" }, 1), { id: "pm003", type: "M", colour: 0, qty: 1 });
+  check("bl-map: resolver 64786 Trans-Blue → pm004", sandbox.brickLinkPartFor({ id: "4541465-64786-Transparent_Blue", colour: "Trans-Blue" }, 1), { id: "pm004", type: "M", colour: 0, qty: 1 });
+  check("bl-map: resolver 64786 Trans-Orange → pm002", sandbox.brickLinkPartFor({ id: "4541468-64786-Transparent_Bright_Orange", colour: "Trans-Orange" }, 1), { id: "pm002", type: "M", colour: 0, qty: 1 });
+  check("bl-map: resolver 64786 Trans-Neon-Green → pm005", sandbox.brickLinkPartFor({ id: "4541475-64786-Transparent_Fluorescent_Green", colour: "Trans-Green" }, 1), { id: "pm005", type: "M", colour: 0, qty: 1 });
+  check("bl-map: resolver 73587 → 4592c02", sandbox.brickLinkPartFor({ id: "73737-73587-White", colour: "White" }, 4), { id: "4592c02", type: "P", colour: 1, qty: 4 });
+  check("bl-map: resolver 86209 → 60601", sandbox.brickLinkPartFor({ id: "4552036-86209-Transparent_Brown", colour: "Trans-Brown" }, 1), { id: "60601", type: "P", colour: 13, qty: 1 });
+  check("bl-map: resolver 88072 → 4623a", sandbox.brickLinkPartFor({ id: "4569733-88072-Black", colour: "" }, 2), { id: "4623a", type: "P", colour: 11, qty: 2 });
+  check("bl-map: resolver passes a shared number through", sandbox.brickLinkPartFor({ id: "300126-3001-Black", colour: "Black" }, 6), { id: "3001", type: "P", colour: 11, qty: 6 });
+  check("bl-map: resolver skips a rock monster in an unknown colour", sandbox.brickLinkPartFor({ id: "4578028-64786-Transparent_Yellow", colour: "Trans-Yellow" }, 1), { skip: "rock monster in Trans-Yellow — no known BrickLink minifig number" });
+  // End to end: a rock monster in a colour with no known minifig is
+  // skipped and reported, never exported blindly.
+  sandbox.INVENTORIES["10306-1"] = { set: "10306-1 Test Monster", lots: 1, pieces: 1, tiers: { 1: "MOST LIKELY IN BULK", 2: "MEDIUM — WORTH A DIG", 3: "LEAST LIKELY IN BULK" }, items: [{ id: "4578028-64786-Transparent_Yellow", qty: 1, dim: "1 stud", colour: "Trans-Yellow", any: false, tier: 3, cat: "Minifig / Accessories", img: "https://example.test/4578028.jpg", name: "Rock Monster Mini Assemb." }] };
+  sandbox.sets.push({ key: "10306-1", set_num: "10306-1", set_name: "Test Monster", total_parts: 1, total_lots: 1, user_set_id: "us-10306" });
+  sandbox.saveLocalSets(sandbox.sets);
+  sandbox.saveCounts("10306-1", { "4578028-64786-Transparent_Yellow": 1 });
+  sandbox.setSelected(["10306-1"]);
+  const rSkip = sandbox.remainingXml();
+  check("bl-map: unmapped rock-monster colour exports zero lines", rSkip.lines, 0);
+  check("bl-map: unmapped rock-monster colour is skipped and reported", rSkip.skipped, [{ part: "64786", colour: "Trans-Yellow", qty: 1, reason: "rock monster in Trans-Yellow — no known BrickLink minifig number" }]);
+  sandbox.sets = sandbox.sets.filter((s) => s.key !== "10306-1");
+  sandbox.saveLocalSets(sandbox.sets);
+  delete sandbox.INVENTORIES["10306-1"];
+  sandbox.setSelected(["8961-1"]);
   // Multi-set: the same part+colour sums across sets, in both formats.
   sandbox.setSelected(["8961-1", "10294-1"]);
   const bm = sandbox.remainingBsx();
@@ -1773,6 +1844,70 @@ async function main() {
   sandbox.scanDoneBtn.listeners.click[0]();
   check("scan: Done keeps the piece", sandbox.findBulkList(scanList.id).parts.length, 1);
   check("scan: Done hides the confirm card", sandbox.scanConfirmEl.hidden, true);
+
+  // --- v3.35: scan assignment popup — Done asks where the piece
+  // goes. The scan test above left the popup open; close it first.
+  sandbox.closeScanAssign();
+  sandbox.scanState.lastColour = "Black";
+  const inv8961d = sandbox.getInventory("8961-1");
+  const full8961d = {};
+  inv8961d.items.forEach((it) => { full8961d[it.id] = it.qty; });
+  full8961d["300126-3001-Black"] = 6;
+  full8961d["614126-6141-Black"] = 0;
+  sandbox.saveCounts("8961-1", full8961d);
+  const full94d = {};
+  fixtureInv10294.items.forEach((it) => { full94d[it.id] = it.qty; });
+  sandbox.saveCounts("10294-1", full94d);
+  const full05d = {};
+  fixtureInv10305.items.forEach((it) => { full05d[it.id] = it.qty; });
+  sandbox.saveCounts("10305-1", full05d);
+  const assignList = sandbox.createBulkList("Assign test");
+  sandbox.handleIdentified(assignList.id, "3001", "Brick 2 x 4", 0.97, "data:image/jpeg;base64,zzz");
+  sandbox.scanDoneBtn.listeners.click[0]();
+  check("assign: Done opens the popup", sandbox.scanAssignModal.hidden, false);
+  check("assign: bulk list is the first row", sandbox.scanAssignList.children[0].textContent, "Add to bulk list");
+  check("assign: bulk row names the list and its piece count", sandbox.scanAssignList.children[0].children[0].textContent, "Assign test · 1 pieces");
+  const assignRows = sandbox.scanAssignList.children.slice(1);
+  check("assign: every set needing the piece is listed", assignRows.map((b) => b.textContent).sort(), ["Crystal Sweeper", "Test Set 2", "Test Ship", "test-2"]);
+  const assignRow8961 = assignRows.find((b) => b.textContent === "Crystal Sweeper");
+  const assignRow10294 = assignRows.find((b) => b.textContent === "Test Ship");
+  const assignRow10305 = assignRows.find((b) => b.textContent === "Test Set 2");
+  const assignRowTest2 = assignRows.find((b) => b.textContent === "test-2");
+  check("assign: 8961-1 row shows its need and progress", assignRow8961.children[0].textContent, "Needs 6 · 14/430 pieces found");
+  check("assign: 10294-1 row shows its need and progress", assignRow10294.children[0].textContent, "Needs 6 · 0/10 pieces found");
+  check("assign: 10305-1 row shows its need and progress", assignRow10305.children[0].textContent, "Needs 3 · 0/5 pieces found");
+  check("assign: test-2 row shows its need and progress", assignRowTest2.children[0].textContent, "Needs 2 · 0/3 pieces found");
+  assignRow8961.listeners.click[0]();
+  check("assign: tapping 8961-1 credits the piece there", JSON.parse(sandbox.localStorage.getItem("bf:counts:8961-1"))["300126-3001-Black"], 5);
+  check("assign: piece leaves the bulk list", sandbox.findBulkList(assignList.id).parts, []);
+  check("assign: popup closes after assigning", sandbox.scanAssignModal.hidden, true);
+  // The bulk row keeps the piece where it is.
+  sandbox.handleIdentified(assignList.id, "3001", "Brick 2 x 4", 0.97, "data:image/jpeg;base64,zzz2");
+  sandbox.scanDoneBtn.listeners.click[0]();
+  sandbox.scanAssignList.children[0].listeners.click[0]();
+  check("assign: bulk row keeps the piece in the list", sandbox.findBulkList(assignList.id).parts.length, 1);
+  check("assign: bulk row closes the popup", sandbox.scanAssignModal.hidden, true);
+  // A piece no tracked set needs: bulk row only, with the note.
+  sandbox.handleIdentified(assignList.id, "3001", "Brick 2 x 4", 0.97, "data:image/jpeg;base64,zzz3");
+  sandbox.scanColourSel.value = "Red";
+  sandbox.scanColourSel.listeners.change[0]({ target: sandbox.scanColourSel });
+  sandbox.scanDoneBtn.listeners.click[0]();
+  check("assign: no set needs the red piece, bulk row only", sandbox.scanAssignList.children.length, 1);
+  check("assign: note says no tracked set needs it", sandbox.scanAssignNote.hidden, false);
+  check("assign: note text", sandbox.scanAssignNote.textContent, "No tracked set still needs this piece.");
+  const assignBox = sandbox.scanAssignModal.children[0];
+  const assignCancel = assignBox.children.find((c) => c.textContent === "Cancel");
+  assignCancel.listeners.click[0]();
+  check("assign: Cancel keeps the piece in the bulk list", sandbox.findBulkList(assignList.id).parts.length, 2);
+  check("assign: Cancel closes the popup", sandbox.scanAssignModal.hidden, true);
+  // Escape closes the popup and keeps the piece, too.
+  sandbox.scanState.lastColour = "Black";
+  sandbox.handleIdentified(assignList.id, "3001", "Brick 2 x 4", 0.97, "data:image/jpeg;base64,zzz4");
+  sandbox.scanDoneBtn.listeners.click[0]();
+  check("assign: popup opens again for the next piece", sandbox.scanAssignModal.hidden, false);
+  sandbox.document.listeners.keydown[0]({ key: "Escape" });
+  check("assign: Escape closes the popup", sandbox.scanAssignModal.hidden, true);
+  check("assign: Escape keeps the piece in the bulk list", sandbox.bulkListPieces(sandbox.findBulkList(assignList.id)), 3);
 
   // --- v3.33: scan picker — create a list, no camera here.
   sandbox.openScanPicker();

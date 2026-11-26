@@ -556,6 +556,13 @@ input, select {
 .hunt-choice { display: block; width: 100%; text-align: left; background: #fff; border: 2px solid #222; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; font-size: 16px; cursor: pointer; }
 .hunt-choice:active { background: #f5f5f5; }
 .hunt-choice .hunt-need { float: right; color: #555; font-size: 14px; }
+/* Scan assignment popup (v3.35): it opens over the scan overlay
+ * (z-index 300), so it needs to sit above it. The bulk-list row is
+ * first and tinted, so it reads as the default destination. */
+.scan-assign { z-index: 310; }
+.scan-assign .confirm-box { max-width: 460px; }
+.assign-detail { color: #555; font-size: 14px; margin-top: 2px; }
+.assign-bulk { border-color: #1565c0; background: #e3f2fd; }
 
 /* v3.28 — build list panel inside the instructions viewer: a mini
    tracker down the left side, grouped by type then colour. On a wide
