@@ -462,6 +462,77 @@ input, select {
 .set-list .set-del-btn { flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%; border: 1px solid #ddd; background: #fff; color: #888; font-size: 18px; line-height: 1; cursor: pointer; padding: 0; }
 .set-list .set-del-btn:active { background: #fdecea; color: #b71c1c; border-color: #b71c1c; }
 
+/* v3.33 — drag-handle grip on each My sets row: press and the row
+ * lifts at once for a reorder drag. A tap on the grip does nothing. */
+.set-list .set-drag-handle {
+  flex-shrink: 0;
+  width: 28px;
+  min-height: 44px;
+  border: none;
+  background: transparent;
+  font-size: 16px;
+  letter-spacing: 2px;
+  color: #888;
+  cursor: grab;
+  touch-action: none;
+  padding: 0;
+}
+.set-list .set-drag-handle:active { cursor: grabbing; color: #222; }
+
+/* v3.33 — Order remaining button under the set title. */
+.order-btn { margin: 0 0 12px; }
+
+/* v3.33 — bulk list view: action row, scanned-part rows, optimizer. */
+.bulk-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; }
+.bulk-parts { display: flex; flex-direction: column; gap: 8px; }
+.bulk-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+.bulk-row .set-text { flex: 1; min-width: 0; }
+.bulk-row-img { width: 52px; height: 52px; object-fit: contain; flex-shrink: 0; border-radius: 6px; background: #fff; }
+.bulk-row-qty { font-size: 18px; font-weight: 700; min-width: 28px; text-align: center; }
+.bulk-opt-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+.bulk-opt-row .set-text { flex: 1; min-width: 0; }
+
+/* v3.33 — camera scan overlay: full-screen, video on top. */
+.scan-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.92); z-index: 300; display: flex; align-items: center; justify-content: center; padding: 12px; }
+.scan-overlay[hidden] { display: none; }
+.scan-box { width: min(100%, 560px); display: flex; flex-direction: column; gap: 12px; }
+.scan-video { width: 100%; max-height: 62vh; background: #111; border-radius: 12px; object-fit: cover; }
+.scan-video[hidden] { display: none; }
+.scan-controls { display: flex; flex-direction: column; gap: 10px; }
+.scan-controls[hidden] { display: none; }
+.scan-status { color: #eee; font-size: 15px; margin: 0; text-align: center; }
+.scan-file-label { color: #ddd; font-size: 14px; text-align: center; }
+.scan-file-label input { color: #ddd; }
+.scan-confirm { background: #fff; color: #222; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.scan-confirm[hidden] { display: none; }
+.scan-photo { width: 100%; max-height: 280px; object-fit: contain; background: #f5f5f5; border-radius: 8px; }
+.scan-partnum { font-size: 26px; font-weight: 800; }
+.scan-partname { font-size: 15px; color: #444; }
+.scan-colour-label { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.scan-colour-label select { flex: 1; min-width: 0; }
+.scan-new-row { display: flex; gap: 8px; margin: 10px 0; }
+.scan-new-row input { flex: 1; min-width: 0; }
+
+/* v3.33 — Order remaining modal: wider box, XML text area. */
+.order-modal .confirm-box { max-width: 560px; }
+.order-xml { width: 100%; font-family: monospace; font-size: 12px; padding: 8px; border: 2px solid #999; border-radius: 8px; resize: vertical; }
+
 /* v3.30 — "Show more" batches at the end of the set view. */
 .view-more { padding: 16px 0 24px; text-align: center; }
 .view-more .btn { min-width: 220px; }

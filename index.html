@@ -31,6 +31,7 @@
     <p class="tagline">Pick a set, hunt the bulk bins, tap each piece as it goes in the bag.</p>
   </div>
   <div class="header-auth">
+    <button id="scanBtn" class="btn btn-small sound-toggle" type="button" aria-label="Scan a part with the camera" title="Scan a part with the camera">📷</button>
     <button id="soundToggleBtn" class="btn btn-small sound-toggle" type="button" aria-label="Sound on" title="Sound on — tap to mute">🔊</button>
     <button id="authToggleBtn" class="btn btn-small">Log in / Sign up</button>
   </div>
@@ -110,6 +111,10 @@
     <h2>My sets</h2>
     <ul id="setList" class="set-list"></ul>
     <p id="noSetsMsg" class="muted">No sets yet — add one above.</p>
+
+    <h2>Bulk lists</h2>
+    <ul id="bulkList" class="set-list"></ul>
+    <p id="noBulkMsg" class="muted">No bulk lists yet — tap 📷 to scan your first piece.</p>
 
     <div class="reset-wrap">
     </div>

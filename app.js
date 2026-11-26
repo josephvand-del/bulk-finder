@@ -1,4 +1,4 @@
-/* Bulk Finder v3.32 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.33 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -193,7 +193,9 @@ function partNumOf(item) { var parts = String(item.id || '').split('-'); return 
  * bf:selectedSets    — set keys shown together in the combined view
  * bf:view            — { date, status, type, colour } for the filter + set
  *                      view (same-day restore; a new day resets to defaults)
- * bf:guestDismissed  — auth card dismissed for this session's guest */
+ * bf:guestDismissed  — auth card dismissed for this session's guest
+ * bf:bulkLists       — scanned bulk lists (local only): [{ id, name,
+ *                      created, parts: [{ part, name, colour, qty, img }] }] */
 var LS = {
   get: function (k, fallback) {
     try {
@@ -656,7 +658,7 @@ async function refreshSetsFromCloud() {
   cloud = cloud.filter(function (s) { return !tombs[s.user_set_id]; });
   var local = localSets();
   // v3.30 — the sidebar order is the user's order: start from the
-  // local list (so a long-press reorder survives a cloud refresh) and
+  // local list (so a grip reorder survives a cloud refresh) and
   // append cloud-only sets at the end. Cloud data still wins per set
   // (it carries the account id); only the position comes from local.
   var byNum = {};
@@ -1449,7 +1451,7 @@ async function addImportedSet() {
   // Register the inventory first: loadCounts/openSet need it right away.
   INVENTORIES[p.set_num] = p.inventory;
   var meta = {
-    key: p.set_num, set_num: p.set_num, set_name: p.name,
+    key: p.set_num, set_num: p.set_num, set_name: p.name, year: p.year || null,
     total_parts: p.inventory.pieces, total_lots: p.inventory.lots,
     set_img_url: p.set_img_url, user_set_id: null
   };
@@ -1573,7 +1575,7 @@ function closeDrawer() { setDrawer(false); }
  * it is open closes it. Vertical movement is a scroll, not a swipe,
  * so the set list still scrolls. Skipped while the instructions
  * viewer or the 3D lightbox is open (they sit on top of the drawer),
- * and while a set box is being long-press dragged. Works from the
+ * and while a set box is being grip-dragged. Works from the
  * installed home-screen icon; in a browser tab the system back-swipe
  * may claim the gesture first. */
 var swipeStartX = null, swipeStartY = null;
@@ -1584,7 +1586,7 @@ function swipeModalOpen() {
 function drawerSwipeStart(x, y) { swipeStartX = x; swipeStartY = y; }
 function drawerSwipeMove(x, y) {
   if (swipeStartX === null) return;
-  if (dragActive || dragPressTimer) return; // a set reorder owns the gesture
+  if (dragActive) return; // a set reorder owns the gesture
   var dx = x - swipeStartX, dy = y - swipeStartY;
   if (Math.abs(dy) > Math.abs(dx)) return; // scrolling, not swiping
   var open = document.body.classList.contains('drawer-open');
@@ -1598,34 +1600,19 @@ function drawerSwipeMove(x, y) {
 }
 function drawerSwipeEnd() { swipeStartX = null; swipeStartY = null; }
 
-/* ---------- Long-press drag to reorder My sets (v3.30) ----------
- * Hold a set box ~400ms and it lifts (a small haptic tick on phones);
- * drag it up or down and release to drop it there. The order is the
- * ranking: it decides which set is "first" at startup and the order
- * in the combined view. A tap still opens the set and a scroll still
- * scrolls — the hold timer only fires when the finger stays put, and
- * the click right after a drag is swallowed. The order lives in the
- * local sets list, so it is per-device (cloud rows carry no order). */
-var SET_DRAG_HOLD_MS = 400;
-var dragPressTimer = null;
-var dragPressX = null, dragPressY = null;
+/* ---------- Drag-handle reorder for My sets (v3.33) ----------
+ * The 400ms long-press (v3.30) is gone: it fired while scrolling and
+ * fought the drawer swipe. Each row now has a ⋮⋮ grip at its left
+ * edge; a press on the grip lifts the row at once, drag it up or down
+ * and release to drop it there. A tap on the grip does nothing (the
+ * row's click is swallowed); a tap anywhere else on the row still
+ * opens the set. The order is the ranking: it decides which set is
+ * "first" at startup and the order in the combined view. The order
+ * lives in the local sets list, so it is per-device (cloud rows carry
+ * no order). */
 var dragKey = null, dragLi = null, dragActive = false;
 var suppressNextRowClick = false;
-function setRowPress(s, li, e) {
-  // A press that starts on a button (Instructions / delete) is that
-  // button's tap, never a drag.
-  if (e && e.target && typeof e.target.closest === 'function' && e.target.closest('button')) return;
-  cancelSetPress();
-  dragPressX = (e && typeof e.clientX === 'number') ? e.clientX : null;
-  dragPressY = (e && typeof e.clientY === 'number') ? e.clientY : null;
-  dragPressTimer = setTimeout(function () { beginSetDrag(s, li); }, SET_DRAG_HOLD_MS);
-}
-function cancelSetPress() {
-  if (dragPressTimer) { clearTimeout(dragPressTimer); dragPressTimer = null; }
-  dragPressX = null; dragPressY = null;
-}
 function beginSetDrag(s, li) {
-  dragPressTimer = null;
   dragKey = s.key;
   dragLi = li;
   dragActive = true;
@@ -1667,7 +1654,7 @@ function endSetDrag() {
   if (order.length === sets.length) {
     sets.sort(function (a, b) { return order.indexOf(a.key) - order.indexOf(b.key); });
     saveLocalSets(sets.map(function (s) {
-      return { key: s.set_num, set_num: s.set_num, set_name: s.set_name, total_parts: s.total_parts, total_lots: s.total_lots, set_img_url: s.set_img_url || null, user_set_id: s.user_set_id || null };
+      return { key: s.set_num, set_num: s.set_num, set_name: s.set_name, year: s.year || null, total_parts: s.total_parts, total_lots: s.total_lots, set_img_url: s.set_img_url || null, user_set_id: s.user_set_id || null };
     }));
     renderSets();
   }
@@ -1679,6 +1666,7 @@ function endSetDrag() {
 function setSelected(keys) {
   var valid = keys.filter(function (k) { return findSet(k); });
   if (!valid.length) return;
+  bulkViewId = null; // leaving a bulk list view for the set view
   selectedKeys = valid;
   saveSelectedKeys();
   saveViewState();
@@ -1905,6 +1893,7 @@ function viewItemForCard(item) {
 }
 
 function renderSetView() {
+  if (bulkViewId) { renderBulkListView(); return; }
   var view = $('setView');
   if (viewObserver) { viewObserver.disconnect(); viewObserver = null; }
   view.innerHTML = '';
@@ -1919,6 +1908,14 @@ function renderSetView() {
   var h = el('h2', null, setTitle());
   h.style.margin = '4px 0 12px';
   view.appendChild(h);
+
+  // Order remaining (v3.33): the parts still needed as a BrickLink
+  // XML wanted list for Rebrickable's import. Export only.
+  var orderBtn = el('button', 'btn btn-small order-btn', 'Order remaining');
+  orderBtn.type = 'button';
+  orderBtn.title = 'Download the parts still needed as a BrickLink XML wanted list for Rebrickable';
+  orderBtn.addEventListener('click', function () { showOrderModal(); });
+  view.appendChild(orderBtn);
 
   // Tier names are the same across sets; take them from the first set
   // that has an inventory, so a combined view still names each tier once.
@@ -2016,6 +2013,70 @@ var BRICKLINK_COLOUR = {
   'Trans-Orange': 98, 'Trans-Red': 17
 };
 
+/* LEGO colour name (the 3rd segment of a lot id, e.g. Dark_Stone_Grey)
+ * -> BrickLink colour id. Verified against Rebrickable's colour table
+ * (rebrickable.com/colors — the BrickLink column; read 2026-11-25).
+ * This is the exact mapping the wanted-list export uses, because the
+ * display colour is ambiguous: 'Trans-Green' covers both LEGO
+ * Transparent_Green (BrickLink 20) and Transparent_Fluorescent_Green
+ * (BrickLink 16), and 'Dark Grey' covers Dark_Stone_Grey (85) and
+ * Dark_Grey (10). Two LEGO names have no verified BrickLink id and
+ * are left out on purpose — Bright_Purple and Medium_Turquoise:
+ * lots in those colours are skipped by the export and reported, never
+ * guessed. 'Reddish_Brown' is also a known collision: the import
+ * transform folds both Rebrickable 'Brown' (old brown, BrickLink 8)
+ * and 'Reddish Brown' (modern, BrickLink 88) into this one LEGO name;
+ * 88 is used because every set this tracker holds is 2003 or newer.
+ * 'Trans-Dark Blue' and 'Trans-Blue' both map to 14 — BrickLink uses
+ * the one id for that colour. */
+var LEGO_TO_BRICKLINK = {
+  'Black': 11, 'White': 1, 'Dark_Stone_Grey': 85, 'Medium_Stone_Grey': 86,
+  'Dark_Grey': 10, 'Light_Grey': 9, 'Very_Light_Bluish_Grey': 99,
+  'Bright_Red': 5, 'Bright_Blue': 7, 'Bright_Yellow': 3, 'Bright_Orange': 4,
+  'Bright_Light_Orange': 110, 'Brick_Yellow': 2, 'Reddish_Brown': 88,
+  'Dark_Brown': 120, 'Green': 6, 'Dark_Green': 80, 'Bright_Green': 36,
+  'Bright_Yellowish_Green': 34, 'Yellowish_Green': 158, 'Olive_Green': 155,
+  'Sand_Green': 48, 'Sand_Blue': 55, 'Medium_Azure': 156, 'Dark_Azure': 153,
+  'Bright_Light_Blue': 105, 'Medium_Blue': 42, 'Dark_Blue': 63,
+  'Bright_Violet': 43, 'Dark_Purple': 89, 'Medium_Lavender': 157,
+  'Magenta': 71, 'Bright_Pink': 104, 'Light_Pink': 56, 'Warm_Gold': 115,
+  'Chrome_Silver': 22, 'Flat_Silver': 95, 'Metallic_Silver': 67,
+  'Pearl_Light_Grey': 66, 'Pearl_Dark_Grey': 77, 'Glow_In_Dark_White': 159,
+  'Transparent': 12, 'Transparent_Red': 17, 'Transparent_Bright_Orange': 98,
+  'Transparent_Yellow': 19, 'Transparent_Green': 20, 'Transparent_Blue': 14,
+  'Transparent_Dark_Blue': 14, 'Transparent_Light_Blue': 15,
+  'Transparent_Bright_Green': 108, 'Transparent_Fluorescent_Green': 16,
+  'Transparent_Pink': 107, 'Transparent_Medium_Red_Violet': 51,
+  'Transparent_Black': 251, 'Transparent_Brown': 13,
+  'Transparent_Fluorescent_Red_Orange': 18, 'Transparent_Neon_Yellow': 121,
+  'Chrome_Gold': 21, 'Metallic_Gold': 65, 'Copper': 84, 'Dark_Turquoise': 39,
+  'Bright_Light_Yellow': 103, 'Light_Yellow': 33, 'Dark_Orange': 68,
+  'Reddish_Orange': 167, 'Coral': 220, 'Medium_Nougat': 150, 'Nougat': 28,
+  'Light_Nougat': 90, 'Dark_Nougat': 225, 'Light_Aqua': 152, 'Aqua': 41,
+  'Dark_Pink': 47, 'Lavender': 154, 'Sand_Red': 58, 'Fabuland_Brown': 106,
+  'Maersk_Blue': 72, 'Chrome_Blue': 52, 'Chrome_Green': 64, 'Chrome_Pink': 82,
+  'Chrome_Black': 122, 'Speckle_Black_Silver': 111, 'Speckle_Black_Copper': 116,
+  'Speckle_Black_Gold': 151, 'Speckle_Dark_Bluish_Grey_Silver': 117
+};
+
+// The LEGO colour name in the lot id (3rd segment). For "any colour"
+// lots this is the colour pictured in the photo.
+function legoSegOf(item) {
+  var parts = String(item.id || '').split('-');
+  return parts.length > 2 ? parts[2] : '';
+}
+
+// BrickLink colour id for a lot, from the exact LEGO colour in the
+// lot id. Returns undefined when the colour has no verified id —
+// there is deliberately NO fallback to the display colour: the
+// display colour is derived from the same LEGO name, so it adds no
+// information, and for a genuinely unknown colour (the 2634 lot's
+// {Not_Specified}, whose display field says White) a fallback would
+// order the wrong colour.
+function brickLinkColourId(item) {
+  return LEGO_TO_BRICKLINK[legoSegOf(item)];
+}
+
 // The alternate photo for a card whose primary image is dead.
 // Sticker sheets live on BrickLink under the set's sheet number
 // (8960stk01), not the LEGO part number; everything else uses the
@@ -2025,7 +2086,7 @@ function fallbackImg(item) {
   if (item.cat === 'Stickers') {
     return 'https://img.bricklink.com/ItemImage/PN/0/' + String(item.setKey || '').split('-')[0] + 'stk01.png';
   }
-  var bl = BRICKLINK_COLOUR[item.colour];
+  var bl = brickLinkColourId(item);
   if (bl === undefined) return '';
   return 'https://img.bricklink.com/ItemImage/PN/' + bl + '/' + partNumOf(item) + '.png';
 }
@@ -2895,9 +2956,17 @@ function renderSets() {
   sets.forEach(function (s) {
     var li = el('li', selectedKeys.indexOf(s.key) >= 0 ? 'active' : '');
     li.dataset.key = s.key;
-    // Hold to drag the box up or down the ranking (v3.30); a plain
-    // tap still opens the set.
-    li.addEventListener('pointerdown', function (e) { setRowPress(s, li, e); });
+    // ⋮⋮ grip at the row's left edge: press it and the row lifts at
+    // once for a reorder drag (v3.33). A tap on the grip does nothing.
+    var grip = el('button', 'set-drag-handle', '⋮⋮');
+    grip.type = 'button';
+    grip.setAttribute('aria-label', 'Drag to reorder ' + (s.set_name || s.set_num));
+    grip.addEventListener('pointerdown', function (e) {
+      if (e && e.preventDefault) e.preventDefault();
+      beginSetDrag(s, li);
+    });
+    grip.addEventListener('click', function (e) { e.stopPropagation(); });
+    li.appendChild(grip);
     var text = el('div', 'set-text');
     text.appendChild(el('div', 'set-name', s.set_name));
     text.appendChild(el('div', 'set-num', s.set_num));
@@ -2936,14 +3005,15 @@ function renderSets() {
     });
     li.appendChild(delBtn);
     li.addEventListener('click', function () {
-      // A tap right after a long-press drag ends is the drag's own
-      // release, not an open — swallow it (v3.30).
+      // A tap right after a grip drag ends is the drag's own
+      // release, not an open — swallow it (v3.33).
       if (suppressNextRowClick) { suppressNextRowClick = false; return; }
       openSet(s.key);
     });
     list.appendChild(li);
   });
   renderSetPicker();
+  renderBulkLists();
 }
 
 /* ---------- Set picker: checkboxes + Select all in the filters row ---------- */
@@ -2974,6 +3044,852 @@ function renderSetPicker() {
   });
 }
 
+/* ---------- Bulk lists + camera scan + optimizer + order remaining (v3.33) ----------
+ * Bulk lists are local-only (bf:bulkLists): a named pile of scanned
+ * pieces, one row per part + colour. The camera names the part with
+ * Brickognize (POST api.brickognize.com/predict/parts/, keyless, ~1
+ * req/sec, response { items: [{ id, name, score }] } — no colour, so
+ * the confirm card has a colour picker). The piece is added the
+ * moment it is identified; Cancel on the confirm card takes it back
+ * out. The optimizer ranks the tracked sets against a bulk list by
+ * pieces covered or by newest year; price ranking is a disabled
+ * "not connected yet" state until a price source is wired. "Order
+ * remaining" exports the parts still needed as BrickLink XML for
+ * Rebrickable's wanted-list import. */
+var bulkLists = [];
+var bulkViewId = null; // id of the bulk list open in the main view, or null
+var bulkOptWrap = null;
+var bulkOptPriceBtn = null;
+var bulkOptSort = 'pieces';
+// Price ranking for the optimizer is a disabled "not connected yet"
+// state until a price source is wired (v3.33: no source — see the
+// build report). The spend-budget toggle is omitted: it needs prices.
+var OPTIMIZER_PRICE_MODE = 'not-connected';
+
+function loadBulkLists() {
+  var v = LS.get('bf:bulkLists', []);
+  if (!Array.isArray(v)) return [];
+  return v.filter(function (l) { return l && typeof l.id === 'string' && Array.isArray(l.parts); });
+}
+function saveBulkLists() { LS.set('bf:bulkLists', bulkLists); }
+function findBulkList(id) {
+  for (var i = 0; i < bulkLists.length; i++) if (bulkLists[i].id === id) return bulkLists[i];
+  return null;
+}
+function bulkListPieces(l) {
+  return (l.parts || []).reduce(function (a, p) { return a + p.qty; }, 0);
+}
+function createBulkList(name) {
+  var l = { id: 'bl-' + Date.now() + '-' + Math.floor(Math.random() * 1000), name: name, created: Date.now(), parts: [] };
+  bulkLists.push(l);
+  saveBulkLists();
+  renderBulkLists();
+  return l;
+}
+function deleteBulkList(id) {
+  bulkLists = bulkLists.filter(function (l) { return l.id !== id; });
+  saveBulkLists();
+  if (bulkViewId === id) { bulkViewId = null; loadSelected(); }
+  else renderBulkLists();
+}
+// BrickLink photo for a scanned part in a display colour, when the
+// colour maps; '' otherwise (the row shows without a photo).
+function bulkPartImg(part, colour) {
+  var bl = BRICKLINK_COLOUR[colour];
+  if (bl === undefined) return '';
+  return 'https://img.bricklink.com/ItemImage/PN/' + bl + '/' + part + '.png';
+}
+function addScannedPart(listId, part, name, colour) {
+  var list = findBulkList(listId);
+  if (!list) return null;
+  var ex = null;
+  list.parts.forEach(function (p) { if (p.part === part && p.colour === colour) ex = p; });
+  if (ex) ex.qty++;
+  else list.parts.push({ part: part, name: name || '', colour: colour, qty: 1, img: bulkPartImg(part, colour) });
+  saveBulkLists();
+  renderBulkLists();
+  return list;
+}
+function removeScannedPart(listId, part, colour, n) {
+  var list = findBulkList(listId);
+  if (!list) return;
+  n = (n === undefined) ? 1 : n;
+  for (var i = 0; i < list.parts.length; i++) {
+    var p = list.parts[i];
+    if (p.part === part && p.colour === colour) {
+      p.qty -= n;
+      if (p.qty <= 0) list.parts.splice(i, 1);
+      break;
+    }
+  }
+  saveBulkLists();
+  renderBulkLists();
+  if (bulkViewId === listId) renderBulkListView();
+}
+function setScannedQty(listId, part, colour, qty) {
+  var list = findBulkList(listId);
+  if (!list) return;
+  for (var i = 0; i < list.parts.length; i++) {
+    var p = list.parts[i];
+    if (p.part === part && p.colour === colour) {
+      if (qty <= 0) list.parts.splice(i, 1);
+      else p.qty = qty;
+      break;
+    }
+  }
+  saveBulkLists();
+  renderBulkLists();
+  if (bulkViewId === listId) renderBulkListView();
+}
+
+// Colours the picker offers: the app's known display colours, plus
+// every colour that appears in the tracked sets' inventories — the
+// exact vocabulary the optimizer can match against.
+function scanColourOptions() {
+  var seen = {};
+  var out = [];
+  Object.keys(BRICKLINK_COLOUR).forEach(function (c) { if (!seen[c]) { seen[c] = 1; out.push(c); } });
+  sets.forEach(function (s) {
+    var inv = getInventory(s.set_num);
+    if (!inv) return;
+    inv.items.forEach(function (it) {
+      var c = it.colour || '';
+      if (c && !seen[c]) { seen[c] = 1; out.push(c); }
+      if (it.any) {
+        var pc = picturedColour(it);
+        if (pc && !seen[pc]) { seen[pc] = 1; out.push(pc); }
+      }
+    });
+  });
+  out.sort();
+  return out;
+}
+
+function renderBulkLists() {
+  var list = $('bulkList');
+  if (!list) return;
+  list.innerHTML = '';
+  var noMsg = $('noBulkMsg');
+  if (noMsg) noMsg.hidden = bulkLists.length > 0;
+  bulkLists.forEach(function (l) {
+    var li = el('li', bulkViewId === l.id ? 'active' : '');
+    var text = el('div', 'set-text');
+    text.appendChild(el('div', 'set-name', l.name));
+    text.appendChild(el('div', 'set-num', bulkListPieces(l) + ' pieces · ' + l.parts.length + ' lots'));
+    li.appendChild(text);
+    li.addEventListener('click', function () { openBulkList(l.id); });
+    list.appendChild(li);
+  });
+}
+
+function openBulkList(id) {
+  var list = findBulkList(id);
+  if (!list) return;
+  closeDrawer();
+  bulkViewId = id;
+  renderBulkListView();
+}
+function closeBulkView() {
+  bulkViewId = null;
+  loadSelected();
+}
+
+function buildBulkRow(list, p) {
+  var row = el('div', 'bulk-row');
+  if (p.img) {
+    var img = document.createElement('img');
+    img.className = 'bulk-row-img';
+    img.src = p.img;
+    img.alt = '';
+    img.addEventListener('error', function () { img.style.display = 'none'; });
+    row.appendChild(img);
+  }
+  var text = el('div', 'set-text');
+  text.appendChild(el('div', 'set-name', (p.name || 'Part ' + p.part)));
+  text.appendChild(el('div', 'set-num', p.part + ' · ' + p.colour));
+  row.appendChild(text);
+  var minus = el('button', 'build-step-btn', '−');
+  minus.type = 'button';
+  minus.setAttribute('aria-label', 'One fewer ' + p.part + ' ' + p.colour);
+  minus.addEventListener('click', function () { setScannedQty(list.id, p.part, p.colour, p.qty - 1); });
+  row.appendChild(minus);
+  row.appendChild(el('span', 'bulk-row-qty', String(p.qty)));
+  var plus = el('button', 'build-step-btn', '+');
+  plus.type = 'button';
+  plus.setAttribute('aria-label', 'One more ' + p.part + ' ' + p.colour);
+  plus.addEventListener('click', function () { setScannedQty(list.id, p.part, p.colour, p.qty + 1); });
+  row.appendChild(plus);
+  var del = el('button', 'set-del-btn', '×');
+  del.type = 'button';
+  del.setAttribute('aria-label', 'Remove ' + p.part + ' ' + p.colour);
+  del.addEventListener('click', function () { setScannedQty(list.id, p.part, p.colour, 0); });
+  row.appendChild(del);
+  return row;
+}
+
+function renderBulkListView() {
+  var list = findBulkList(bulkViewId);
+  var view = $('setView');
+  if (viewObserver) { viewObserver.disconnect(); viewObserver = null; }
+  view.innerHTML = '';
+  viewPending = [];
+  viewTierGrids = {};
+  viewSentinel = null;
+  viewMoreBtn = null;
+  if (!list) { bulkViewId = null; showEmpty(); return; }
+  $('emptyState').hidden = true;
+  $('progressWrap').hidden = true;
+  var h = el('h2', null, list.name);
+  h.style.margin = '4px 0 4px';
+  view.appendChild(h);
+  view.appendChild(el('p', 'muted', bulkListPieces(list) + ' pieces · ' + list.parts.length + ' lots · saved on this phone only'));
+  var row = el('div', 'bulk-actions');
+  var addBtn = el('button', 'btn btn-small', '📷 Add more');
+  addBtn.type = 'button';
+  addBtn.addEventListener('click', function () { startScan(list.id); });
+  row.appendChild(addBtn);
+  var optBtn = el('button', 'btn btn-small', 'Find optimal sets');
+  optBtn.type = 'button';
+  optBtn.addEventListener('click', function () { runOptimizer(list.id, 'pieces'); });
+  row.appendChild(optBtn);
+  var delBtn = el('button', 'btn btn-small btn-quiet', 'Delete list');
+  delBtn.type = 'button';
+  delBtn.addEventListener('click', function () {
+    showConfirm({
+      title: 'Delete this bulk list?',
+      message: 'This removes "' + list.name + '" and its ' + bulkListPieces(list) + ' scanned pieces from this phone.',
+      confirmLabel: 'Delete',
+      onConfirm: function () { deleteBulkList(list.id); }
+    });
+  });
+  row.appendChild(delBtn);
+  var backBtn = el('button', 'btn btn-small btn-quiet', '← Back to sets');
+  backBtn.type = 'button';
+  backBtn.addEventListener('click', function () { closeBulkView(); });
+  row.appendChild(backBtn);
+  view.appendChild(row);
+  var partsWrap = el('div', 'bulk-parts');
+  if (!list.parts.length) {
+    partsWrap.appendChild(el('p', 'muted', 'Nothing scanned yet — tap "Add more" and point the camera at a piece.'));
+  }
+  list.parts.forEach(function (p) { partsWrap.appendChild(buildBulkRow(list, p)); });
+  view.appendChild(partsWrap);
+  bulkOptWrap = el('div', 'bulk-opt');
+  view.appendChild(bulkOptWrap);
+  renderBulkLists();
+}
+
+/* ---------- Optimizer: what sets come out of a bulk list ---------- */
+function rankBulkListSets(list, sortMode) {
+  function freshPool() {
+    var pool = {};
+    (list.parts || []).forEach(function (p) {
+      var b = pool[p.part] || (pool[p.part] = { total: 0, byColour: {} });
+      b.total += p.qty;
+      b.byColour[p.colour] = (b.byColour[p.colour] || 0) + p.qty;
+    });
+    return pool;
+  }
+  // Take qty pieces of part pn from the pool: a specific-colour lot
+  // takes only its colour; an "any colour" lot takes whatever is
+  // there, spending the fullest colour buckets first so later
+  // specific lots see what is really left.
+  function takeFrom(pool, pn, colour, qty) {
+    var b = pool[pn];
+    if (!b || b.total <= 0) return 0;
+    var n = 0;
+    if (colour) {
+      n = Math.min(b.byColour[colour] || 0, qty);
+      if (n > 0) b.byColour[colour] -= n;
+    } else {
+      n = Math.min(b.total, qty);
+      var left = n;
+      var cols = Object.keys(b.byColour).sort(function (a, c) { return b.byColour[c] - b.byColour[a]; });
+      cols.forEach(function (c) {
+        if (left <= 0) return;
+        var d = Math.min(b.byColour[c], left);
+        b.byColour[c] -= d;
+        left -= d;
+      });
+    }
+    b.total -= n;
+    return n;
+  }
+  var results = [];
+  sets.forEach(function (s) {
+    var inv = getInventory(s.set_num);
+    if (!inv) return;
+    var pool = freshPool();
+    var pieces = 0, lots = 0;
+    inv.items.forEach(function (lot) {
+      var n = lot.any
+        ? takeFrom(pool, partNumOf(lot), null, lot.qty)
+        : takeFrom(pool, partNumOf(lot), lot.colour, lot.qty);
+      if (n > 0) { pieces += n; lots++; }
+    });
+    results.push({
+      setKey: s.key, setName: s.set_name || s.set_num,
+      year: (typeof s.year === 'number') ? s.year : null,
+      piecesCovered: pieces, lotsCovered: lots,
+      totalPieces: inv.pieces, totalLots: inv.lots
+    });
+  });
+  if (sortMode === 'newest') {
+    results.sort(function (a, b) {
+      var ya = (a.year === null ? -1 : a.year), yb = (b.year === null ? -1 : b.year);
+      if (yb !== ya) return yb - ya;
+      if (b.piecesCovered !== a.piecesCovered) return b.piecesCovered - a.piecesCovered;
+      return a.setName < b.setName ? -1 : 1;
+    });
+  } else {
+    results.sort(function (a, b) {
+      if (b.piecesCovered !== a.piecesCovered) return b.piecesCovered - a.piecesCovered;
+      if (b.lotsCovered !== a.lotsCovered) return b.lotsCovered - a.lotsCovered;
+      return a.setName < b.setName ? -1 : 1;
+    });
+  }
+  return results;
+}
+
+function runOptimizer(listId, sortMode) {
+  var list = findBulkList(listId);
+  if (!list || !bulkOptWrap) return;
+  if (sortMode) bulkOptSort = sortMode;
+  var results = rankBulkListSets(list, bulkOptSort);
+  var wrap = bulkOptWrap;
+  wrap.innerHTML = '';
+  wrap.appendChild(el('h3', null, 'Sets this bulk can build'));
+  var sortRow = el('div', 'bulk-actions');
+  var piecesBtn = el('button', 'btn btn-small' + (bulkOptSort === 'pieces' ? '' : ' btn-quiet'), 'Most pieces');
+  piecesBtn.type = 'button';
+  piecesBtn.addEventListener('click', function () { runOptimizer(listId, 'pieces'); });
+  sortRow.appendChild(piecesBtn);
+  var newBtn = el('button', 'btn btn-small' + (bulkOptSort === 'newest' ? '' : ' btn-quiet'), 'Newest');
+  newBtn.type = 'button';
+  newBtn.addEventListener('click', function () { runOptimizer(listId, 'newest'); });
+  sortRow.appendChild(newBtn);
+  bulkOptPriceBtn = el('button', 'btn btn-small btn-quiet', 'Price — not connected yet');
+  bulkOptPriceBtn.type = 'button';
+  bulkOptPriceBtn.disabled = true;
+  bulkOptPriceBtn.title = 'Price ranking needs a price source — none is connected yet.';
+  sortRow.appendChild(bulkOptPriceBtn);
+  wrap.appendChild(sortRow);
+  var covering = results.filter(function (r) { return r.piecesCovered > 0; });
+  if (!list.parts.length) {
+    wrap.appendChild(el('p', 'muted', 'Scan some pieces first — the optimizer ranks your tracked sets against this list.'));
+  } else if (!covering.length) {
+    wrap.appendChild(el('p', 'muted', 'No tracked set uses any piece from this list yet.'));
+  } else {
+    covering.forEach(function (r) {
+      var row = el('div', 'bulk-opt-row');
+      var pct = r.totalPieces ? Math.round(100 * r.piecesCovered / r.totalPieces) : 0;
+      var text = el('div', 'set-text');
+      text.appendChild(el('div', 'set-name', r.setName + (r.year ? ' (' + r.year + ')' : '')));
+      text.appendChild(el('div', 'set-num', r.piecesCovered + ' of ' + r.totalPieces + ' pieces (' + pct + '%) · ' + r.lotsCovered + ' lots'));
+      row.appendChild(text);
+      row.addEventListener('click', function () { openSet(r.setKey); });
+      wrap.appendChild(row);
+    });
+  }
+  wrap.appendChild(el('p', 'muted small', 'Candidates are the sets in My sets. ' + sets.length + ' tracked, ' + covering.length + ' use this bulk. Sets added before v3.33 have no year, so they sort last under Newest.'));
+}
+
+/* ---------- Camera scan ---------- */
+var scanState = { listId: null, stream: null, identifying: false, lastRequestAt: 0, lastColour: null, pending: null };
+var scanOverlay = null, scanVideo = null, scanCanvas = null, scanStatusEl = null,
+    scanCaptureBtn = null, scanConfirmEl = null, scanPhotoEl = null,
+    scanPartNumEl = null, scanPartNameEl = null, scanScoreEl = null,
+    scanColourSel = null, scanMetaEl = null, scanDoneBtn = null, scanCancelBtn = null,
+    scanControlsEl = null, scanFileInput = null, scanViewListBtn = null;
+var scanPickerModal = null, scanPickerList = null, scanNewNameInput = null, scanPickerMsg = null, scanCreateBtn = null;
+
+function ensureScanPicker() {
+  if (scanPickerModal) return scanPickerModal;
+  var overlay = document.createElement('div');
+  overlay.className = 'confirm-modal hunt-chooser';
+  overlay.hidden = true;
+  var box = document.createElement('div');
+  box.className = 'confirm-box';
+  var title = document.createElement('h3');
+  title.textContent = 'Scan into a bulk list';
+  box.appendChild(title);
+  var sub = document.createElement('p');
+  sub.textContent = 'Point the camera at one piece at a time. Brickognize names the part; you pick the colour.';
+  box.appendChild(sub);
+  scanPickerList = document.createElement('div');
+  box.appendChild(scanPickerList);
+  var newRow = document.createElement('div');
+  newRow.className = 'scan-new-row';
+  scanNewNameInput = document.createElement('input');
+  scanNewNameInput.type = 'text';
+  scanNewNameInput.placeholder = 'New list name, e.g. BAM bin 3';
+  scanNewNameInput.setAttribute('aria-label', 'New bulk list name');
+  newRow.appendChild(scanNewNameInput);
+  var createBtn = document.createElement('button');
+  createBtn.type = 'button'; createBtn.className = 'btn btn-small'; createBtn.textContent = 'Create & scan';
+  scanCreateBtn = createBtn;
+  createBtn.addEventListener('click', function () {
+    var name = (scanNewNameInput.value || '').trim();
+    if (!name) { scanPickerMsg.textContent = 'Give the list a name first.'; return; }
+    var l = createBulkList(name);
+    hideScanPicker();
+    startScan(l.id);
+  });
+  newRow.appendChild(createBtn);
+  box.appendChild(newRow);
+  scanPickerMsg = document.createElement('p');
+  scanPickerMsg.className = 'auth-msg';
+  box.appendChild(scanPickerMsg);
+  var cancel = document.createElement('button');
+  cancel.type = 'button'; cancel.className = 'btn btn-quiet'; cancel.textContent = 'Cancel';
+  cancel.addEventListener('click', hideScanPicker);
+  box.appendChild(cancel);
+  overlay.appendChild(box);
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) hideScanPicker(); });
+  document.body.appendChild(overlay);
+  scanPickerModal = overlay;
+  return overlay;
+}
+function hideScanPicker() { if (scanPickerModal) scanPickerModal.hidden = true; }
+function openScanPicker() {
+  var m = ensureScanPicker();
+  scanPickerList.innerHTML = '';
+  scanPickerMsg.textContent = '';
+  if (!bulkLists.length) {
+    scanPickerList.appendChild(el('p', 'muted', 'No bulk lists yet — name your first one below.'));
+  }
+  bulkLists.forEach(function (l) {
+    var btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'hunt-choice';
+    btn.textContent = l.name;
+    var need = document.createElement('span');
+    need.className = 'hunt-need';
+    need.textContent = bulkListPieces(l) + ' pieces';
+    btn.appendChild(need);
+    btn.addEventListener('click', function () { hideScanPicker(); startScan(l.id); });
+    scanPickerList.appendChild(btn);
+  });
+  scanNewNameInput.value = '';
+  m.hidden = false;
+}
+
+function ensureScanOverlay() {
+  if (scanOverlay) return scanOverlay;
+  var overlay = document.createElement('div');
+  overlay.className = 'scan-overlay';
+  overlay.hidden = true;
+  var box = document.createElement('div');
+  box.className = 'scan-box';
+  scanVideo = document.createElement('video');
+  scanVideo.className = 'scan-video';
+  scanVideo.setAttribute('playsinline', '');
+  scanVideo.setAttribute('muted', '');
+  box.appendChild(scanVideo);
+  scanControlsEl = document.createElement('div');
+  scanControlsEl.className = 'scan-controls';
+  scanCaptureBtn = document.createElement('button');
+  scanCaptureBtn.type = 'button'; scanCaptureBtn.className = 'btn'; scanCaptureBtn.textContent = '📷 Scan piece';
+  scanCaptureBtn.addEventListener('click', captureScan);
+  scanControlsEl.appendChild(scanCaptureBtn);
+  scanStatusEl = document.createElement('p');
+  scanStatusEl.className = 'scan-status';
+  scanStatusEl.textContent = 'Point the camera at one piece and tap Scan piece.';
+  scanControlsEl.appendChild(scanStatusEl);
+  var fileLabel = document.createElement('label');
+  fileLabel.className = 'scan-file-label';
+  fileLabel.textContent = 'Or pick a photo: ';
+  scanFileInput = document.createElement('input');
+  scanFileInput.type = 'file';
+  scanFileInput.setAttribute('accept', 'image/*');
+  scanFileInput.addEventListener('change', function () {
+    if (scanFileInput.files && scanFileInput.files[0]) onScanFile(scanFileInput.files[0]);
+    scanFileInput.value = '';
+  });
+  fileLabel.appendChild(scanFileInput);
+  scanControlsEl.appendChild(fileLabel);
+  scanViewListBtn = document.createElement('button');
+  scanViewListBtn.type = 'button'; scanViewListBtn.className = 'btn btn-quiet'; scanViewListBtn.textContent = 'View list';
+  scanViewListBtn.addEventListener('click', function () { closeScan(); openBulkList(scanState.listId); });
+  scanControlsEl.appendChild(scanViewListBtn);
+  var closeBtn = document.createElement('button');
+  closeBtn.type = 'button'; closeBtn.className = 'btn btn-quiet'; closeBtn.textContent = '✕ Close';
+  closeBtn.addEventListener('click', closeScan);
+  scanControlsEl.appendChild(closeBtn);
+  box.appendChild(scanControlsEl);
+  scanConfirmEl = document.createElement('div');
+  scanConfirmEl.className = 'scan-confirm';
+  scanConfirmEl.hidden = true;
+  scanPhotoEl = document.createElement('img');
+  scanPhotoEl.className = 'scan-photo';
+  scanPhotoEl.alt = '';
+  scanConfirmEl.appendChild(scanPhotoEl);
+  scanPartNumEl = document.createElement('div');
+  scanPartNumEl.className = 'scan-partnum';
+  scanConfirmEl.appendChild(scanPartNumEl);
+  scanPartNameEl = document.createElement('div');
+  scanPartNameEl.className = 'scan-partname';
+  scanConfirmEl.appendChild(scanPartNameEl);
+  scanScoreEl = document.createElement('div');
+  scanScoreEl.className = 'scan-score muted small';
+  scanConfirmEl.appendChild(scanScoreEl);
+  var colourLabel = document.createElement('label');
+  colourLabel.className = 'scan-colour-label';
+  colourLabel.textContent = 'Colour ';
+  scanColourSel = document.createElement('select');
+  scanColourSel.className = 'scan-colour';
+  scanColourSel.addEventListener('change', function (e) { onScanColourChange(e.target.value); });
+  colourLabel.appendChild(scanColourSel);
+  scanConfirmEl.appendChild(colourLabel);
+  scanMetaEl = document.createElement('p');
+  scanMetaEl.className = 'scan-meta muted small';
+  scanConfirmEl.appendChild(scanMetaEl);
+  var btnRow = document.createElement('div');
+  btnRow.className = 'confirm-buttons';
+  scanDoneBtn = document.createElement('button');
+  scanDoneBtn.type = 'button'; scanDoneBtn.className = 'btn'; scanDoneBtn.textContent = '✓ Done';
+  scanDoneBtn.addEventListener('click', confirmScanDone);
+  btnRow.appendChild(scanDoneBtn);
+  scanCancelBtn = document.createElement('button');
+  scanCancelBtn.type = 'button'; scanCancelBtn.className = 'btn btn-quiet'; scanCancelBtn.textContent = 'Cancel';
+  scanCancelBtn.addEventListener('click', cancelScanPending);
+  btnRow.appendChild(scanCancelBtn);
+  scanConfirmEl.appendChild(btnRow);
+  box.appendChild(scanConfirmEl);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  scanOverlay = overlay;
+  return overlay;
+}
+
+async function startScan(listId) {
+  var list = findBulkList(listId);
+  if (!list) return;
+  scanState.listId = listId;
+  scanState.pending = null;
+  var overlay = ensureScanOverlay();
+  scanConfirmEl.hidden = true;
+  scanControlsEl.hidden = false;
+  scanVideo.hidden = false;
+  overlay.hidden = false;
+  scanStatusEl.textContent = 'Point the camera at one piece and tap Scan piece.';
+  var md = (typeof navigator !== 'undefined') ? navigator.mediaDevices : null;
+  if (!md || !md.getUserMedia) {
+    scanStatusEl.textContent = 'This browser can\'t open the camera — pick a photo below instead.';
+    return;
+  }
+  try {
+    var stream = await md.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+    if (scanState.stream && scanState.stream !== stream) stopScanStream();
+    scanState.stream = stream;
+    scanVideo.srcObject = stream;
+    if (scanVideo.play) {
+      try {
+        var pr = scanVideo.play();
+        if (pr && pr.catch) pr.catch(function () {});
+      } catch (e) {}
+    }
+  } catch (e) {
+    scanStatusEl.textContent = 'Camera blocked — allow camera access for this site, or pick a photo below instead.';
+  }
+}
+function stopScanStream() {
+  if (scanState.stream && scanState.stream.getTracks) {
+    scanState.stream.getTracks().forEach(function (t) { if (t.stop) t.stop(); });
+  }
+  scanState.stream = null;
+}
+function closeScan() {
+  stopScanStream();
+  scanState.pending = null;
+  if (scanOverlay) scanOverlay.hidden = true;
+}
+
+function captureScan() {
+  if (scanState.identifying) return;
+  if (!scanVideo || !scanVideo.videoWidth) {
+    scanStatusEl.textContent = 'Camera isn\'t ready yet — wait a second and try again, or pick a photo below.';
+    return;
+  }
+  if (!scanCanvas) scanCanvas = document.createElement('canvas');
+  var ctx = scanCanvas.getContext ? scanCanvas.getContext('2d') : null;
+  if (!ctx || !scanCanvas.toBlob) {
+    scanStatusEl.textContent = 'Capture isn\'t available in this browser — pick a photo below instead.';
+    return;
+  }
+  scanCanvas.width = scanVideo.videoWidth;
+  scanCanvas.height = scanVideo.videoHeight;
+  ctx.drawImage(scanVideo, 0, 0, scanCanvas.width, scanCanvas.height);
+  var photo = '';
+  try { photo = scanCanvas.toDataURL('image/jpeg', 0.85); } catch (e) { photo = ''; }
+  scanCanvas.toBlob(function (blob) {
+    if (blob) identifyPart(blob, photo);
+    else scanStatusEl.textContent = 'Couldn\'t grab a frame — try again.';
+  }, 'image/jpeg', 0.85);
+}
+
+function onScanFile(file) {
+  if (typeof FileReader === 'undefined') {
+    scanStatusEl.textContent = 'Photo upload isn\'t available in this browser.';
+    return;
+  }
+  var reader = new FileReader();
+  reader.onload = function () { identifyPart(file, String(reader.result || '')); };
+  reader.onerror = function () { scanStatusEl.textContent = 'Couldn\'t read that photo — try another.'; };
+  reader.readAsDataURL(file);
+}
+
+// Brickognize's answer: { items: [{ id, name, score }] } — the best
+// match first, empty items when nothing was recognised. No colour in
+// the response, which is why the confirm card asks for one.
+function parseBrickognizeResponse(json) {
+  if (!json || !json.items || !json.items.length) return null;
+  var it = json.items[0];
+  if (!it || it.id === undefined || it.id === null || String(it.id) === '') return null;
+  return { part: String(it.id), name: String(it.name || ''), score: (typeof it.score === 'number') ? it.score : null };
+}
+
+async function identifyPart(blob, photo) {
+  if (scanState.identifying) return;
+  // Brickognize is keyless at ~1 request/sec — don't stack calls.
+  if (Date.now() - scanState.lastRequestAt < 1100) {
+    scanStatusEl.textContent = 'Wait a moment, then scan again.';
+    return;
+  }
+  scanState.identifying = true;
+  scanState.lastRequestAt = Date.now();
+  scanCaptureBtn.disabled = true;
+  scanStatusEl.textContent = 'Identifying…';
+  try {
+    var fd = new FormData();
+    fd.append('query_image', blob, 'part.jpg');
+    var res = await fetch('https://api.brickognize.com/predict/parts/', { method: 'POST', body: fd });
+    if (!res.ok) throw new Error('http ' + res.status);
+    var data = await res.json();
+    var found = parseBrickognizeResponse(data);
+    if (!found) {
+      scanStatusEl.textContent = 'No part recognised — try again, closer up on a plain background.';
+      return;
+    }
+    handleIdentified(scanState.listId, found.part, found.name, found.score, photo);
+  } catch (e) {
+    scanStatusEl.textContent = 'Identification failed — check your connection and try again.';
+  } finally {
+    scanState.identifying = false;
+    scanCaptureBtn.disabled = false;
+  }
+}
+
+// The piece is added the moment it is identified; the confirm card
+// lets Joseph fix the colour, and Cancel takes it back out.
+function handleIdentified(listId, part, name, score, photo) {
+  ensureScanOverlay();
+  var list = findBulkList(listId);
+  if (!list) return;
+  var options = scanColourOptions();
+  var colour = (scanState.lastColour && options.indexOf(scanState.lastColour) >= 0)
+    ? scanState.lastColour : 'Black';
+  addScannedPart(listId, part, name, colour);
+  scanState.pending = { listId: listId, part: part, name: name, colour: colour };
+  scanPhotoEl.src = photo || '';
+  scanPartNumEl.textContent = part;
+  scanPartNameEl.textContent = name || 'Unknown part';
+  scanScoreEl.textContent = (score === null) ? '' :
+    (score < 0.6 ? 'Low confidence (' + Math.round(score * 100) + '%) — check the number before trusting it.'
+                 : 'Confidence ' + Math.round(score * 100) + '%');
+  scanColourSel.innerHTML = '';
+  options.forEach(function (c) {
+    var opt = document.createElement('option');
+    opt.value = c;
+    opt.textContent = c;
+    scanColourSel.appendChild(opt);
+  });
+  scanColourSel.value = colour;
+  updateScanMeta();
+  scanControlsEl.hidden = true;
+  scanVideo.hidden = true;
+  scanConfirmEl.hidden = false;
+}
+function updateScanMeta() {
+  if (!scanState.pending) return;
+  var list = findBulkList(scanState.pending.listId);
+  scanMetaEl.textContent = list
+    ? 'Added to ' + list.name + ' — ' + bulkListPieces(list) + ' pieces in this list.'
+    : '';
+}
+function onScanColourChange(newColour) {
+  var p = scanState.pending;
+  if (!p || !newColour || newColour === p.colour) return;
+  removeScannedPart(p.listId, p.part, p.colour, 1);
+  addScannedPart(p.listId, p.part, p.name, newColour);
+  p.colour = newColour;
+  scanState.lastColour = newColour;
+  updateScanMeta();
+}
+function confirmScanDone() {
+  scanState.pending = null;
+  scanConfirmEl.hidden = true;
+  scanControlsEl.hidden = false;
+  scanVideo.hidden = false;
+  scanStatusEl.textContent = 'Point the camera at the next piece and tap Scan piece.';
+}
+function cancelScanPending() {
+  var p = scanState.pending;
+  if (p) removeScannedPart(p.listId, p.part, p.colour, 1);
+  scanState.pending = null;
+  scanConfirmEl.hidden = true;
+  scanControlsEl.hidden = false;
+  scanVideo.hidden = false;
+  scanStatusEl.textContent = 'Piece removed — scan the next one when ready.';
+}
+
+/* ---------- Order remaining: BrickLink XML wanted list (v3.33) ----------
+ * The remaining parts (needed minus found, per part + colour, summed
+ * across the selected sets) as a BrickLink XML wanted list, the format
+ * Rebrickable's wanted-list import takes: ITEMTYPE P, ITEMID the part
+ * number, COLOR the BrickLink colour id, MINQTY the remaining count,
+ * CONDITION N. Export only — nothing opens Rebrickable. Any-colour
+ * lots are ordered in the colour pictured in the photo. Lots the
+ * export can't represent — sticker sheets, and colours with no
+ * verified BrickLink id — are left out and listed, never guessed. */
+function remainingXml() {
+  var byKey = {};
+  var order = [];
+  var skipped = [];
+  var pieces = 0;
+  selectedKeys.forEach(function (key) {
+    var inv = getInventory(key);
+    if (!inv) return;
+    inv.items.forEach(function (lot) {
+      var copy = {};
+      for (var k in lot) copy[k] = lot[k];
+      copy.setKey = key;
+      var rem = remOf(copy);
+      if (rem <= 0) return;
+      pieces += rem; // all pieces still needed, exported or skipped
+      if (lot.cat === 'Stickers') {
+        skipped.push({ part: partNumOf(lot), colour: displayColour(lot), qty: rem, reason: 'sticker sheet — order by set number on BrickLink' });
+        return;
+      }
+      var bl = LEGO_TO_BRICKLINK[legoSegOf(lot)];
+      if (bl === undefined) {
+        skipped.push({ part: partNumOf(lot), colour: displayColour(lot), qty: rem, reason: 'no BrickLink colour id for this colour' });
+        return;
+      }
+      var k = partNumOf(lot) + '|' + bl;
+      if (!byKey[k]) { byKey[k] = { part: partNumOf(lot), colour: bl, qty: 0 }; order.push(byKey[k]); }
+      byKey[k].qty += rem;
+    });
+  });
+  order.sort(function (a, b) {
+    var c = String(a.part).localeCompare(String(b.part), undefined, { numeric: true });
+    return c !== 0 ? c : a.colour - b.colour;
+  });
+  var lines = ['<INVENTORY>'];
+  order.forEach(function (it) {
+    lines.push('  <ITEM>');
+    lines.push('    <ITEMTYPE>P</ITEMTYPE>');
+    lines.push('    <ITEMID>' + it.part + '</ITEMID>');
+    lines.push('    <COLOR>' + it.colour + '</COLOR>');
+    lines.push('    <MINQTY>' + it.qty + '</MINQTY>');
+    lines.push('    <CONDITION>N</CONDITION>');
+    lines.push('  </ITEM>');
+  });
+  lines.push('</INVENTORY>');
+  return { xml: lines.join('\n'), lines: order.length, pieces: pieces, skipped: skipped };
+}
+
+var orderModal = null, orderXmlText = null, orderStatusEl = null, orderSummaryEl = null, orderSkippedEl = null;
+var lastRemainingXml = '';
+function ensureOrderModal() {
+  if (orderModal) return orderModal;
+  var overlay = document.createElement('div');
+  overlay.className = 'confirm-modal order-modal';
+  overlay.hidden = true;
+  var box = document.createElement('div');
+  box.className = 'confirm-box';
+  var title = document.createElement('h3');
+  title.textContent = 'Order remaining';
+  box.appendChild(title);
+  orderSummaryEl = document.createElement('p');
+  box.appendChild(orderSummaryEl);
+  orderSkippedEl = document.createElement('p');
+  orderSkippedEl.className = 'muted small';
+  box.appendChild(orderSkippedEl);
+  orderXmlText = document.createElement('textarea');
+  orderXmlText.className = 'order-xml';
+  orderXmlText.readOnly = true;
+  orderXmlText.rows = 10;
+  orderXmlText.addEventListener('click', function () { if (orderXmlText.select) orderXmlText.select(); });
+  box.appendChild(orderXmlText);
+  orderStatusEl = document.createElement('p');
+  orderStatusEl.className = 'auth-msg';
+  box.appendChild(orderStatusEl);
+  var row = document.createElement('div');
+  row.className = 'confirm-buttons';
+  var dl = document.createElement('button');
+  dl.type = 'button'; dl.className = 'btn'; dl.textContent = 'Download .xml';
+  dl.addEventListener('click', downloadRemainingXml);
+  row.appendChild(dl);
+  var cp = document.createElement('button');
+  cp.type = 'button'; cp.className = 'btn'; cp.textContent = 'Copy';
+  cp.addEventListener('click', copyRemainingXml);
+  row.appendChild(cp);
+  var close = document.createElement('button');
+  close.type = 'button'; close.className = 'btn btn-quiet'; close.textContent = 'Close';
+  close.addEventListener('click', hideOrderModal);
+  row.appendChild(close);
+  box.appendChild(row);
+  overlay.appendChild(box);
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) hideOrderModal(); });
+  document.body.appendChild(overlay);
+  orderModal = overlay;
+  return overlay;
+}
+function showOrderModal() {
+  var m = ensureOrderModal();
+  var r = remainingXml();
+  lastRemainingXml = r.xml;
+  orderXmlText.value = r.xml;
+  orderSummaryEl.textContent = r.lines
+    ? r.lines + ' lines · ' + r.pieces + ' pieces · condition new — paste this into Rebrickable\'s wanted-list import (BrickLink XML).'
+    : 'Nothing left to order — every lot in this view is complete.';
+  orderSkippedEl.textContent = r.skipped.length
+    ? 'Not in the file (' + r.skipped.length + ' lot' + (r.skipped.length === 1 ? '' : 's') + '): ' + r.skipped.map(function (s) { return s.part + ' ' + s.colour + ' ×' + s.qty + ' (' + s.reason + ')'; }).join('; ') + '. Any-colour lots are ordered in the colour pictured.'
+    : 'Any-colour lots are ordered in the colour pictured.';
+  orderStatusEl.textContent = '';
+  m.hidden = false;
+}
+function hideOrderModal() { if (orderModal) orderModal.hidden = true; }
+function downloadRemainingXml() {
+  try {
+    var name = 'bulk-finder-remaining-' + (selectedKeys.join('-') || 'sets') + '.xml';
+    var blob = new Blob([lastRemainingXml], { type: 'text/xml' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    orderStatusEl.textContent = 'Downloaded ' + name + '.';
+  } catch (e) {
+    orderStatusEl.textContent = 'Download didn\'t work here — use Copy instead.';
+  }
+}
+function copyRemainingXml() {
+  function done() { orderStatusEl.textContent = 'Copied — paste it into Rebrickable\'s wanted-list import.'; }
+  if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(lastRemainingXml).then(done, function () {
+      if (orderXmlText.select) orderXmlText.select();
+      orderStatusEl.textContent = 'Copy didn\'t work — the text is selected, copy it by hand.';
+    });
+  } else {
+    if (orderXmlText.select) orderXmlText.select();
+    orderStatusEl.textContent = 'Text selected — copy it by hand.';
+  }
+}
+
 /* ---------- Wire up + init ---------- */
 function bindEvents() {
   $('authToggleBtn').addEventListener('click', function () {
@@ -2990,6 +3906,7 @@ function bindEvents() {
   $('logoutBtn').addEventListener('click', doLogout);
   $('changePwBtn').addEventListener('click', startChangePassword);
   $('soundToggleBtn').addEventListener('click', function () { setSoundOn(!soundOn); });
+  $('scanBtn').addEventListener('click', openScanPicker);
   // "Displayed" columns control (sidebar footer): - / + buttons and a
   // typeable number; always edits the setting for the device in hand.
   $('colsMinusBtn').addEventListener('click', function () { setCols(getCols(colsBand()) - 1); });
@@ -3011,23 +3928,18 @@ function bindEvents() {
   }, { passive: true });
   document.addEventListener('touchend', drawerSwipeEnd, { passive: true });
   document.addEventListener('touchcancel', drawerSwipeEnd, { passive: true });
-  // Long-press drag on a set box (v3.30): the row's pointerdown starts
-  // the hold timer; these document handlers run the drag itself.
+  // Grip drag on a set box (v3.33): the grip's pointerdown lifts the
+  // row at once; these document handlers run the drag itself.
   document.addEventListener('pointermove', function (e) {
     if (dragActive) { dragMoveTo(e.clientY); return; }
-    if (dragPressTimer && dragPressX !== null && dragPressY !== null && typeof e.clientX === 'number' && typeof e.clientY === 'number') {
-      if (Math.abs(e.clientX - dragPressX) > 12 || Math.abs(e.clientY - dragPressY) > 12) cancelSetPress();
-    }
   });
   document.addEventListener('pointerup', function () {
     if (dragActive) endSetDrag();
-    else cancelSetPress();
   });
   document.addEventListener('pointercancel', function () {
-    cancelSetPress();
     if (dragActive) endSetDrag();
   });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeDrawer(); hideConfirm(); hideHuntChooser(); } });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeDrawer(); hideConfirm(); hideHuntChooser(); closeScan(); hideOrderModal(); hideScanPicker(); } });
   $('forgotBtn').addEventListener('click', doForgotPassword);
   $('pwToggleBtn').addEventListener('click', function () {
     var pw = $('authPassword');
@@ -3128,6 +4040,7 @@ async function init() {
   setSoundOn(soundOn);
   applyCols();
   sets = localSets();
+  bulkLists = loadBulkLists();
   // v3.30 — first paint comes from the local cache: the sets and the
   // saved view show at once, before the login check has had its say.
   // The login check and the cloud merge run in the background below

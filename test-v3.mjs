@@ -351,12 +351,12 @@ async function main() {
   sandbox.saveCounts("8961-1", counts8961);
   check("rows: percent after one lot found", sandbox.setPercent(sandbox.findSet("8961-1")), "3%"); // 16/430 = 3.72%, floored (v3.29): 100% only when complete
   sandbox.renderSets();
-  const rows8961 = $("setList").children.filter((li) => li.children[0].children[1].textContent === "8961-1");
+  const rows8961 = $("setList").children.filter((li) => li.children[1].children[1].textContent === "8961-1");
   check("rows: one row for 8961-1", rows8961.length, 1);
   const row8961 = rows8961[0];
-  check("rows: name first", row8961.children[0].children[0].textContent, "Crystal Sweeper");
-  check("rows: number second", row8961.children[0].children[1].textContent, "8961-1");
-  check("rows: percent third", row8961.children[0].children[2].textContent, "3%");
+  check("rows: name first", row8961.children[1].children[0].textContent, "Crystal Sweeper");
+  check("rows: number second", row8961.children[1].children[1].textContent, "8961-1");
+  check("rows: percent third", row8961.children[1].children[2].textContent, "3%");
   const thumb8961 = row8961.children.find((c) => c.className === "set-thumb");
   check("rows: thumbnail present", !!thumb8961, true);
   check("rows: thumbnail is the set image", thumb8961 && thumb8961.src, "https://cdn.rebrickable.com/media/sets/8961-1.jpg");
@@ -848,7 +848,8 @@ async function main() {
   check("photo: 84682 sticker sheet falls back to the set sheet", fb('8960-1', 'Stickers', 'No Color Any Color', '4542503-84682-No_Color_Any_Color'), 'https://img.bricklink.com/ItemImage/PN/0/8960stk01.png');
   const item85418 = sandbox.items.find((it) => sandbox.partNumOf(it) === '85418');
   check("photo: 85418 (real lot) falls back to the set sheet", sandbox.fallbackImg(item85418), 'https://img.bricklink.com/ItemImage/PN/0/8961stk01.png');
-  check("photo: unknown colour has no fallback", fb('8961-1', 'Bricks', 'Magenta', 'x-1234-Magenta'), '');
+  check("photo: unknown colour has no fallback", fb('8961-1', 'Bricks', 'Magenta', 'x-1234-Unknown_Colour'), '');
+  check("photo: Magenta now resolves via the LEGO colour", fb('8961-1', 'Bricks', 'Magenta', 'x-1234-Magenta'), 'https://img.bricklink.com/ItemImage/PN/71/1234.png');
   check("photo: fallback uses the exact colour, not the family", fb('8961-1', 'Bricks', 'Trans-Red', '3000841-30008-Transparent_Red'), 'https://img.bricklink.com/ItemImage/PN/17/30008.png');
   // The set tag is gone from combined-view cards.
   sandbox.setSelected(["8961-1", "10294-1"]);
@@ -1113,8 +1114,8 @@ async function main() {
   // separately with node --check, and the Edge Function's parser is
   // tested against real Brickset HTML with Deno.
   sandbox.renderSets();
-  const row8961b = $("setList").children.filter((li) => li.children[0].children[1].textContent === "8961-1")[0];
-  const instrBtn = row8961b.children[0].children.find((c) => c.className === "instr-btn");
+  const row8961b = $("setList").children.filter((li) => li.children[1].children[1].textContent === "8961-1")[0];
+  const instrBtn = row8961b.children[1].children.find((c) => c.className === "instr-btn");
   check("instr: button on the row", !!instrBtn, true);
   check("instr: button says Instructions", instrBtn.textContent, "Instructions");
   let lastInstr = null;
@@ -1299,7 +1300,7 @@ async function main() {
   sandbox.LS.set("bf:instrPos:10294-1", 123);
   check("delete: cloud id known before delete", sandbox.LS.get("bf:cloudIds", {})["10294-1"], "us-10294-1");
   sandbox.renderSets();
-  const row10294 = $("setList").children.filter((li) => li.children[0].children[1].textContent === "10294-1")[0];
+  const row10294 = $("setList").children.filter((li) => li.children[1].children[1].textContent === "10294-1")[0];
   const delBtn10294 = row10294.children.find((c) => c.className === "set-del-btn");
   check("delete: X on the row", !!delBtn10294 && delBtn10294.textContent, "×");
   delBtn10294.listeners.click[0]({ stopPropagation() {} });
@@ -1320,7 +1321,7 @@ async function main() {
   check("delete: active set falls back", sandbox.activeSetKey, "8961-1");
   mockSb._deleteError = { message: "boom" }; // failed cloud wipe: tombstone
   sandbox.renderSets();
-  const row10305 = $("setList").children.filter((li) => li.children[0].children[1].textContent === "10305-1")[0];
+  const row10305 = $("setList").children.filter((li) => li.children[1].children[1].textContent === "10305-1")[0];
   row10305.children.find((c) => c.className === "set-del-btn").listeners.click[0]({ stopPropagation() {} });
   sandbox.confirmYesEl.listeners.click[0]();
   await sleep(10);
@@ -1573,8 +1574,9 @@ async function main() {
   sandbox.restoreStartupView();
   check("startup: a saved single set is kept", sandbox.selectedKeys, [allKeys()[1]]);
 
-  // --- Long-press drag: hold a set box, move it, release — the
-  // ranking follows, and the tap right after is not an open.
+  // --- Grip drag (v3.33): press the ⋮⋮ grip, move it, release — the
+  // ranking follows, and the tap right after is not an open. The
+  // 400ms long-press is gone: the grip lifts the row at once.
   if (!sandbox.findSet("10294-1")) {
     sandbox.INVENTORIES["10294-1"] = fixtureInv10294;
     sandbox.sets.push({ key: "10294-1", set_num: "10294-1", set_name: "Test Ship", total_parts: 10, total_lots: 3, user_set_id: "us-10294" });
@@ -1585,13 +1587,13 @@ async function main() {
   const setListEl = () => sandbox.document.getElementById("setList");
   const startOrder = setListEl().children.map((li) => li.dataset.key);
   check("reorder: rows in the sidebar", startOrder.length, sandbox.sets.length);
-  const prevHold = sandbox.SET_DRAG_HOLD_MS;
-  sandbox.SET_DRAG_HOLD_MS = 0;
   const dragRow = setListEl().children[1];
   const dragKey = dragRow.dataset.key;
-  dragRow.listeners.pointerdown[0]({ target: { closest: () => null }, clientX: 50, clientY: 100 });
-  await sleep(10);
-  check("reorder: hold lifts the row", sandbox.dragActive, true);
+  const grip = dragRow.children[0];
+  check("reorder: first child is the drag grip", grip.className, "set-drag-handle");
+  check("reorder: the row itself has no drag press", dragRow.listeners.pointerdown, undefined);
+  grip.listeners.pointerdown[0]({ preventDefault() {} });
+  check("reorder: grip press lifts the row at once", sandbox.dragActive, true);
   check("reorder: row shows the dragging style", dragRow.classList.contains("dragging"), true);
   // Drop it at the top: move the row in the DOM, release.
   const listChildren = setListEl().children;
@@ -1608,18 +1610,10 @@ async function main() {
   setListEl().children[0].listeners.click[0]();
   check("reorder: tap after drag does not open the set", sandbox.selectedKeys, selBefore);
   check("reorder: guard is consumed by that tap", sandbox.suppressNextRowClick, false);
-  // A press starting on a button is that button's tap, never a drag.
-  sandbox.SET_DRAG_HOLD_MS = 0;
-  setListEl().children[0].listeners.pointerdown[0]({ target: { closest: (sel) => (sel === "button" ? {} : null) }, clientX: 50, clientY: 100 });
-  await sleep(10);
-  check("reorder: press on a button never starts a drag", sandbox.dragActive, false);
-  // Moving before the hold fires cancels the drag (it was a scroll).
-  sandbox.SET_DRAG_HOLD_MS = 60;
-  setListEl().children[0].listeners.pointerdown[0]({ target: { closest: () => null }, clientX: 50, clientY: 100 });
-  doc.listeners.pointermove[0]({ clientX: 50, clientY: 140 });
-  await sleep(100);
-  check("reorder: moving before the hold cancels the drag", sandbox.dragActive, false);
-  sandbox.SET_DRAG_HOLD_MS = prevHold;
+  // A tap on the grip itself is swallowed, not an open.
+  const selBeforeGrip = sandbox.selectedKeys.slice();
+  setListEl().children[0].children[0].listeners.click[0]({ stopPropagation() {} });
+  check("reorder: tapping the grip does not open the set", sandbox.selectedKeys, selBeforeGrip);
 
   // --- Cloud refresh keeps the user's order (v3.30 merge).
   sandbox.LS.set("bf:deletedSets", {});
@@ -1638,6 +1632,150 @@ async function main() {
   check("cloud: cloud data still lands on each set", sandbox.sets.map((s) => s.user_set_id), orderBeforeCloud.concat(["75419-1"]).map((k) => cloudIdsByNum[k] || "us-" + k));
   check("cloud: cloud-only set appends at the end", sandbox.sets[sandbox.sets.length - 1].key, "75419-1");
   cloudSetRows = null;
+
+  // --- v3.33: BrickLink colour ids come from the LEGO colour in the
+  // lot id, not the display colour (Trans-Green covers two LEGO
+  // colours with different BrickLink ids).
+  check("bl-colour: fluorescent trans-green is 16, not 20", sandbox.brickLinkColourId({ id: "4114505-30153-Transparent_Fluorescent_Green", colour: "Trans-Green" }), 16);
+  check("bl-colour: plain trans-green is 20", sandbox.brickLinkColourId({ id: "x-30153-Transparent_Green", colour: "Trans-Green" }), 20);
+  check("bl-colour: dark stone grey is 85", sandbox.brickLinkColourId({ id: "4211064-3747-Dark_Stone_Grey", colour: "Dark Grey" }), 85);
+  check("bl-colour: trans-brown is 13", sandbox.brickLinkColourId({ id: "4552036-86209-Transparent_Brown", colour: "Trans-Brown" }), 13);
+  check("bl-colour: not-specified has no id", sandbox.brickLinkColourId({ id: "4508647-2634-{Not_Specified}", colour: "White" }), undefined);
+  check("bl-colour: unknown segment has no id", sandbox.brickLinkColourId({ id: "x-3001-Unknown_Colour", colour: "Black" }), undefined);
+  check("fallback: fluorescent lot uses BrickLink 16", sandbox.fallbackImg({ id: "4114505-30153-Transparent_Fluorescent_Green", colour: "Trans-Green", cat: "Minifig / Accessories", setKey: "8961-1" }), "https://img.bricklink.com/ItemImage/PN/16/30153.png");
+
+  // --- v3.33: Order remaining — BrickLink XML wanted list.
+  // Reset 8961-1 counts to full, then: 3001 Black 6 left of 16,
+  // 6141 fully found, sticker + not-specified lots left at full.
+  const inv8961b = sandbox.getInventory("8961-1");
+  const full8961b = {};
+  inv8961b.items.forEach((it) => { full8961b[it.id] = it.qty; });
+  full8961b["300126-3001-Black"] = 6;
+  full8961b["614126-6141-Black"] = 0;
+  sandbox.saveCounts("8961-1", full8961b);
+  sandbox.setSelected(["8961-1"]);
+  let r = sandbox.remainingXml();
+  check("order-xml: 135 lines (138 lots - 1 done - 2 skipped)", r.lines, 135);
+  check("order-xml: 416 pieces left", r.pieces, 416);
+  check("order-xml: wraps in INVENTORY", r.xml.startsWith("<INVENTORY>") && r.xml.endsWith("</INVENTORY>"), true);
+  check("order-xml: condition is new", r.xml.includes("<CONDITION>N</CONDITION>"), true);
+  check("order-xml: item type is P", r.xml.includes("<ITEMTYPE>P</ITEMTYPE>"), true);
+  const xml3001 = r.xml.slice(r.xml.indexOf("<ITEMID>3001</ITEMID>"), r.xml.indexOf("</ITEM>", r.xml.indexOf("<ITEMID>3001</ITEMID>")));
+  check("order-xml: 3001 black remaining 6", xml3001.includes("<MINQTY>6</MINQTY>") && xml3001.includes("<COLOR>11</COLOR>"), true);
+  check("order-xml: done lot is out", r.xml.includes("<ITEMID>6141</ITEMID>"), false);
+  check("order-xml: sticker is out", r.xml.includes("85418"), false);
+  check("order-xml: not-specified colour is out", r.xml.includes("2634"), false);
+  check("order-xml: skipped lists both lots", r.skipped.map((s) => s.part).sort(), ["2634", "85418"]);
+  // Multi-set: the same part+colour sums across sets.
+  if (!sandbox.findSet("10305-1")) {
+    sandbox.INVENTORIES["10305-1"] = fixtureInv10305;
+    sandbox.sets.push({ key: "10305-1", set_num: "10305-1", set_name: "Test Set 2", total_parts: 5, total_lots: 2, user_set_id: "us-10305" });
+    sandbox.saveLocalSets(sandbox.sets);
+  }
+  sandbox.INVENTORIES["10305-1"] = fixtureInv10305;
+  const full94 = {};
+  fixtureInv10294.items.forEach((it) => { full94[it.id] = it.qty; });
+  sandbox.saveCounts("10294-1", full94);
+  sandbox.setSelected(["8961-1", "10294-1"]);
+  r = sandbox.remainingXml();
+  check("order-xml: multi-set still 135 lines", r.lines, 135);
+  check("order-xml: multi-set 426 pieces", r.pieces, 426);
+  const xml3001b = r.xml.slice(r.xml.indexOf("<ITEMID>3001</ITEMID>"), r.xml.indexOf("</ITEM>", r.xml.indexOf("<ITEMID>3001</ITEMID>")));
+  check("order-xml: 3001 sums to 12 across both sets", xml3001b.includes("<MINQTY>12</MINQTY>"), true);
+
+  // --- v3.33: bulk lists are local-only, parts stack by part+colour.
+  const bl = sandbox.createBulkList("Test bin");
+  check("bulk: created with an id", bl.id.slice(0, 3), "bl-");
+  sandbox.addScannedPart(bl.id, "3001", "Brick 2 x 4", "Black");
+  check("bulk: one scanned part", sandbox.findBulkList(bl.id).parts, [{ part: "3001", name: "Brick 2 x 4", colour: "Black", qty: 1, img: "https://img.bricklink.com/ItemImage/PN/11/3001.png" }]);
+  sandbox.addScannedPart(bl.id, "3001", "Brick 2 x 4", "Black");
+  check("bulk: same part+colour stacks", sandbox.findBulkList(bl.id).parts[0].qty, 2);
+  sandbox.addScannedPart(bl.id, "3001", "Brick 2 x 4", "Red");
+  check("bulk: same part, other colour is a second row", sandbox.findBulkList(bl.id).parts.length, 2);
+  check("bulk: saved to localStorage", JSON.parse(sandbox.localStorage.getItem("bf:bulkLists")).length, 1);
+  sandbox.setScannedQty(bl.id, "3001", "Black", 1);
+  check("bulk: stepper down", sandbox.findBulkList(bl.id).parts[0].qty, 1);
+  sandbox.setScannedQty(bl.id, "3001", "Red", 0);
+  check("bulk: stepper to zero removes the row", sandbox.findBulkList(bl.id).parts.length, 1);
+  sandbox.deleteBulkList(bl.id);
+  check("bulk: delete removes the list", sandbox.findBulkList(bl.id), null);
+
+  // --- v3.33: Brickognize response parsing (live shape verified
+  // 2026-11-25: { items: [{ id, name, score }] }, empty when nothing).
+  check("brickognize: parses the best match", sandbox.parseBrickognizeResponse({ items: [{ id: "3001", name: "Brick 2 x 4", score: 0.97 }] }), { part: "3001", name: "Brick 2 x 4", score: 0.97 });
+  check("brickognize: empty items is null", sandbox.parseBrickognizeResponse({ items: [] }), null);
+  check("brickognize: missing items is null", sandbox.parseBrickognizeResponse({}), null);
+  check("brickognize: match without an id is null", sandbox.parseBrickognizeResponse({ items: [{ name: "Brick 2 x 4" }] }), null);
+
+  // --- v3.33: scan confirm card — added on identify, Cancel undoes it.
+  const scanList = sandbox.createBulkList("Scan test");
+  sandbox.handleIdentified(scanList.id, "3001", "Brick 2 x 4", 0.97, "data:image/jpeg;base64,xxx");
+  check("scan: piece added on identify", sandbox.findBulkList(scanList.id).parts, [{ part: "3001", name: "Brick 2 x 4", colour: "Black", qty: 1, img: "https://img.bricklink.com/ItemImage/PN/11/3001.png" }]);
+  check("scan: confirm card shows the part number", sandbox.scanPartNumEl.textContent, "3001");
+  check("scan: confirm card shows the name", sandbox.scanPartNameEl.textContent, "Brick 2 x 4");
+  check("scan: confirm card shows confidence", sandbox.scanScoreEl.textContent, "Confidence 97%");
+  sandbox.scanColourSel.value = "Red";
+  sandbox.scanColourSel.listeners.change[0]({ target: sandbox.scanColourSel });
+  check("scan: colour change moves the piece", sandbox.findBulkList(scanList.id).parts, [{ part: "3001", name: "Brick 2 x 4", colour: "Red", qty: 1, img: "https://img.bricklink.com/ItemImage/PN/5/3001.png" }]);
+  sandbox.scanCancelBtn.listeners.click[0]();
+  check("scan: Cancel removes the piece", sandbox.findBulkList(scanList.id).parts, []);
+  check("scan: Cancel hides the confirm card", sandbox.scanConfirmEl.hidden, true);
+  sandbox.handleIdentified(scanList.id, "3001", "Brick 2 x 4", 0.4, "data:image/jpeg;base64,yyy");
+  check("scan: low confidence is flagged", sandbox.scanScoreEl.textContent.includes("Low confidence"), true);
+  sandbox.scanDoneBtn.listeners.click[0]();
+  check("scan: Done keeps the piece", sandbox.findBulkList(scanList.id).parts.length, 1);
+  check("scan: Done hides the confirm card", sandbox.scanConfirmEl.hidden, true);
+
+  // --- v3.33: scan picker — create a list, no camera here.
+  sandbox.openScanPicker();
+  check("scan: picker opens", sandbox.scanPickerModal.hidden, false);
+  sandbox.scanNewNameInput.value = "  Picker list  ";
+  sandbox.scanCreateBtn.listeners.click[0]();
+  await sleep(10);
+  check("scan: creating a list opens the scanner for it", sandbox.scanOverlay.hidden, false);
+  check("scan: the new list exists", sandbox.bulkLists.some((l) => l.name === "Picker list"), true);
+  check("scan: no camera in this environment is reported", sandbox.scanStatusEl.textContent, "This browser can't open the camera — pick a photo below instead.");
+  sandbox.closeScan();
+  check("scan: closing hides the overlay", sandbox.scanOverlay.hidden, true);
+
+  // --- v3.33: Order remaining button + modal (copy/download fallbacks
+  // in this environment have no clipboard or Blob).
+  sandbox.setSelected(["8961-1"]);
+  sandbox.renderSetView();
+  const setView = sandbox.document.getElementById("setView");
+  const orderBtn = setView.children.find((c) => c.textContent === "Order remaining");
+  check("order: button is under the title", !!orderBtn, true);
+  orderBtn.listeners.click[0]();
+  check("order: modal opens", sandbox.orderModal.hidden, false);
+  check("order: modal holds the XML", sandbox.orderXmlText.value.startsWith("<INVENTORY>"), true);
+  check("order: modal XML has the 3001 line", sandbox.orderXmlText.value.includes("<ITEMID>3001</ITEMID>"), true);
+  sandbox.copyRemainingXml();
+  check("order: copy fallback tells the user", sandbox.orderStatusEl.textContent, "Text selected — copy it by hand.");
+  sandbox.downloadRemainingXml();
+  check("order: download fallback tells the user", sandbox.orderStatusEl.textContent, "Download didn't work here — use Copy instead.");
+  sandbox.hideOrderModal();
+  check("order: modal closes", sandbox.orderModal.hidden, true);
+
+  // --- v3.33: optimizer — pieces covered, newest by year, price off.
+  // Bulk: 3001 Black x6, 3747 Dark Grey x2, 30385 Trans-Blue x1,
+  // 6141 White x2. 8961-1 covers 11 pieces in 4 lots (6141 is an
+  // any-colour lot there), 10294-1 covers 9 in 3, 10305-1 covers 5 in 2.
+  sandbox.sets.forEach((s) => { if (s.key === "10294-1") s.year = 2021; if (s.key === "10305-1") s.year = 2022; });
+  const optList = sandbox.createBulkList("Optimizer test");
+  [["3001", "Brick 2 x 4", "Black", 6], ["3747", "Slope 45 2 x 1", "Dark Grey", 2], ["30385", "Rock 1 x 1 Crystal 5 Point", "Trans-Blue", 1], ["6141", "Tile 1 x 1", "White", 2]].forEach(([part, name, colour, qty]) => { for (let i = 0; i < qty; i++) sandbox.addScannedPart(optList.id, part, name, colour); });
+  const rankedByPieces = sandbox.rankBulkListSets(optList, "pieces");
+  const byKey = {};
+  rankedByPieces.forEach((r) => { byKey[r.setKey] = r; });
+  check("opt: 8961-1 ranks above 10294-1 above 10305-1", rankedByPieces.map((r) => r.setKey).indexOf("8961-1") < rankedByPieces.map((r) => r.setKey).indexOf("10294-1") && rankedByPieces.map((r) => r.setKey).indexOf("10294-1") < rankedByPieces.map((r) => r.setKey).indexOf("10305-1"), true);
+  check("opt: 8961-1 covers 11 pieces, 4 lots", [byKey["8961-1"].piecesCovered, byKey["8961-1"].lotsCovered], [11, 4]);
+  check("opt: 10294-1 covers 9 pieces, 3 lots", [byKey["10294-1"].piecesCovered, byKey["10294-1"].lotsCovered], [9, 3]);
+  check("opt: 10305-1 covers 5 pieces, 2 lots", [byKey["10305-1"].piecesCovered, byKey["10305-1"].lotsCovered], [5, 2]);
+  const rankedByNewest = sandbox.rankBulkListSets(optList, "newest").map((r) => r.setKey);
+  check("opt: newest puts 2022 first, then 2021, year-less last", rankedByNewest.indexOf("10305-1") < rankedByNewest.indexOf("10294-1") && rankedByNewest.indexOf("10294-1") < rankedByNewest.indexOf("8961-1"), true);
+  check("opt: price mode is not connected", sandbox.OPTIMIZER_PRICE_MODE, "not-connected");
+  sandbox.openBulkList(optList.id);
+  sandbox.runOptimizer(optList.id, "pieces");
+  check("opt: price button is disabled", sandbox.bulkOptPriceBtn.disabled, true);
 
   console.log(failures === 0 ? "\nALL PASS" : "\n" + failures + " FAILURES");
   process.exit(failures === 0 ? 0 : 1);
