@@ -638,3 +638,9 @@ input, select {
 .opt-view-title { flex: 1; min-width: 0; margin: 0; font-size: 20px; }
 .opt-view-x { flex-shrink: 0; width: 40px; height: 40px; border-radius: 8px; border: 2px solid #222; background: #fff; font-size: 24px; line-height: 1; cursor: pointer; padding: 0; }
 .opt-view-x:active { background: #eee; }
+
+/* v3.38 — max-extra-spend input in price mode: sits after the sort
+ * buttons on the same row. */
+.opt-budget { display: inline-flex; align-items: center; gap: 6px; margin-left: 6px; }
+.opt-budget-label { font-size: 13px; color: #555; }
+.opt-budget-input { width: 90px; min-height: 36px; padding: 6px 8px; border: 2px solid #999; border-radius: 8px; background: #fff; color: #222; font: inherit; }

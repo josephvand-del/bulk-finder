@@ -1738,7 +1738,7 @@ async function main() {
   check("bl-map: none of the 14 bad Rebrickable numbers is exported", bad14.some((p) => xmlById[p]), false);
   check("bl-map: 30367 is BrickLink 553 in both colours", xmlById["553"], [{ part: "553", colour: 11, qty: 2 }, { part: "553", colour: 85, qty: 2 }]);
   check("bl-map: 30385 is BrickLink 52 in three colours", xmlById["52"], [{ part: "52", colour: 14, qty: 2 }, { part: "52", colour: 17, qty: 2 }, { part: "52", colour: 98, qty: 2 }]);
-  check("bl-map: 30499 is BrickLink 3684", xmlById["3684"], [{ part: "3684", colour: 34, qty: 1 }]);
+  check("bl-map: 30499 is BrickLink 3684a, not the bare family number", xmlById["3684a"], [{ part: "3684a", colour: 34, qty: 1 }]);
   check("bl-map: 3747 is BrickLink 3747b", xmlById["3747b"], [{ part: "3747b", colour: 85, qty: 8 }]);
   check("bl-map: 41669 is BrickLink x346", xmlById["x346"], [{ part: "x346", colour: 4, qty: 24 }]);
   check("bl-map: 54196 is BrickLink 2654", xmlById["2654"], [{ part: "2654", colour: 12, qty: 2 }]);
@@ -1764,7 +1764,7 @@ async function main() {
   // pass-through and skip cases.
   check("bl-map: resolver 30367 → 553", sandbox.brickLinkPartFor({ id: "4161674-30367-Dark_Stone_Grey", colour: "Dark Grey" }, 2), { id: "553", type: "P", colour: 85, qty: 2 });
   check("bl-map: resolver 30385 → 52", sandbox.brickLinkPartFor({ id: "4541538-30385-Transparent_Blue", colour: "Trans-Blue" }, 2), { id: "52", type: "P", colour: 14, qty: 2 });
-  check("bl-map: resolver 30499 → 3684", sandbox.brickLinkPartFor({ id: "4537923-30499-Bright_Yellowish_Green", colour: "Lime Green" }, 1), { id: "3684", type: "P", colour: 34, qty: 1 });
+  check("bl-map: resolver 30499 → 3684a (bare 3684 is not a BrickLink item)", sandbox.brickLinkPartFor({ id: "4537923-30499-Bright_Yellowish_Green", colour: "Lime Green" }, 1), { id: "3684a", type: "P", colour: 34, qty: 1 });
   check("bl-map: resolver 3747 → 3747b", sandbox.brickLinkPartFor({ id: "4211064-3747-Dark_Stone_Grey", colour: "Dark Grey" }, 8), { id: "3747b", type: "P", colour: 85, qty: 8 });
   check("bl-map: resolver 41669 → x346", sandbox.brickLinkPartFor({ id: "4281515-41669-Bright_Orange", colour: "Orange" }, 24), { id: "x346", type: "P", colour: 4, qty: 24 });
   check("bl-map: resolver 54196 → 2654", sandbox.brickLinkPartFor({ id: "4278412-54196-Transparent", colour: "Clear" }, 2), { id: "2654", type: "P", colour: 12, qty: 2 });
@@ -2361,9 +2361,16 @@ async function main() {
   check("sugg37: lightbox pushes a history entry", hist37.some((c) => c[0] === "push" && c[1] && c[1].bfsugg === true), true);
   const lbBacksBefore = hist37.filter((c) => c[0] === "back").length;
   sandbox.suggLightboxEl.children[0].listeners.click[0]();
-  check("sugg37: X closes the lightbox", sandbox.suggLightboxEl.hidden, true);
-  check("sugg37: X pops the history entry", hist37.filter((c) => c[0] === "back").length, lbBacksBefore + 1);
-  check("sugg37: optimizer view stays open after closing the lightbox", sandbox.optViewId, optList.id);
+  // v3.38: X only pops the history entry — the lightbox hides when
+  // the popstate that follows arrives. Hiding on the click itself
+  // blinded the popstate handler, which then closed the optimizer
+  // view underneath and dumped the user back to the bulk list.
+  check("sugg38: X pops the history entry, lightbox still open till popstate", [hist37.filter((c) => c[0] === "back").length, sandbox.suggLightboxEl.hidden], [lbBacksBefore + 1, false]);
+  check("sugg38: optimizer view still open after X", sandbox.optViewId, optList.id);
+  sandbox._winListeners.popstate();
+  check("sugg38: popstate after X hides the lightbox", sandbox.suggLightboxEl.hidden, true);
+  check("sugg38: popstate after X does not go back a second time", hist37.filter((c) => c[0] === "back").length, lbBacksBefore + 1);
+  check("sugg38: optimizer view stays open after closing the lightbox", sandbox.optViewId, optList.id);
   suggRows37[0].children[0].listeners.click[0]({ stopPropagation() {} });
   const lbBacksBeforePop = hist37.filter((c) => c[0] === "back").length;
   sandbox._winListeners.popstate();
@@ -2470,6 +2477,121 @@ async function main() {
   check("sugg037: all 0-part shows no rows", suggRowsNone.length, 0);
   check("sugg037: all 0-part explains why", sandbox.bulkSuggWrap.children.some((c) => c.textContent && c.textContent.includes("no piece count")), true);
   sandbox.closeOptimizerView();
+  // --- v3.38: budget filter, on-demand inventories, suggestion
+  // auto-start, 30499 export.
+  sandbox.localStorage.removeItem("bf:suggest");
+  sandbox.localStorage.removeItem("bf:prices");
+  sandbox.localStorage.removeItem("bf:optBudget");
+  sandbox.bulkOptBudget = null;
+  sandbox.bulkOptBlind = false;
+  sandbox.bulkOptExcludeMinifig = false;
+
+  // The 30499 line exports as 3684a through the full remaining-lines
+  // path, not just the resolver.
+  sandbox.INVENTORIES["map-1"] = { set: "map-1 Test Map", lots: 1, pieces: 1, items: [{ id: "4537923-30499-Bright_Yellowish_Green", qty: 1, dim: "2 × 2 × 3", colour: "Lime Green", any: false, tier: 1, cat: "Sloped Bricks", img: "", name: "Slope 75 2 x 2 x 3" }] };
+  sandbox.sets.push({ key: "map-1", set_num: "map-1", set_name: "Test Map", total_parts: 1, total_lots: 1 });
+  sandbox.setSelected(["map-1"]);
+  check("map38: 30499 exports as 3684a in the wanted list", sandbox.remainingLines().items.map((l) => l.part), ["3684a"]);
+  sandbox.sets = sandbox.sets.filter((s) => s.key !== "map-1");
+  sandbox.saveLocalSets(sandbox.sets);
+  delete sandbox.INVENTORIES["map-1"];
+
+  // Budget split is pure: a set with no price is never a fit.
+  const split38 = sandbox.budgetSplit([
+    { setName: "Cheap", costUsd: 0.5 },
+    { setName: "Dear", costUsd: 5 },
+    { setName: "NoPrice", costUsd: null },
+    { setName: "NoCost" },
+  ], 1);
+  check("budget38: split fits", split38.fits.map((r) => r.setName), ["Cheap"]);
+  check("budget38: split over", split38.over.map((r) => r.setName), ["Dear"]);
+  check("budget38: split unknown never fits", split38.unknown.map((r) => r.setName), ["NoPrice", "NoCost"]);
+  check("budget38: a set at exactly the budget fits", sandbox.budgetSplit([{ setName: "Exact", costUsd: 1 }], 1).fits.length, 1);
+
+  // Budget UI: price mode with a $1 max shows the two cheap sets
+  // as rows and names the over-budget ones in a note, not as rows.
+  invokeHandler = priceHandler;
+  const priceRows38 = () => sandbox.bulkOptWrap.children[2].children.filter((c) => c.className.includes("bulk-opt-row")).map((r) => r.children[0].children[0].textContent);
+  sandbox.openOptimizerView(optList.id);
+  sandbox.runOptimizer(optList.id, "price");
+  await sleep(50);
+  check("budget38: no budget, all four sets are rows", priceRows38(), ["test-2", "Test Set 2 (2022)", "Test Ship (2021)", "Crystal Sweeper"]);
+  check("budget38: budget input exists in price mode", !!sandbox.bulkOptBudgetInput && sandbox.bulkOptBudgetInput.className.includes("opt-budget-input"), true);
+  sandbox.bulkOptBudgetInput.value = "1";
+  sandbox.bulkOptBudgetInput.listeners.change[0]();
+  await sleep(50);
+  check("budget38: $1 budget keeps only the cheap sets as rows", priceRows38(), ["test-2", "Test Set 2 (2022)"]);
+  const budgetNote38 = sandbox.bulkOptWrap.children[2].children.find((c) => c.className.includes("muted"));
+  check("budget38: over-budget sets are named, not rows", budgetNote38 && budgetNote38.textContent.includes("Over $1.00:") && budgetNote38.textContent.includes("Test Ship"), true);
+  check("budget38: unpriced sets are not named as fitting", !(budgetNote38 && budgetNote38.textContent.includes("No price yet")), true);
+  check("budget38: budget persists on the device", sandbox.LS.get("bf:optBudget", null), 1);
+  // The budget survives a re-rank: sort away and back.
+  sandbox.runOptimizer(optList.id, "pieces");
+  sandbox.runOptimizer(optList.id, "price");
+  check("budget38: budget input still holds $1 after a re-rank", sandbox.bulkOptBudgetInput.value, "1");
+  await sleep(50);
+  check("budget38: rows still filtered after the re-rank", priceRows38(), ["test-2", "Test Set 2 (2022)"]);
+  // No set fits $0.05: the note names the cheapest instead.
+  sandbox.bulkOptBudgetInput.value = "0.05";
+  sandbox.bulkOptBudgetInput.listeners.change[0]();
+  await sleep(50);
+  check("budget38: nothing fits $0.05, cheapest is named", sandbox.bulkOptWrap.children[2].children[0].textContent, "No tracked set fits $0.05 — the cheapest is test-2 at $0.10.");
+  // Clear the budget again so the next open starts clean.
+  sandbox.bulkOptBudgetInput.value = "";
+  sandbox.bulkOptBudgetInput.listeners.change[0]();
+  await sleep(50);
+  check("budget38: cleared budget shows all rows again", priceRows38().length, 4);
+  sandbox.closeOptimizerView();
+
+  // Suggestions start on their own when the optimizer opens: no
+  // button tap needed for the full-catalog check.
+  sandbox.bulkSuggState = { listId: null, status: "idle", candidates: [], queried: [], partial: false, unmapped: [], error: "", remaining: [], cacheKey: null };
+  invokeHandler = async (name, opts) => {
+    if (name === "suggest-sets") {
+      return { data: { ok: true, candidates: [
+        { set_num: "99999-1", name: "Fake Set A", year: 2023, num_parts: 50, set_img_url: "https://cdn.rebrickable.com/media/sets/99999-1.jpg", lotsCovered: 3, missingUpper: 47 },
+        { set_num: "99998-1", name: "Fake Set B", year: 2020, num_parts: 20, set_img_url: "https://cdn.rebrickable.com/media/sets/99998-1.jpg", lotsCovered: 2, missingUpper: 18 },
+      ], queried: ["3001|Black"], partial: false, unmapped: [] }, error: null };
+    }
+    return { data: null, error: { message: "no handler" } };
+  };
+  sandbox.openOptimizerView(optList.id);
+  await sleep(50);
+  check("sugg38: opening the optimizer starts the catalog check on its own", sandbox.bulkSuggState.status, "done");
+  check("sugg38: auto-started suggestions render rows", sandbox.bulkSuggWrap.children.filter((c) => c.className.includes("sugg-row")).length, 2);
+  sandbox.closeOptimizerView();
+
+  // A bulk list built from a set's parts (partial upload) ranks
+  // that set — even when its inventory hadn't arrived yet.
+  delete sandbox.INVENTORIES["10305-1"];
+  const srcList38 = sandbox.createBulkList("From 10305-1");
+  sandbox.addScannedPart(srcList38.id, "3001", "Brick 2 x 4", "Black");
+  sandbox.addScannedPart(srcList38.id, "3001", "Brick 2 x 4", "Black");
+  sandbox.addScannedPart(srcList38.id, "6141", "Tile 1 x 1", "White");
+  sandbox.bulkOptSort = "pieces";
+  sandbox.openOptimizerView(srcList38.id);
+  const optRows38 = () => sandbox.bulkOptWrap.children[2].children.filter((c) => c.className.includes("bulk-opt-row")).map((r) => r.children[0].children[0].textContent);
+  check("inv38: set with a missing inventory is not ranked yet", optRows38().includes("Test Set 2 (2022)"), false);
+  check("inv38: the optimizer says the parts list is still loading", sandbox.bulkOptWrap.children.some((c) => c.textContent && c.textContent.includes("Still loading parts for Test Set 2")), true);
+  await sleep(50);
+  check("inv38: once the inventory lands, the partial set is ranked", optRows38().includes("Test Set 2 (2022)"), true);
+  const srcRow38 = sandbox.bulkOptWrap.children[2].children.filter((c) => c.className.includes("bulk-opt-row")).find((r) => r.children[0].children[0].textContent === "Test Set 2 (2022)");
+  check("inv38: partial upload shows 3 of 5 pieces, 2 lots", srcRow38.children[0].children[1].textContent, "3 of 5 pieces (60%) · 2 lots");
+  sandbox.closeOptimizerView();
+
+  // Tapping a saved set in the left list opens it — even when its
+  // parts list hadn't arrived yet.
+  delete sandbox.INVENTORIES["10305-1"];
+  sandbox.renderSets();
+  const row38 = sandbox.$("setList").children.find((li) => li.dataset && li.dataset.key === "10305-1");
+  check("side38: the 10305-1 row exists in My sets", !!row38, true);
+  row38.listeners.click[0]();
+  check("side38: tapping the row selects the set", sandbox.selectedKeys, ["10305-1"]);
+  check("side38: tapping shows Loading, not the empty state", sandbox.$("setView").children.some((c) => c.textContent && c.textContent.includes("Loading Test Set 2")), true);
+  await sleep(50);
+  check("side38: once the parts arrive the set renders", sandbox.$("emptyState").hidden, true);
+  check("side38: the Loading note is gone", sandbox.$("setView").children.some((c) => c.textContent && c.textContent.includes("Loading")), false);
+
   invokeHandler = null;
 
   console.log(failures === 0 ? "\nALL PASS" : "\n" + failures + " FAILURES");

@@ -1,4 +1,4 @@
-/* Bulk Finder v3.37 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.38 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -413,6 +413,37 @@ async function fetchSetInventory(setNum) {
 // Load the inventory for every set in the sidebar list, before open.
 async function loadInventoriesForSets() {
   for (var i = 0; i < sets.length; i++) await fetchSetInventory(sets[i].set_num);
+}
+
+// A set whose inventory never arrived (its fetch failed at startup,
+// or the row is missing) is invisible everywhere that ranks or
+// renders from it — the optimizer skips it and tapping it in the
+// sidebar shows the empty state, which reads as a dead tap (v3.38).
+// Fetch a missing inventory on demand instead, and re-render the
+// view that asked when one lands. A failed fetch resolves to null
+// and never re-renders, so a missing inventory can't loop.
+var inventoryFetchPending = {};
+function ensureInventories(keys, onLoad) {
+  var pending = [];
+  (keys || []).forEach(function (key) {
+    if (!key || getInventory(key)) return;
+    // One fetch per set, shared: a second caller while a fetch is
+    // in flight attaches its own re-render to the same promise
+    // instead of starting a duplicate — or, worse, skipping the
+    // re-render because the first caller's (now stale) onLoad is
+    // the only one attached.
+    if (!inventoryFetchPending[key]) {
+      inventoryFetchPending[key] = fetchSetInventory(key).then(function (inv) {
+        delete inventoryFetchPending[key];
+        return inv;
+      });
+    }
+    pending.push(inventoryFetchPending[key]);
+  });
+  if (!pending.length || !onLoad) return;
+  Promise.all(pending).then(function (got) {
+    if (got.some(function (g) { return !!g; })) onLoad();
+  });
 }
 
 /* ---------- Small DOM helpers ---------- */
@@ -1560,6 +1591,9 @@ function loadSelected() {
   renderSets();
   renderSetView();
   renderSetPicker();
+  // A selected set with no inventory yet renders empty below; fetch
+  // it on demand and re-render when it lands (v3.38).
+  ensureInventories(selectedKeys, function () { loadSelected(); });
 }
 
 /* ---------- Mobile drawer: the sidebar slides out from the left ----------
@@ -1905,7 +1939,20 @@ function renderSetView() {
   viewTierGrids = {};
   viewSentinel = null;
   viewMoreBtn = null;
-  if (!selectedKeys.length || !items.length) { showEmpty(); return; }
+  if (!selectedKeys.length || !items.length) {
+    // A selected set with no inventory yet is still on its way, not
+    // empty — say so instead of the empty state, so the tap that
+    // opened it doesn't read as dead (v3.38; loadSelected fetches
+    // it on demand and re-renders when it lands).
+    var missingInv = selectedKeys.filter(function (k) { return !getInventory(k); });
+    if (selectedKeys.length && missingInv.length) {
+      $('emptyState').hidden = true;
+      $('progressWrap').hidden = true;
+      view.appendChild(el('p', 'muted', 'Loading ' + missingInv.map(function (k) { var m = findSet(k); return m ? (m.set_name || m.set_num) : k; }).join(', ') + ' — the parts list appears when it arrives.'));
+      return;
+    }
+    showEmpty(); return;
+  }
   $('emptyState').hidden = true;
   $('progressWrap').hidden = false;
 
@@ -2152,7 +2199,14 @@ var LEGO_TO_BRICKLINK = {
  * numbers, and for these 14 parts Rebrickable's number is not
  * BrickLink's. Most Rebrickable numbers ARE BrickLink numbers, so a
  * part not in this map passes through unchanged; an entry here is a
- * plain BrickLink id for a renumber / mold split (3747b, 60470b), a
+ * plain BrickLink id for a renumber / mold split (3747b, 60470b;
+ * 30499 -> 3684a because BrickLink split the 2 x 2 x 3 slope into
+ * 3684a hollow studs and 3684c solid studs, so the bare family
+ * number 3684 is not a catalog item and the wanted-list upload
+ * rejects it. The 30499 mold is the hollow-studs one — element
+ * 4537923 in Lime is listed as design 3684a on ToyPro and under
+ * Rebrickable 3684 [Hollow Studs]; the solid variant is Rebrickable
+ * 98560, never 30499), a
  * per-colour minifig map (the rock monsters: BrickLink sells the
  * whole monster as a minifig, pm002–pm005, keyed by the LEGO colour
  * segment — Trans-Red Meltrox pm003, Trans-Blue Glaciator pm004,
@@ -2165,7 +2219,7 @@ var LEGO_TO_BRICKLINK = {
  * determined (a rock monster in a colour with no known minifig) is
  * skipped and reported, never exported blindly. */
 var REBRICKABLE_TO_BRICKLINK = {
-  '30367': '553', '30385': '52', '30499': '3684', '3747': '3747b',
+  '30367': '553', '30385': '52', '30499': '3684a', '3747': '3747b',
   '41669': 'x346', '54196': '2654', '60169': { id: '3711', qtyMult: 21 },
   '60470': '60470b', '60779': '2335', '6143': '3941',
   '64786': { minifigByColour: { 'Transparent_Red': 'pm003', 'Transparent_Blue': 'pm004', 'Transparent_Bright_Orange': 'pm002', 'Transparent_Fluorescent_Green': 'pm005' } },
@@ -3477,6 +3531,14 @@ function renderBulkListView() {
 var bulkOptSort = 'pieces';
 var bulkOptBlind = false;
 var bulkOptExcludeMinifig = false;
+// Max extra spend in USD for price mode (v3.38), or null for no
+// limit. Saved on this device like the other optimizer settings, so
+// a re-rank or a sort change never wipes it.
+var bulkOptBudget = (function () {
+  var v = LS.get('bf:optBudget', null);
+  return (typeof v === 'number' && isFinite(v) && v >= 0) ? v : null;
+})();
+var bulkOptBudgetInput = null;
 var bulkOptRun = 0;
 var bulkOptPriceBtn = null;
 var bulkOptBlindBtn = null;
@@ -3613,6 +3675,31 @@ function buildOptSortRow(listId) {
   sortBtn('fewest', 'Fewest missing');
   bulkOptPriceBtn = sortBtn('price', 'Cheapest to complete');
   bulkOptPriceBtn.title = 'Rank by the cost of the parts still needed, priced through BrickOwl.';
+  if (bulkOptSort === 'price') {
+    // Max extra spend (v3.38): only price mode has a cost to
+    // complete, so the input lives here. 'change' (not 'input') so
+    // typing doesn't rebuild the row — and the row — under the
+    // keystrokes; the saved value is restored on every re-render.
+    var budgetWrap = el('span', 'opt-budget');
+    budgetWrap.appendChild(el('span', 'opt-budget-label', 'Max extra spend $'));
+    var budgetInput = document.createElement('input');
+    budgetInput.type = 'number';
+    budgetInput.min = '0';
+    budgetInput.step = '1';
+    budgetInput.inputMode = 'decimal';
+    budgetInput.className = 'opt-budget-input';
+    budgetInput.setAttribute('aria-label', 'Maximum extra spend in dollars');
+    budgetInput.value = (bulkOptBudget === null || bulkOptBudget === undefined) ? '' : String(bulkOptBudget);
+    budgetInput.addEventListener('change', function () {
+      var v = parseFloat(budgetInput.value);
+      bulkOptBudget = (isFinite(v) && v >= 0) ? v : null;
+      LS.set('bf:optBudget', bulkOptBudget);
+      runOptimizer(listId, 'price');
+    });
+    budgetWrap.appendChild(budgetInput);
+    sortRow.appendChild(budgetWrap);
+    bulkOptBudgetInput = budgetInput;
+  }
   bulkOptBlindBtn = el('button', 'btn btn-small bulk-opt-toggle' + (bulkOptBlind ? ' on' : ' btn-quiet'), 'Colour doesn\'t matter');
   bulkOptBlindBtn.type = 'button';
   bulkOptBlindBtn.setAttribute('aria-pressed', bulkOptBlind ? 'true' : 'false');
@@ -3669,6 +3756,19 @@ function optRowText(r) {
   return r.piecesCovered + ' of ' + r.totalPieces + ' pieces (' + pct + '%) · ' + r.lotsCovered + ' lots';
 }
 
+// Split price-mode results against a max-extra-spend budget
+// (v3.38, pure for the harness). A set with no price at all is
+// never a fit — it goes in `unknown`, never in `fits`.
+function budgetSplit(results, budget) {
+  var fits = [], over = [], unknown = [];
+  (results || []).forEach(function (r) {
+    if (r.costUsd === null || r.costUsd === undefined) unknown.push(r);
+    else if (r.costUsd <= budget) fits.push(r);
+    else over.push(r);
+  });
+  return { fits: fits, over: over, unknown: unknown };
+}
+
 function renderOptRows(wrap, results, list) {
   var show = (bulkOptSort === 'fewest' || bulkOptSort === 'price')
     ? results
@@ -3679,17 +3779,37 @@ function renderOptRows(wrap, results, list) {
     wrap.appendChild(el('p', 'muted', (bulkOptSort === 'fewest' || bulkOptSort === 'price')
       ? 'No tracked sets yet — add a set to rank it here.'
       : 'No tracked set uses any piece from this list yet.'));
+  } else if (bulkOptSort === 'price' && bulkOptBudget !== null && bulkOptBudget !== undefined) {
+    // Budget on: the fits are the rows; over-budget and unpriced
+    // sets are named in one muted line below, never presented as
+    // fitting (v3.38).
+    var split = budgetSplit(show, bulkOptBudget);
+    if (!split.fits.length) {
+      var cheapest = null;
+      split.over.forEach(function (r) { if (!cheapest || r.costUsd < cheapest.costUsd) cheapest = r; });
+      wrap.appendChild(el('p', 'muted', cheapest
+        ? 'No tracked set fits ' + fmtUsd(bulkOptBudget) + ' — the cheapest is ' + cheapest.setName + ' at ' + fmtUsd(cheapest.costUsd) + '.'
+        : 'No tracked set fits ' + fmtUsd(bulkOptBudget) + ' — no prices yet.'));
+    } else {
+      split.fits.forEach(function (r) { wrap.appendChild(optRow(r)); });
+    }
+    var bits = [];
+    if (split.over.length) bits.push('Over ' + fmtUsd(bulkOptBudget) + ': ' + split.over.map(function (r) { return r.setName + ' (' + fmtUsd(r.costUsd) + ')'; }).join(', '));
+    if (split.unknown.length) bits.push('No price yet: ' + split.unknown.map(function (r) { return r.setName; }).join(', '));
+    if (bits.length) wrap.appendChild(el('p', 'muted small', bits.join(' · ')));
   } else {
-    show.forEach(function (r) {
-      var row = el('div', 'bulk-opt-row');
-      var text = el('div', 'set-text');
-      text.appendChild(el('div', 'set-name', r.setName + (r.year ? ' (' + r.year + ')' : '')));
-      text.appendChild(el('div', 'set-num', optRowText(r)));
-      row.appendChild(text);
-      row.addEventListener('click', function () { openSet(r.setKey); });
-      wrap.appendChild(row);
-    });
+    show.forEach(function (r) { wrap.appendChild(optRow(r)); });
   }
+}
+
+function optRow(r) {
+  var row = el('div', 'bulk-opt-row');
+  var text = el('div', 'set-text');
+  text.appendChild(el('div', 'set-name', r.setName + (r.year ? ' (' + r.year + ')' : '')));
+  text.appendChild(el('div', 'set-num', optRowText(r)));
+  row.appendChild(text);
+  row.addEventListener('click', function () { openSet(r.setKey); });
+  return row;
 }
 
 function runOptimizer(listId, sortMode) {
@@ -3715,6 +3835,16 @@ function runOptimizer(listId, sortMode) {
     renderOptRows(resultsEl, rankBulkListSets(list, bulkOptSort, bulkOptBlind, bulkOptExcludeMinifig), list);
   }
   renderSuggestionsInto(suggEl, list);
+  // A tracked set whose inventory hasn't arrived yet is missing
+  // from this ranking — fetch it and re-rank when it lands, instead
+  // of silently leaving the set out (v3.38).
+  var missingSets = sets.filter(function (s) { return !getInventory(s.set_num); });
+  if (missingSets.length) {
+    wrap.appendChild(el('p', 'muted small', 'Still loading parts for ' + missingSets.map(function (s) { return s.set_name || s.set_num; }).join(', ') + ' — the ranking updates when they arrive.'));
+    ensureInventories(missingSets.map(function (s) { return s.set_num; }), function () {
+      if (runId === bulkOptRun && optViewId === listId) runOptimizer(listId, bulkOptSort);
+    });
+  }
 }
 
 /* ---------- Optimizer as its own view (v3.37) ----------
@@ -4110,6 +4240,11 @@ function mergeCandidates(into, fresh) {
   return into;
 }
 var SUGGEST_NO_RETRY = { no_api_key: 1, bad_request: 1, unauthorized: 1, rate_limited: 1 };
+// Generation counter for suggestion fetches (v3.38): the results
+// start automatically when the optimizer opens now, so a fetch can
+// be in flight when a newer one starts — a stale fetch must never
+// overwrite the newer run's results.
+var suggRun = 0;
 async function invokeSuggestSets(body) {
   var lastRes = null;
   for (var attempt = 0; attempt < 2; attempt++) {
@@ -4145,6 +4280,7 @@ async function findSuggestions(listId, more) {
   if (!list) return;
   var parts = distinctBulkParts(list, bulkOptExcludeMinifig, bulkOptBlind);
   if (!parts.length) return;
+  var myRun = ++suggRun;
   if (!more) {
     var key = suggestCacheKeyFor(parts, bulkOptBlind, bulkOptExcludeMinifig);
     var cached = loadSuggestCache()[key];
@@ -4155,25 +4291,27 @@ async function findSuggestions(listId, more) {
     }
     bulkSuggState = { listId: listId, status: 'loading', candidates: [], queried: [], partial: false, unmapped: [], error: '', remaining: parts.slice(), cacheKey: key };
     renderSuggestionsInto(bulkSuggWrap, list);
-    await fetchSuggestBatch(list, parts.slice(0, SUGGEST_MAX_PARTS));
+    await fetchSuggestBatch(list, parts.slice(0, SUGGEST_MAX_PARTS), myRun);
     return;
   }
   var next = bulkSuggState.remaining.slice(0, SUGGEST_MAX_PARTS);
   if (!next.length) return;
   bulkSuggState.status = 'loading';
   renderSuggestionsInto(bulkSuggWrap, list);
-  await fetchSuggestBatch(list, next);
+  await fetchSuggestBatch(list, next, myRun);
 }
-async function fetchSuggestBatch(list, batch) {
+async function fetchSuggestBatch(list, batch, runToken) {
   var res;
   try {
     res = await invokeSuggestSets({ parts: batch, blind: bulkOptBlind });
   } catch (e) {
+    if (runToken !== suggRun) return; // a newer fetch owns the results now
     bulkSuggState.status = 'error';
     bulkSuggState.error = 'network';
     renderSuggestionsInto(bulkSuggWrap, list);
     return;
   }
+  if (runToken !== suggRun) return; // a newer fetch owns the results now
   var payload = (res && res.data) || null;
   if (!payload || !payload.ok) {
     var code = (payload && payload.error) || null;
@@ -4203,11 +4341,16 @@ function renderSuggestionsInto(wrap, list) {
   }
   var st = bulkSuggState;
   if (st.status === 'idle') {
-    wrap.appendChild(el('p', 'muted', 'Suggestions check the full catalog on Rebrickable — the sets sharing parts with this bulk list. Tracked sets stay in the section above; these are new ones.'));
-    var btn = el('button', 'btn btn-small', 'Find sets in the full catalog');
-    btn.type = 'button';
-    btn.addEventListener('click', function () { findSuggestions(list.id, false); });
-    wrap.appendChild(btn);
+    // No extra tap: the recommendations start checking the full
+    // catalog as soon as the optimizer opens, so a set the bulk
+    // list was built from shows up without hunting for a button
+    // (v3.38). The 30-day cache makes repeat opens free; the
+    // loading state below covers the wait.
+    if (!distinctBulkParts(list, bulkOptExcludeMinifig, bulkOptBlind).length) {
+      wrap.appendChild(el('p', 'muted', 'Scan some pieces first — suggestions check the full catalog against this list.'));
+      return;
+    }
+    findSuggestions(list.id, false);
     return;
   }
   if (st.status === 'loading') {
@@ -4319,7 +4462,7 @@ function ensureSuggLightbox() {
   var close = document.createElement('button');
   close.type = 'button'; close.className = 'sugg-lightbox-close'; close.textContent = '×';
   close.setAttribute('aria-label', 'Close');
-  close.addEventListener('click', closeSuggLightbox);
+  close.addEventListener('click', function () { closeSuggLightbox(); });
   overlay.appendChild(close);
   suggLightboxImg = document.createElement('img');
   suggLightboxImg.className = 'sugg-lightbox-img';
@@ -4340,15 +4483,23 @@ function openSuggLightbox(c) {
     try { window.history.pushState({ bfsugg: true }, ''); suggLightboxHistoryPushed = true; } catch (e) { suggLightboxHistoryPushed = false; }
   }
 }
-function closeSuggLightbox() {
+function closeSuggLightbox(fromPop) {
   if (!suggLightboxEl || suggLightboxEl.hidden) return;
-  suggLightboxEl.hidden = true;
-  if (suggLightboxHistoryPushed) {
-    suggLightboxHistoryPushed = false;
-    if (typeof window !== 'undefined' && window.history && window.history.back) {
-      try { window.history.back(); } catch (e) {}
-    }
+  // Strict === true: the X listener used to pass this function
+  // directly, so a real browser handed it the click Event as
+  // fromPop — truthy, which would skip the back() and leave the
+  // history entry behind for the next back press to misroute.
+  if (suggLightboxHistoryPushed && fromPop !== true) {
+    // Don't hide yet: the popstate that follows this back() is what
+    // hides the lightbox. Hiding here would blind the popstate
+    // handler — it checks the lightbox is open, sees it shut, and
+    // closes the optimizer view underneath instead (v3.38: X used to
+    // dump the user all the way back to the bulk list).
+    try { window.history.back(); } catch (e) {}
+    return;
   }
+  suggLightboxHistoryPushed = false;
+  suggLightboxEl.hidden = true;
 }
 
 /* ---------- Camera scan ---------- */
@@ -5440,7 +5591,7 @@ function bindEvents() {
       // so clear the flag first — the close must not call history.back()
       // a second time and leave the site.
       if (viewerItem) { viewerHistoryPushed = false; closeViewer(); }
-      else if (suggLightboxEl && !suggLightboxEl.hidden) { suggLightboxHistoryPushed = false; closeSuggLightbox(); }
+      else if (suggLightboxEl && !suggLightboxEl.hidden) { suggLightboxHistoryPushed = false; closeSuggLightbox(true); }
       else if (optViewId) { optViewHistoryPushed = false; closeOptimizerView(true); }
     });
   }
