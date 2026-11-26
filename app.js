@@ -1,4 +1,4 @@
-/* Bulk Finder v3.36 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.37 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -3226,13 +3226,45 @@ function createBulkList(name) {
 function deleteBulkList(id) {
   bulkLists = bulkLists.filter(function (l) { return l.id !== id; });
   saveBulkLists();
+  if (optViewId === id) { optViewId = null; optViewHistoryPushed = false; }
   if (bulkViewId === id) { bulkViewId = null; loadSelected(); }
   else renderBulkLists();
+}
+// Display colour -> LEGO colour segment, for the display names the
+// straight space-to-underscore read gets wrong (the same collisions
+// the suggest-sets colour chain handles: Violet is Bright_Violet,
+// Brown is Reddish_Brown, Pearl Gold is Warm_Gold, and the Trans-
+// Neon / Trans-Purple names map to their Transparent_ forms).
+var DISPLAY_TO_LEGO_SEG = {
+  'Violet': 'Bright_Violet', 'Pink': 'Bright_Pink', 'Brown': 'Reddish_Brown',
+  'Pearl Gold': 'Warm_Gold',
+  'Trans-Purple': 'Transparent_Medium_Red_Violet',
+  'Trans-Neon Orange': 'Transparent_Fluorescent_Red_Orange',
+  'Trans-Neon Yellow': 'Transparent_Neon_Yellow',
+  'Trans-Neon Green': 'Transparent_Fluorescent_Green'
+};
+// BrickLink colour id for a display colour, through the full chain:
+// the 16 base colours map directly; everything else reads as the
+// LEGO colour segment (spaces to underscores, Trans- to
+// Transparent_), then the LEGO -> BrickLink table. Undefined when
+// the colour has no verified BrickLink id (Medium Turquoise, Dark
+// Red, Medium Lime, Trans-Dark Pink) — the row shows without a
+// photo, never a guessed colour.
+function brickLinkIdForDisplayColour(colour) {
+  if (!colour) return undefined;
+  var bl = BRICKLINK_COLOUR[colour];
+  if (bl !== undefined) return bl;
+  var seg = DISPLAY_TO_LEGO_SEG[colour];
+  if (!seg) {
+    if (String(colour).indexOf('Trans-') === 0) seg = 'Transparent_' + String(colour).slice(6).replace(/ /g, '_');
+    else seg = String(colour).replace(/ /g, '_');
+  }
+  return LEGO_TO_BRICKLINK[seg];
 }
 // BrickLink photo for a scanned part in a display colour, when the
 // colour maps; '' otherwise (the row shows without a photo).
 function bulkPartImg(part, colour) {
-  var bl = BRICKLINK_COLOUR[colour];
+  var bl = brickLinkIdForDisplayColour(colour);
   if (bl === undefined) return '';
   return 'https://img.bricklink.com/ItemImage/PN/' + bl + '/' + part + '.png';
 }
@@ -3329,20 +3361,25 @@ function openBulkList(id) {
   var list = findBulkList(id);
   if (!list) return;
   closeDrawer();
+  if (optViewId) closeOptimizerView();
   bulkViewId = id;
   renderBulkListView();
 }
 function closeBulkView() {
   bulkViewId = null;
+  if (optViewId) { optViewId = null; optViewHistoryPushed = false; }
   loadSelected();
 }
 
 function buildBulkRow(list, p) {
   var row = el('div', 'bulk-row');
-  if (p.img) {
+  // Rows stored before the colour map grew (v3.37) may carry no img
+  // — resolve it at render time instead of showing no photo.
+  var imgUrl = p.img || bulkPartImg(p.part, p.colour);
+  if (imgUrl) {
     var img = document.createElement('img');
     img.className = 'bulk-row-img';
-    img.src = p.img;
+    img.src = imgUrl;
     img.alt = '';
     img.addEventListener('error', function () { img.style.display = 'none'; });
     row.appendChild(img);
@@ -3371,6 +3408,10 @@ function buildBulkRow(list, p) {
 }
 
 function renderBulkListView() {
+  // A stray re-render while the optimizer view is open re-renders
+  // that view, so the optimizer never drops back to the parts list
+  // underneath it.
+  if (optViewId) { renderOptimizerView(); return; }
   var list = findBulkList(bulkViewId);
   var view = $('setView');
   if (viewObserver) { viewObserver.disconnect(); viewObserver = null; }
@@ -3393,7 +3434,7 @@ function renderBulkListView() {
   row.appendChild(addBtn);
   var optBtn = el('button', 'btn btn-small', 'Find optimal sets');
   optBtn.type = 'button';
-  optBtn.addEventListener('click', function () { runOptimizer(list.id, 'pieces'); });
+  optBtn.addEventListener('click', function () { openOptimizerView(list.id); });
   row.appendChild(optBtn);
   var delBtn = el('button', 'btn btn-small btn-quiet', 'Delete list');
   delBtn.type = 'button';
@@ -3572,7 +3613,7 @@ function buildOptSortRow(listId) {
   sortBtn('fewest', 'Fewest missing');
   bulkOptPriceBtn = sortBtn('price', 'Cheapest to complete');
   bulkOptPriceBtn.title = 'Rank by the cost of the parts still needed, priced through BrickOwl.';
-  bulkOptBlindBtn = el('button', 'btn btn-small bulk-opt-toggle' + (bulkOptBlind ? ' on' : ''), 'Colour doesn\'t matter');
+  bulkOptBlindBtn = el('button', 'btn btn-small bulk-opt-toggle' + (bulkOptBlind ? ' on' : ' btn-quiet'), 'Colour doesn\'t matter');
   bulkOptBlindBtn.type = 'button';
   bulkOptBlindBtn.setAttribute('aria-pressed', bulkOptBlind ? 'true' : 'false');
   bulkOptBlindBtn.title = 'Match parts by number only, ignoring colour. The sets themselves still track colour.';
@@ -3583,7 +3624,7 @@ function buildOptSortRow(listId) {
     runOptimizer(listId, bulkOptSort);
   });
   sortRow.appendChild(bulkOptBlindBtn);
-  bulkOptMinifigBtn = el('button', 'btn btn-small bulk-opt-toggle' + (bulkOptExcludeMinifig ? ' on' : ''), 'Exclude minifigures');
+  bulkOptMinifigBtn = el('button', 'btn btn-small bulk-opt-toggle' + (bulkOptExcludeMinifig ? ' on' : ' btn-quiet'), 'Exclude minifigures');
   bulkOptMinifigBtn.type = 'button';
   bulkOptMinifigBtn.setAttribute('aria-pressed', bulkOptExcludeMinifig ? 'true' : 'false');
   bulkOptMinifigBtn.title = 'Ignore minifigure lots when matching — a set is not penalised for minifigures the bulk pile lacks.';
@@ -3676,6 +3717,70 @@ function runOptimizer(listId, sortMode) {
   renderSuggestionsInto(suggEl, list);
 }
 
+/* ---------- Optimizer as its own view (v3.37) ----------
+ * "Find optimal sets" opens the optimizer on its own page inside
+ * the app — the bulk list behind it, the ranked sets at the top —
+ * instead of rendering inline under the parts. The phone back
+ * button goes back to the bulk list (opening pushes a history
+ * entry, closing pops it back off, same pattern as the 3D viewer),
+ * and an X top right closes it the same way. Tapping a result row
+ * still opens that set, and leaves the optimizer view behind. */
+var optViewId = null;
+var optViewHistoryPushed = false;
+function openOptimizerView(listId) {
+  var list = findBulkList(listId);
+  if (!list) return;
+  optViewId = listId;
+  if (typeof window !== 'undefined' && window.history && window.history.pushState) {
+    try { window.history.pushState({ bfopt: true }, ''); optViewHistoryPushed = true; } catch (e) { optViewHistoryPushed = false; }
+  }
+  renderOptimizerView();
+}
+function renderOptimizerView() {
+  var list = findBulkList(optViewId);
+  var view = $('setView');
+  if (viewObserver) { viewObserver.disconnect(); viewObserver = null; }
+  view.innerHTML = '';
+  viewPending = [];
+  viewTierGrids = {};
+  viewSentinel = null;
+  viewMoreBtn = null;
+  if (!list) { optViewId = null; bulkViewId = null; showEmpty(); return; }
+  $('emptyState').hidden = true;
+  $('progressWrap').hidden = true;
+  var head = el('div', 'opt-view-head');
+  var backBtn = el('button', 'btn btn-small btn-quiet', '← Back');
+  backBtn.type = 'button';
+  backBtn.addEventListener('click', function () { closeOptimizerView(); });
+  head.appendChild(backBtn);
+  head.appendChild(el('h2', 'opt-view-title', list.name));
+  var xBtn = el('button', 'opt-view-x', '×');
+  xBtn.type = 'button';
+  xBtn.setAttribute('aria-label', 'Close optimizer');
+  xBtn.addEventListener('click', function () { closeOptimizerView(); });
+  head.appendChild(xBtn);
+  view.appendChild(head);
+  view.appendChild(el('p', 'muted', bulkListPieces(list) + ' pieces · ' + list.parts.length + ' lots · saved on this phone only'));
+  bulkOptWrap = el('div', 'bulk-opt');
+  view.appendChild(bulkOptWrap);
+  runOptimizer(list.id, 'pieces');
+  renderBulkLists();
+}
+function closeOptimizerView(fromPop) {
+  if (!optViewId) return;
+  optViewId = null;
+  if (optViewHistoryPushed && !fromPop) {
+    optViewHistoryPushed = false;
+    if (typeof window !== 'undefined' && window.history && window.history.back) {
+      try { window.history.back(); } catch (e) {}
+    }
+  } else {
+    optViewHistoryPushed = false;
+  }
+  if (bulkViewId) renderBulkListView();
+  else loadSelected();
+}
+
 // Price mode: fetch every tracked set's cost to complete, then rank.
 // A mode switch while fetching abandons the stale render (runId).
 async function renderPriceResults(list, resultsEl, runId) {
@@ -3705,6 +3810,7 @@ async function renderPriceResults(list, resultsEl, runId) {
  * monsters) have no BrickOwl part price, so they are counted as
  * unpriced and left out of the total, never guessed. */
 var PRICE_TTL_MS = 7 * 24 * 3600 * 1000;
+var PRICE_CHUNK = 200; // the get-prices function takes at most 200 items per call
 function loadPriceCache() {
   var v = LS.get('bf:prices', {});
   return (v && typeof v === 'object') ? v : {};
@@ -3751,6 +3857,23 @@ function remainingPriceLines(setKey, blind, excludeMinifig) {
   return { lines: lines, unpriced: unpriced };
 }
 var GETPRICES_NO_RETRY = { no_api_key: 1, bad_request: 1, unauthorized: 1 };
+// The error code from a failed Edge Function invoke. supabase-js
+// puts the function's JSON body on res.error.context in the test
+// double; in the browser the context is the Response, whose body
+// has to be read. Either way the code (no_api_key, bad_request…)
+// comes back instead of the generic "not deployed".
+async function fnErrorCode(res) {
+  var ctx = res && res.error && res.error.context;
+  if (!ctx) return null;
+  if (typeof ctx.error === 'string') return ctx.error;
+  if (ctx && typeof ctx.json === 'function') {
+    try {
+      var b = await ctx.json();
+      if (b && typeof b.error === 'string') return b.error;
+    } catch (e) {}
+  }
+  return null;
+}
 async function invokeGetPrices(body) {
   var lastRes = null;
   for (var attempt = 0; attempt < 2; attempt++) {
@@ -3765,10 +3888,7 @@ async function invokeGetPrices(body) {
     var payload = (res && res.data) || null;
     if (payload && payload.ok) return res;
     var code = (payload && payload.error) || null;
-    if (!code) {
-      var ctx = (res && res.error && res.error.context) || null;
-      code = (ctx && ctx.error) || null;
-    }
+    if (!code) code = await fnErrorCode(res);
     if (code && GETPRICES_NO_RETRY[code]) return res;
     if (attempt === 0) continue;
     return res;
@@ -3781,7 +3901,29 @@ function priceErrorText(code) {
   if (code === 'bad_request') return 'Something odd was sent for pricing — try again.';
   if (code === 'network') return 'Couldn\'t reach the price service — check your connection and try again.';
   if (code === 'not_deployed') return 'The get-prices function isn\'t deployed yet — deploy it from the Supabase dashboard (Edge Functions > Deploy get-prices).';
+  if (code === 'brickowl_key') return 'BrickOwl rejected the key — the BRICKOWL_API_KEY secret in Supabase doesn\'t match a current key from your BrickOwl account. Check it in the dashboard (Edge Functions > Secrets) and try again.';
+  if (code === 'no_colour') return 'BrickOwl has no colour match for these parts, so nothing could be priced.';
+  if (code === 'no_listing') return 'BrickOwl has no listing for these parts, so nothing could be priced.';
+  if (code === 'no_usd') return 'No US store lists these parts new in dollars right now.';
+  if (code === 'rate_limited') return 'BrickOwl is busy right now — wait a minute and try again.';
   return 'Pricing isn\'t available right now — try again.';
+}
+// The get-prices function returns ok:true with a per-item reason
+// when a lot can't be priced — the app used to throw those reasons
+// away and show a silent $0.00. When nothing prices at all, the
+// most common reason becomes the error the row shows.
+function priceReasonCode(reasons) {
+  var best = null, bestN = 0;
+  Object.keys(reasons || {}).forEach(function (reason) {
+    if (reasons[reason] > bestN) { bestN = reasons[reason]; best = reason; }
+  });
+  if (!best) return 'unknown';
+  if (/40[13]/.test(best)) return 'brickowl_key';
+  if (/no BrickOwl colour/.test(best)) return 'no_colour';
+  if (/no listing/.test(best)) return 'no_listing';
+  if (/no US store/.test(best)) return 'no_usd';
+  if (/busy/.test(best)) return 'rate_limited';
+  return 'unknown';
 }
 async function fetchSetPrices(setKey, blind, excludeMinifig) {
   if (!sb || !user) return { error: 'unauthorized', totalUsd: null, unpricedLots: 0 };
@@ -3790,38 +3932,62 @@ async function fetchSetPrices(setKey, blind, excludeMinifig) {
   var now = Date.now();
   var total = 0, unpriced = r.unpriced, missing = [];
   var seen = {};
+  var gotPrice = false;
   r.lines.forEach(function (ln) {
     var c = cache[ln.key];
-    if (c && typeof c.usd === 'number' && (now - c.at) < PRICE_TTL_MS) {
+    if (c && typeof c.usd === 'number' && c.usd > 0 && (now - c.at) < PRICE_TTL_MS) {
       total += ln.qty * c.usd;
+      gotPrice = true;
     } else if (!seen[ln.key]) {
       seen[ln.key] = 1;
       missing.push(ln);
     }
   });
+  // The function takes at most 200 items per call — a big set (the
+  // Death Star has over a thousand lots) is sent in chunks, so the
+  // whole set no longer fails with one bad_request.
+  var firstErr = null;
+  var reasons = {};
+  var pricedKeys = {};
   if (missing.length) {
-    var res;
-    try {
-      res = await invokeGetPrices({ items: missing, country: 'US' });
-    } catch (e) {
-      return { error: 'network', totalUsd: null, unpricedLots: unpriced };
+    for (var ci = 0; ci < missing.length; ci += PRICE_CHUNK) {
+      var chunk = missing.slice(ci, ci + PRICE_CHUNK);
+      var res;
+      try {
+        res = await invokeGetPrices({ items: chunk, country: 'US' });
+      } catch (e) {
+        if (!firstErr) firstErr = 'network';
+        break;
+      }
+      var payload = (res && res.data) || null;
+      if (!payload || !payload.ok) {
+        if (!firstErr) {
+          var code = (payload && payload.error) || null;
+          if (!code) code = await fnErrorCode(res);
+          firstErr = code || ((res && res.error) ? 'not_deployed' : 'unknown');
+        }
+        break;
+      }
+      var fresh = {};
+      (payload.prices || []).forEach(function (p) {
+        fresh[p.key] = p.usd;
+        pricedKeys[p.key] = 1;
+        cache[p.key] = { usd: p.usd, at: now };
+      });
+      savePriceCache(cache);
+      (payload.unpriced || []).forEach(function (u) {
+        var reason = u.reason || 'unpriced';
+        reasons[reason] = (reasons[reason] || 0) + 1;
+      });
+      chunk.forEach(function (ln) {
+        if (typeof fresh[ln.key] === 'number') { total += ln.qty * fresh[ln.key]; gotPrice = true; }
+      });
     }
-    var payload = (res && res.data) || null;
-    if (!payload || !payload.ok) {
-      var code = (payload && payload.error) || null;
-      if (!code && res && res.error) code = 'not_deployed';
-      return { error: code || 'unknown', totalUsd: null, unpricedLots: unpriced };
-    }
-    var fresh = {};
-    (payload.prices || []).forEach(function (p) {
-      fresh[p.key] = p.usd;
-      cache[p.key] = { usd: p.usd, at: now };
-    });
-    savePriceCache(cache);
-    missing.forEach(function (ln) {
-      if (typeof fresh[ln.key] === 'number') total += ln.qty * fresh[ln.key];
-      else unpriced += ln.lots;
-    });
+    missing.forEach(function (ln) { if (!pricedKeys[ln.key]) unpriced += ln.lots; });
+  }
+  if (missing.length && !gotPrice) {
+    // Nothing priced at all — say why instead of a silent $0.00.
+    return { error: firstErr || priceReasonCode(reasons), totalUsd: null, unpricedLots: unpriced };
   }
   return { totalUsd: total, unpricedLots: unpriced };
 }
@@ -3958,10 +4124,7 @@ async function invokeSuggestSets(body) {
     var payload = (res && res.data) || null;
     if (payload && payload.ok) return res;
     var code = (payload && payload.error) || null;
-    if (!code) {
-      var ctx = (res && res.error && res.error.context) || null;
-      code = (ctx && ctx.error) || null;
-    }
+    if (!code) code = await fnErrorCode(res);
     if (code && SUGGEST_NO_RETRY[code]) return res;
     if (attempt === 0) continue;
     return res;
@@ -4059,13 +4222,29 @@ function renderSuggestionsInto(wrap, list) {
     wrap.appendChild(retry);
     return;
   }
-  var fresh = st.candidates.filter(function (c) { return !findSet(c.set_num); });
+  // Product collections and other bundle entries carry num_parts 0
+  // on Rebrickable — they share parts but can't be built from a
+  // bulk pile, and they used to crowd out real sets at the top (the
+  // ranking prefers the smallest piece count among equal coverage).
+  var fresh = st.candidates.filter(function (c) { return !findSet(c.set_num) && (c.num_parts || 0) > 0; });
   var ranked = rankSuggestionsLocal(fresh, bulkOptSort);
   if (!ranked.length) {
-    wrap.appendChild(el('p', 'muted', 'No untracked set shares a part with this bulk list.'));
+    var anyUntracked = st.candidates.some(function (c) { return !findSet(c.set_num); });
+    wrap.appendChild(el('p', 'muted', anyUntracked
+      ? 'The untracked sets sharing parts with this bulk list have no piece count on Rebrickable (product collections and bundles), so they can\'t be ranked as buildable sets.'
+      : 'No untracked set shares a part with this bulk list.'));
   } else {
     ranked.slice(0, SUGGEST_SHOW).forEach(function (c) {
       var row = el('div', 'bulk-opt-row sugg-row');
+      if (c.set_img_url) {
+        var thumb = document.createElement('img');
+        thumb.className = 'sugg-thumb';
+        thumb.src = c.set_img_url;
+        thumb.alt = '';
+        thumb.addEventListener('error', function () { thumb.style.display = 'none'; });
+        thumb.addEventListener('click', function (e) { if (e && e.stopPropagation) e.stopPropagation(); openSuggLightbox(c); });
+        row.appendChild(thumb);
+      }
       var text = el('div', 'set-text');
       text.appendChild(el('div', 'set-name', c.name + (c.year ? ' (' + c.year + ')' : '')));
       var missing = (typeof c.missingUpper === 'number') ? c.missingUpper : Math.max(0, c.num_parts - c.lotsCovered);
@@ -4124,6 +4303,52 @@ async function addSuggestedSet(setNum, btn) {
   bulkSuggState.candidates = bulkSuggState.candidates.filter(function (c) { return c.set_num !== setNum; });
   saveSuggestState();
   runOptimizer(bulkSuggState.listId, bulkOptSort);
+}
+
+/* ---------- Suggestion set picture lightbox (v3.37) ----------
+ * Tap a suggestion's thumbnail and the set picture opens large, on
+ * a dark overlay — X top right, tap outside the picture, Escape, or
+ * the phone back button all close it (same history pattern as the
+ * 3D viewer: opening pushes an entry, closing pops it back off). */
+var suggLightboxEl = null, suggLightboxImg = null, suggLightboxHistoryPushed = false;
+function ensureSuggLightbox() {
+  if (suggLightboxEl) return suggLightboxEl;
+  var overlay = document.createElement('div');
+  overlay.className = 'sugg-lightbox';
+  overlay.hidden = true;
+  var close = document.createElement('button');
+  close.type = 'button'; close.className = 'sugg-lightbox-close'; close.textContent = '×';
+  close.setAttribute('aria-label', 'Close');
+  close.addEventListener('click', closeSuggLightbox);
+  overlay.appendChild(close);
+  suggLightboxImg = document.createElement('img');
+  suggLightboxImg.className = 'sugg-lightbox-img';
+  suggLightboxImg.alt = '';
+  overlay.appendChild(suggLightboxImg);
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) closeSuggLightbox(); });
+  document.body.appendChild(overlay);
+  suggLightboxEl = overlay;
+  return overlay;
+}
+function openSuggLightbox(c) {
+  if (!c || !c.set_img_url) return;
+  var m = ensureSuggLightbox();
+  suggLightboxImg.src = c.set_img_url;
+  suggLightboxImg.alt = c.name || '';
+  m.hidden = false;
+  if (typeof window !== 'undefined' && window.history && window.history.pushState) {
+    try { window.history.pushState({ bfsugg: true }, ''); suggLightboxHistoryPushed = true; } catch (e) { suggLightboxHistoryPushed = false; }
+  }
+}
+function closeSuggLightbox() {
+  if (!suggLightboxEl || suggLightboxEl.hidden) return;
+  suggLightboxEl.hidden = true;
+  if (suggLightboxHistoryPushed) {
+    suggLightboxHistoryPushed = false;
+    if (typeof window !== 'undefined' && window.history && window.history.back) {
+      try { window.history.back(); } catch (e) {}
+    }
+  }
 }
 
 /* ---------- Camera scan ---------- */
@@ -4654,7 +4879,10 @@ function confirmScanDone() {
   var p = scanState.pending;
   scanState.pending = null;
   scanConfirmEl.hidden = true;
-  if (p) { showScanAssign(p); return; }
+  // Only ask where the piece goes when there is a choice: the bulk
+  // list plus at least one tracked set that still needs this exact
+  // part+colour. Otherwise it stays in the bulk list silently.
+  if (p && setsNeedingScannedPart(p.part, p.colour).length) { showScanAssign(p); return; }
   scanControlsEl.hidden = false;
   scanVideo.hidden = false;
   scanStatusEl.textContent = 'Point the camera at the next piece and tap Scan piece.';
@@ -5197,18 +5425,23 @@ function bindEvents() {
     closeViewer();
   });
   document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (suggLightboxEl && !suggLightboxEl.hidden) { closeSuggLightbox(); return; }
     if (!$('lightbox') || $('lightbox').hidden) return;
-    if (e.key === 'Escape') closeViewer();
+    closeViewer();
   });
-  // Phone back button: a popstate while the 3D view is open closes
-  // the view instead of leaving the site (openViewer pushes the
-  // history entry; closeViewer pops it back off).
+  // Phone back button: a popstate while the 3D view, the set-picture
+  // lightbox, or the optimizer view is open closes that view instead
+  // of leaving the site (each pushes its history entry on open;
+  // closing pops it back off). Only the topmost one closes per press.
   if (typeof window !== 'undefined' && window.addEventListener) {
     window.addEventListener('popstate', function () {
       // The browser already popped our pushed entry to fire this event,
-      // so clear the flag first — closeViewer must not call history.back()
+      // so clear the flag first — the close must not call history.back()
       // a second time and leave the site.
       if (viewerItem) { viewerHistoryPushed = false; closeViewer(); }
+      else if (suggLightboxEl && !suggLightboxEl.hidden) { suggLightboxHistoryPushed = false; closeSuggLightbox(); }
+      else if (optViewId) { optViewHistoryPushed = false; closeOptimizerView(true); }
     });
   }
   window.addEventListener('online', function () { updateSyncStatus(); tickSync(); refreshSessionIfLoggedOut(); });

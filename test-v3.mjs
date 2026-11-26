@@ -1891,18 +1891,25 @@ async function main() {
   sandbox.scanAssignList.children[0].listeners.click[0]();
   check("assign: bulk row keeps the piece in the list", sandbox.findBulkList(assignList.id).parts.length, 1);
   check("assign: bulk row closes the popup", sandbox.scanAssignModal.hidden, true);
-  // A piece no tracked set needs: bulk row only, with the note.
+  // A piece no tracked set needs: no popup at all — the piece just
+  // stays in the bulk list and scanning resumes.
   sandbox.handleIdentified(assignList.id, "3001", "Brick 2 x 4", 0.97, "data:image/jpeg;base64,zzz3");
   sandbox.scanColourSel.value = "Red";
   sandbox.scanColourSel.listeners.change[0]({ target: sandbox.scanColourSel });
   sandbox.scanDoneBtn.listeners.click[0]();
-  check("assign: no set needs the red piece, bulk row only", sandbox.scanAssignList.children.length, 1);
-  check("assign: note says no tracked set needs it", sandbox.scanAssignNote.hidden, false);
-  check("assign: note text", sandbox.scanAssignNote.textContent, "No tracked set still needs this piece.");
+  check("assign: no set needs the red piece, no popup", sandbox.scanAssignModal.hidden, true);
+  check("assign: no popup, back to scanning", sandbox.scanControlsEl.hidden, false);
+  check("assign: red piece stays in the bulk list", sandbox.findBulkList(assignList.id).parts.length, 2);
+  // Cancel still closes the popup and keeps the piece, when a set
+  // does need it and the popup opens.
+  sandbox.scanState.lastColour = "Black";
+  sandbox.handleIdentified(assignList.id, "3001", "Brick 2 x 4", 0.97, "data:image/jpeg;base64,zzz3b");
+  sandbox.scanDoneBtn.listeners.click[0]();
+  check("assign: popup opens for a needed piece", sandbox.scanAssignModal.hidden, false);
   const assignBox = sandbox.scanAssignModal.children[0];
   const assignCancel = assignBox.children.find((c) => c.textContent === "Cancel");
   assignCancel.listeners.click[0]();
-  check("assign: Cancel keeps the piece in the bulk list", sandbox.findBulkList(assignList.id).parts.length, 2);
+  check("assign: Cancel keeps the pieces in the bulk list", sandbox.bulkListPieces(sandbox.findBulkList(assignList.id)), 3);
   check("assign: Cancel closes the popup", sandbox.scanAssignModal.hidden, true);
   // Escape closes the popup and keeps the piece, too.
   sandbox.scanState.lastColour = "Black";
@@ -1911,7 +1918,7 @@ async function main() {
   check("assign: popup opens again for the next piece", sandbox.scanAssignModal.hidden, false);
   sandbox.document.listeners.keydown[0]({ key: "Escape" });
   check("assign: Escape closes the popup", sandbox.scanAssignModal.hidden, true);
-  check("assign: Escape keeps the piece in the bulk list", sandbox.bulkListPieces(sandbox.findBulkList(assignList.id)), 3);
+  check("assign: Escape keeps the piece in the bulk list", sandbox.bulkListPieces(sandbox.findBulkList(assignList.id)), 4);
 
   // --- v3.33: scan picker — create a list, no camera here.
   sandbox.openScanPicker();
@@ -2118,9 +2125,9 @@ async function main() {
   invokeHandler = async (name, opts) => {
     if (name === "suggest-sets") {
       return { data: { ok: true, candidates: [
-        { set_num: "99999-1", name: "Fake Set A", year: 2023, num_parts: 50, set_img_url: "", lotsCovered: 3, missingUpper: 47 },
-        { set_num: "99998-1", name: "Fake Set B", year: 2020, num_parts: 20, set_img_url: "", lotsCovered: 2, missingUpper: 18 },
-        { set_num: "10294-1", name: "Test Ship", year: 2021, num_parts: 10, set_img_url: "", lotsCovered: 3, missingUpper: 7 },
+        { set_num: "99999-1", name: "Fake Set A", year: 2023, num_parts: 50, set_img_url: "https://cdn.rebrickable.com/media/sets/99999-1.jpg", lotsCovered: 3, missingUpper: 47 },
+        { set_num: "99998-1", name: "Fake Set B", year: 2020, num_parts: 20, set_img_url: "https://cdn.rebrickable.com/media/sets/99998-1.jpg", lotsCovered: 2, missingUpper: 18 },
+        { set_num: "10294-1", name: "Test Ship", year: 2021, num_parts: 10, set_img_url: "https://cdn.rebrickable.com/media/sets/10294-1.jpg", lotsCovered: 3, missingUpper: 7 },
       ], queried: ["3001|Black"], partial: false, unmapped: [] }, error: null };
     }
     if (name === "import-set") {
@@ -2132,14 +2139,14 @@ async function main() {
   await sandbox.findSuggestions(optList.id, false);
   check("sugg: state is done with 3 candidates", [sandbox.bulkSuggState.status, sandbox.bulkSuggState.candidates.length], ["done", 3]);
   const suggRows = sandbox.bulkSuggWrap.children.filter((c) => c.className.includes("sugg-row"));
-  check("sugg: tracked sets are filtered out of the rows", suggRows.map((r) => r.children[0].children[0].textContent), ["Fake Set A (2023)", "Fake Set B (2020)"]);
-  check("sugg: row shows lots, total and missing", suggRows[0].children[0].children[1].textContent, "Shares 3 lots · 50 pieces total · up to 47 missing");
+  check("sugg: tracked sets are filtered out of the rows", suggRows.map((r) => r.children[1].children[0].textContent), ["Fake Set A (2023)", "Fake Set B (2020)"]);
+  check("sugg: row shows lots, total and missing", suggRows[0].children[1].children[1].textContent, "Shares 3 lots · 50 pieces total · up to 47 missing");
   check("sugg: local ranking puts fewest missing first", sandbox.rankSuggestionsLocal(sandbox.bulkSuggState.candidates, "fewest").map((c) => c.set_num), ["10294-1", "99998-1", "99999-1"]);
   check("sugg: cache key changes with the minifig toggle", sandbox.suggestCacheKeyFor(sandbox.distinctBulkParts(optList), false, false) !== sandbox.suggestCacheKeyFor(sandbox.distinctBulkParts(optList), false, true), true);
   const origOpenSet = sandbox.openSet;
   let openedKeys = [];
   sandbox.openSet = (k) => { openedKeys.push(k); };
-  suggRows[0].children[1].listeners.click[0]({ stopPropagation() {} });
+  suggRows[0].children[2].listeners.click[0]({ stopPropagation() {} });
   await sleep(50);
   check("sugg: Add imports without opening the set", openedKeys, []);
   check("sugg: set is in My sets", sandbox.findSet("99999-1") && sandbox.findSet("99999-1").set_num, "99999-1");
@@ -2259,6 +2266,210 @@ async function main() {
   sandbox.scanCanvas = null;
   delete sandbox.Image;
   delete sandbox.FileReader;
+  // --- v3.37: popup skip, photo colour map, optimizer view,
+  // suggestion thumbnails + lightbox, price error surfacing,
+  // chunking, 0-part suggestions.
+  sandbox.closeScanAssign();
+  sandbox.scanState.lastColour = "Black";
+  sandbox.localStorage.removeItem("bf:prices");
+  sandbox.localStorage.removeItem("bf:suggest");
+  sandbox.bulkOptBlind = false;
+  sandbox.bulkOptExcludeMinifig = false;
+
+  // Photo colour map: display colours outside the old 16 now resolve.
+  check("photo37: Dark Stone Grey maps to BrickLink 85", sandbox.bulkPartImg("3001", "Dark Stone Grey"), "https://img.bricklink.com/ItemImage/PN/85/3001.png");
+  check("photo37: Olive Green maps to BrickLink 155", sandbox.bulkPartImg("3001", "Olive Green"), "https://img.bricklink.com/ItemImage/PN/155/3001.png");
+  check("photo37: Brown is Reddish Brown 88", sandbox.bulkPartImg("3001", "Brown"), "https://img.bricklink.com/ItemImage/PN/88/3001.png");
+  check("photo37: Trans-Yellow maps to 19", sandbox.bulkPartImg("3001", "Trans-Yellow"), "https://img.bricklink.com/ItemImage/PN/19/3001.png");
+  check("photo37: Violet is Bright Violet 43", sandbox.bulkPartImg("3001", "Violet"), "https://img.bricklink.com/ItemImage/PN/43/3001.png");
+  check("photo37: Pearl Gold is Warm Gold 115", sandbox.bulkPartImg("3001", "Pearl Gold"), "https://img.bricklink.com/ItemImage/PN/115/3001.png");
+  check("photo37: Trans-Neon Green maps to 16", sandbox.bulkPartImg("3001", "Trans-Neon Green"), "https://img.bricklink.com/ItemImage/PN/16/3001.png");
+  check("photo37: Medium Turquoise has no verified id", sandbox.bulkPartImg("3001", "Medium Turquoise"), "");
+  check("photo37: Dark Grey still maps to the modern 85, not the old 10", sandbox.bulkPartImg("3001", "Dark Grey"), "https://img.bricklink.com/ItemImage/PN/85/3001.png");
+  // A row stored with no img gets one at render time.
+  const photoList = sandbox.createBulkList("Photo test");
+  sandbox.findBulkList(photoList.id).parts.push({ part: "3001", name: "Brick 2 x 4", colour: "Olive Green", qty: 2, img: "" });
+  const photoRow = sandbox.buildBulkRow(sandbox.findBulkList(photoList.id), sandbox.findBulkList(photoList.id).parts[0]);
+  check("photo37: stored row without img renders one", photoRow.children[0].tagName, "IMG");
+  check("photo37: rendered img is the Olive Green photo", photoRow.children[0].src, "https://img.bricklink.com/ItemImage/PN/155/3001.png");
+  // The v3.36 regression path: a sampled Olive Green piece is filed
+  // with its photo, not without one.
+  sandbox.INVENTORIES["olive-1"] = { set: "olive-1 Test Olive", lots: 1, pieces: 1, items: [{ id: "x-3001-Olive_Green", qty: 1, dim: "2 × 4 studs", colour: "Olive Green", any: false, tier: 1, cat: "Bricks", img: "https://example.test/x.jpg", name: "Brick 2 x 4" }] };
+  sandbox.sets.push({ key: "olive-1", set_num: "olive-1", set_name: "Test Olive", total_parts: 1, total_lots: 1 });
+  sandbox.saveCounts("olive-1", { "x-3001-Olive_Green": 1 });
+  const oliveList = sandbox.createBulkList("Olive sample test");
+  sandbox.scanState.lastColour = "Black";
+  sandbox.scanCanvas = makeTestCanvas(100, 100, () => [155, 154, 90]);
+  sandbox.handleIdentified(oliveList.id, "3001", "Brick 2 x 4", 0.97, "data:image/jpeg;base64,o1", redBox);
+  check("photo37: sampled Olive Green pre-selects", sandbox.scanColourSel.value, "Olive Green");
+  check("photo37: sampled piece carries its photo", sandbox.findBulkList(oliveList.id).parts, [{ part: "3001", name: "Brick 2 x 4", colour: "Olive Green", qty: 1, img: "https://img.bricklink.com/ItemImage/PN/155/3001.png" }]);
+  sandbox.scanCancelBtn.listeners.click[0]();
+  sandbox.scanCanvas = null;
+  sandbox.sets = sandbox.sets.filter((s) => s.key !== "olive-1");
+  sandbox.saveLocalSets(sandbox.sets);
+  delete sandbox.INVENTORIES["olive-1"];
+
+  // Scan popup: bulk-only destination means no popup at all.
+  const skipList = sandbox.createBulkList("Skip test");
+  sandbox.scanState.lastColour = "Black";
+  sandbox.handleIdentified(skipList.id, "99999", "No Such Part", 0.97, "data:image/jpeg;base64,sk1");
+  sandbox.scanDoneBtn.listeners.click[0]();
+  check("assign37: no set needs it, no popup", sandbox.scanAssignModal.hidden, true);
+  check("assign37: no popup, back to scanning", sandbox.scanControlsEl.hidden, false);
+  check("assign37: piece stays in the bulk list", sandbox.findBulkList(skipList.id).parts.length, 1);
+
+  // Optimizer view: its own page, Back + X, phone back button.
+  const hist37 = [];
+  sandbox.window.history = { pushState(s) { hist37.push(["push", s]); }, back() { hist37.push(["back"]); }, replaceState(state, title, url) { replacedUrl = url; } };
+  sandbox.openBulkList(optList.id);
+  sandbox.openOptimizerView(optList.id);
+  check("optview: opening sets the view", sandbox.optViewId, optList.id);
+  check("optview: opening pushes a history entry", hist37.some((c) => c[0] === "push" && c[1] && c[1].bfopt === true), true);
+  const optHead = sandbox.$("setView").children[0];
+  check("optview: header row is first", optHead.className, "opt-view-head");
+  check("optview: header has Back, title, X", [optHead.children[0].textContent, optHead.children[1].textContent, optHead.children[2].className], ["← Back", "Optimizer test", "opt-view-x"]);
+  check("optview: optimizer renders inside the view", sandbox.$("setView").children.some((c) => c === sandbox.bulkOptWrap), true);
+  check("optview: heading is Sets this bulk can build", sandbox.bulkOptWrap.children[0].textContent, "Sets this bulk can build");
+  // X closes it and pops the entry.
+  optHead.children[2].listeners.click[0]();
+  check("optview: X clears the view", sandbox.optViewId, null);
+  check("optview: X pops the history entry", hist37.some((c) => c[0] === "back"), true);
+  check("optview: X returns to the bulk list", sandbox.$("setView").children.some((c) => c.className === "bulk-parts"), true);
+  // Phone back button closes it without a second back().
+  sandbox.openOptimizerView(optList.id);
+  const optBacksBefore = hist37.filter((c) => c[0] === "back").length;
+  sandbox._winListeners.popstate();
+  check("optview: popstate closes the view", sandbox.optViewId, null);
+  check("optview: popstate does not go back a second time", hist37.filter((c) => c[0] === "back").length, optBacksBefore);
+  check("optview: popstate returns to the bulk list", sandbox.$("setView").children.some((c) => c.className === "bulk-parts"), true);
+  // Back button in the header closes it too.
+  sandbox.openOptimizerView(optList.id);
+  sandbox.$("setView").children[0].children[0].listeners.click[0]();
+  check("optview: Back closes the view", sandbox.optViewId, null);
+
+  // Suggestion thumbnails + lightbox (suggestions come from the
+  // v3.36 run's cache, so no invoke is needed here).
+  sandbox.openOptimizerView(optList.id);
+  await sandbox.findSuggestions(optList.id, false);
+  const suggRows37 = sandbox.bulkSuggWrap.children.filter((c) => c.className.includes("sugg-row"));
+  check("sugg37: two untracked suggestion rows", suggRows37.length, 2);
+  check("sugg37: thumbnail is first in the row", suggRows37[0].children[0].tagName, "IMG");
+  check("sugg37: thumbnails are the set pictures", suggRows37.map((r) => r.children[0].src), ["https://cdn.rebrickable.com/media/sets/99999-1.jpg", "https://cdn.rebrickable.com/media/sets/99998-1.jpg"]);
+  suggRows37[0].children[0].listeners.click[0]({ stopPropagation() {} });
+  check("sugg37: tap opens the lightbox", sandbox.suggLightboxEl.hidden, false);
+  check("sugg37: lightbox shows the set picture", sandbox.suggLightboxImg.src, "https://cdn.rebrickable.com/media/sets/99999-1.jpg");
+  check("sugg37: lightbox pushes a history entry", hist37.some((c) => c[0] === "push" && c[1] && c[1].bfsugg === true), true);
+  const lbBacksBefore = hist37.filter((c) => c[0] === "back").length;
+  sandbox.suggLightboxEl.children[0].listeners.click[0]();
+  check("sugg37: X closes the lightbox", sandbox.suggLightboxEl.hidden, true);
+  check("sugg37: X pops the history entry", hist37.filter((c) => c[0] === "back").length, lbBacksBefore + 1);
+  check("sugg37: optimizer view stays open after closing the lightbox", sandbox.optViewId, optList.id);
+  suggRows37[0].children[0].listeners.click[0]({ stopPropagation() {} });
+  const lbBacksBeforePop = hist37.filter((c) => c[0] === "back").length;
+  sandbox._winListeners.popstate();
+  check("sugg37: popstate closes the lightbox", sandbox.suggLightboxEl.hidden, true);
+  check("sugg37: popstate does not go back a second time", hist37.filter((c) => c[0] === "back").length, lbBacksBeforePop);
+  check("sugg37: popstate leaves the optimizer view open", sandbox.optViewId, optList.id);
+  sandbox.closeOptimizerView();
+
+  // Toggle highlight: off is plain (btn-quiet), on is filled.
+  sandbox.openBulkList(optList.id);
+  sandbox.runOptimizer(optList.id, "pieces");
+  check("toggle37: blind starts off and plain", [sandbox.bulkOptBlindBtn.className.includes("on"), sandbox.bulkOptBlindBtn.className.includes("btn-quiet")], [false, true]);
+  check("toggle37: minifig starts off and plain", [sandbox.bulkOptMinifigBtn.className.includes("on"), sandbox.bulkOptMinifigBtn.className.includes("btn-quiet")], [false, true]);
+  sandbox.bulkOptBlindBtn.listeners.click[0]();
+  check("toggle37: blind on is filled, not quiet", [sandbox.bulkOptBlindBtn.className.includes("on"), sandbox.bulkOptBlindBtn.className.includes("btn-quiet")], [true, false]);
+  sandbox.bulkOptBlindBtn.listeners.click[0]();
+  check("toggle37: blind off again is plain", [sandbox.bulkOptBlindBtn.className.includes("on"), sandbox.bulkOptBlindBtn.className.includes("btn-quiet")], [false, true]);
+  sandbox.bulkOptMinifigBtn.listeners.click[0]();
+  check("toggle37: minifig on is filled, not quiet", [sandbox.bulkOptMinifigBtn.className.includes("on"), sandbox.bulkOptMinifigBtn.className.includes("btn-quiet")], [true, false]);
+  sandbox.bulkOptMinifigBtn.listeners.click[0]();
+  check("toggle37: minifig off again is plain", [sandbox.bulkOptMinifigBtn.className.includes("on"), sandbox.bulkOptMinifigBtn.className.includes("btn-quiet")], [false, true]);
+
+  // Price audit: an ok:true answer with no prices at all surfaces
+  // the function's reason instead of a silent $0.00.
+  sandbox.localStorage.removeItem("bf:prices");
+  invokeHandler = async (name) => (name === "get-prices"
+    ? { data: { ok: true, prices: [], unpriced: [{ key: "3001|11", reason: "BrickOwl error: BrickOwl answered 401 on /catalog/color_list" }] }, error: null }
+    : { data: null, error: { message: "no handler" } });
+  const priceBadKey = await sandbox.fetchSetPrices("10305-1", false);
+  check("price37: all-unpriced returns the key error, no total", [priceBadKey.error, priceBadKey.totalUsd], ["brickowl_key", null]);
+  check("price37: key error names the secret", sandbox.priceErrorText("brickowl_key").includes("BRICKOWL_API_KEY"), true);
+  // A failed invoke that carries the function's error body no longer
+  // reports "not deployed".
+  invokeHandler = async (name) => (name === "get-prices"
+    ? { data: null, error: { context: { error: "no_api_key" } } }
+    : { data: null, error: { message: "no handler" } });
+  const priceBodyErr = await sandbox.fetchSetPrices("10305-1", false);
+  check("price37: error body code survives the invoke", priceBodyErr.error, "no_api_key");
+  invokeHandler = async (name) => (name === "get-prices"
+    ? { data: null, error: { message: "boom" } }
+    : { data: null, error: { message: "no handler" } });
+  const priceNoBody = await sandbox.fetchSetPrices("10305-1", false);
+  check("price37: no body still reports not deployed", priceNoBody.error, "not_deployed");
+  // Chunking: a set with more than 200 priceable lines is sent in
+  // two invokes, not one failing call.
+  const bigItems = [];
+  for (let i = 0; i < 210; i++) {
+    const design = String(90001 + i);
+    bigItems.push({ id: "el-" + design + "-Black", qty: 1, dim: "1 × 1 studs", colour: "Black", any: false, tier: 1, cat: "Bricks", img: "", name: "Brick 1 x 1" });
+  }
+  sandbox.INVENTORIES["big-1"] = { set: "big-1 Test Big", lots: 210, pieces: 210, items: bigItems };
+  sandbox.sets.push({ key: "big-1", set_num: "big-1", set_name: "Test Big", total_parts: 210, total_lots: 210 });
+  const bigCounts = {};
+  bigItems.forEach((it) => { bigCounts[it.id] = 1; });
+  sandbox.saveCounts("big-1", bigCounts);
+  let bigCalls = 0;
+  let bigMaxItems = 0;
+  invokeHandler = async (name, opts) => {
+    if (name === "get-prices") {
+      bigCalls++;
+      bigMaxItems = Math.max(bigMaxItems, (opts.body.items || []).length);
+      return { data: { ok: true, prices: (opts.body.items || []).map((it) => ({ key: it.key, usd: 0.1 })) }, error: null };
+    }
+    return { data: null, error: { message: "no handler" } };
+  };
+  sandbox.localStorage.removeItem("bf:prices");
+  const priceBig = await sandbox.fetchSetPrices("big-1", false);
+  check("price37: 210 lines price in two invokes", bigCalls, 2);
+  check("price37: no invoke carries more than 200 items", bigMaxItems, 200);
+  check("price37: big set totals $21.00", usd(priceBig.totalUsd), 21);
+  check("price37: big set has no unpriced lots", priceBig.unpricedLots, 0);
+  sandbox.sets = sandbox.sets.filter((s) => s.key !== "big-1");
+  sandbox.saveLocalSets(sandbox.sets);
+  delete sandbox.INVENTORIES["big-1"];
+
+  // 0-part suggestions: product collections can't be built, so they
+  // never appear — real sets rank above them.
+  sandbox.localStorage.removeItem("bf:suggest");
+  invokeHandler = async (name) => {
+    if (name === "suggest-sets") {
+      return { data: { ok: true, candidates: [
+        { set_num: "5001133-1", name: "Monster Fighters Collection", year: 2012, num_parts: 0, set_img_url: "https://cdn.rebrickable.com/media/sets/5001133-1.jpg", lotsCovered: 2, missingUpper: 0 },
+        { set_num: "99998-1", name: "Fake Set B", year: 2020, num_parts: 20, set_img_url: "https://cdn.rebrickable.com/media/sets/99998-1.jpg", lotsCovered: 2, missingUpper: 18 },
+      ], queried: ["3001|Black"], partial: false, unmapped: [] }, error: null };
+    }
+    return { data: null, error: { message: "no handler" } };
+  };
+  sandbox.openOptimizerView(optList.id);
+  await sandbox.findSuggestions(optList.id, false);
+  const suggRows0 = sandbox.bulkSuggWrap.children.filter((c) => c.className.includes("sugg-row"));
+  check("sugg037: 0-part collection is not shown", suggRows0.map((r) => r.children[1].children[0].textContent), ["Fake Set B (2020)"]);
+  // And when every candidate is 0-part, the note says so.
+  sandbox.localStorage.removeItem("bf:suggest");
+  invokeHandler = async (name) => {
+    if (name === "suggest-sets") {
+      return { data: { ok: true, candidates: [
+        { set_num: "5001133-1", name: "Monster Fighters Collection", year: 2012, num_parts: 0, set_img_url: "https://cdn.rebrickable.com/media/sets/5001133-1.jpg", lotsCovered: 2, missingUpper: 0 },
+      ], queried: ["3001|Black"], partial: false, unmapped: [] }, error: null };
+    }
+    return { data: null, error: { message: "no handler" } };
+  };
+  await sandbox.findSuggestions(optList.id, false);
+  const suggRowsNone = sandbox.bulkSuggWrap.children.filter((c) => c.className.includes("sugg-row"));
+  check("sugg037: all 0-part shows no rows", suggRowsNone.length, 0);
+  check("sugg037: all 0-part explains why", sandbox.bulkSuggWrap.children.some((c) => c.textContent && c.textContent.includes("no piece count")), true);
+  sandbox.closeOptimizerView();
   invokeHandler = null;
 
   console.log(failures === 0 ? "\nALL PASS" : "\n" + failures + " FAILURES");
