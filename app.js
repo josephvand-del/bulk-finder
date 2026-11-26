@@ -1,4 +1,4 @@
-/* Bulk Finder v3.33 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.34 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -3743,6 +3743,8 @@ function cancelScanPending() {
 }
 
 /* ---------- Order remaining: BrickLink XML wanted list (v3.33) ----------
+ * (v3.34 adds the same lines as a BrickStore .bsx, the file
+ * BrickLink's upload picker takes — the picker rejects .xml.)
  * The remaining parts (needed minus found, per part + colour, summed
  * across the selected sets) as a BrickLink XML wanted list, the format
  * Rebrickable's wanted-list import takes: ITEMTYPE P, ITEMID the part
@@ -3751,7 +3753,7 @@ function cancelScanPending() {
  * lots are ordered in the colour pictured in the photo. Lots the
  * export can't represent — sticker sheets, and colours with no
  * verified BrickLink id — are left out and listed, never guessed. */
-function remainingXml() {
+function remainingLines() {
   var byKey = {};
   var order = [];
   var skipped = [];
@@ -3784,8 +3786,12 @@ function remainingXml() {
     var c = String(a.part).localeCompare(String(b.part), undefined, { numeric: true });
     return c !== 0 ? c : a.colour - b.colour;
   });
+  return { items: order, pieces: pieces, skipped: skipped };
+}
+function remainingXml() {
+  var r = remainingLines();
   var lines = ['<INVENTORY>'];
-  order.forEach(function (it) {
+  r.items.forEach(function (it) {
     lines.push('  <ITEM>');
     lines.push('    <ITEMTYPE>P</ITEMTYPE>');
     lines.push('    <ITEMID>' + it.part + '</ITEMID>');
@@ -3795,11 +3801,41 @@ function remainingXml() {
     lines.push('  </ITEM>');
   });
   lines.push('</INVENTORY>');
-  return { xml: lines.join('\n'), lines: order.length, pieces: pieces, skipped: skipped };
+  return { xml: lines.join('\n'), lines: r.items.length, pieces: r.pieces, skipped: r.skipped };
+}
+
+/* ---------- Order remaining: BrickStore .bsx (v3.34) ----------
+ * Same remaining lines as the XML, as a BrickStore file BrickLink's
+ * file picker accepts. Joseph hit the bug live 2026-11-25: the
+ * picker takes BrickStock/Brickstore (.bsx), LDraw (.ldr), LEGO
+ * Digital Designer (.lxf) and Studio (.io) — a .xml file is "not
+ * supported" there; BrickLink XML is paste-only, via the "Upload
+ * BrickLink XML format" tab. Schema: BrickStore's own
+ * BrickStoreXML.rnc (github.com/rgriebl/brickstore, main branch) —
+ * root <BrickStoreXML>, <Inventory> of <Item>, required ItemID,
+ * ItemTypeID (1 char), ColorID; Qty and Condition ("N" new) optional
+ * but written here; no DOCTYPE. Same lines as the XML export, so
+ * the wanted list it builds is identical. */
+function remainingBsx() {
+  var r = remainingLines();
+  var lines = ['<?xml version="1.0" encoding="UTF-8"?>', '<BrickStoreXML>', '  <Inventory>'];
+  r.items.forEach(function (it) {
+    lines.push('    <Item>');
+    lines.push('      <ItemID>' + it.part + '</ItemID>');
+    lines.push('      <ItemTypeID>P</ItemTypeID>');
+    lines.push('      <ColorID>' + it.colour + '</ColorID>');
+    lines.push('      <Qty>' + it.qty + '</Qty>');
+    lines.push('      <Condition>N</Condition>');
+    lines.push('    </Item>');
+  });
+  lines.push('  </Inventory>', '</BrickStoreXML>');
+  return { bsx: lines.join('\n'), lines: r.items.length, pieces: r.pieces, skipped: r.skipped };
 }
 
 var orderModal = null, orderXmlText = null, orderStatusEl = null, orderSummaryEl = null, orderSkippedEl = null;
+var orderBsxBtn = null, orderXmlBtn = null, orderCopyBtn = null;
 var lastRemainingXml = '';
+var lastRemainingBsx = '';
 function ensureOrderModal() {
   if (orderModal) return orderModal;
   var overlay = document.createElement('div');
@@ -3826,14 +3862,26 @@ function ensureOrderModal() {
   box.appendChild(orderStatusEl);
   var row = document.createElement('div');
   row.className = 'confirm-buttons';
+  // Each export is labelled with where it goes (v3.34): the .bsx is
+  // the file BrickLink's upload picker takes; the XML text is pasted
+  // into BrickLink's "Upload BrickLink XML format" tab — the picker
+  // rejects a .xml file outright. The .xml download is for
+  // Rebrickable's wanted-list import, which takes the file.
+  var dlBsx = document.createElement('button');
+  dlBsx.type = 'button'; dlBsx.className = 'btn'; dlBsx.textContent = 'Download .bsx — choose this file in BrickLink’s upload picker';
+  dlBsx.addEventListener('click', downloadRemainingBsx);
+  row.appendChild(dlBsx);
+  orderBsxBtn = dlBsx;
   var dl = document.createElement('button');
-  dl.type = 'button'; dl.className = 'btn'; dl.textContent = 'Download .xml';
+  dl.type = 'button'; dl.className = 'btn'; dl.textContent = 'Download .xml — Rebrickable import';
   dl.addEventListener('click', downloadRemainingXml);
   row.appendChild(dl);
+  orderXmlBtn = dl;
   var cp = document.createElement('button');
-  cp.type = 'button'; cp.className = 'btn'; cp.textContent = 'Copy';
+  cp.type = 'button'; cp.className = 'btn'; cp.textContent = 'Copy XML — paste into BrickLink’s “Upload BrickLink XML format” tab';
   cp.addEventListener('click', copyRemainingXml);
   row.appendChild(cp);
+  orderCopyBtn = cp;
   var close = document.createElement('button');
   close.type = 'button'; close.className = 'btn btn-quiet'; close.textContent = 'Close';
   close.addEventListener('click', hideOrderModal);
@@ -3849,9 +3897,10 @@ function showOrderModal() {
   var m = ensureOrderModal();
   var r = remainingXml();
   lastRemainingXml = r.xml;
+  lastRemainingBsx = remainingBsx().bsx;
   orderXmlText.value = r.xml;
   orderSummaryEl.textContent = r.lines
-    ? r.lines + ' lines · ' + r.pieces + ' pieces · condition new — paste this into Rebrickable\'s wanted-list import (BrickLink XML).'
+    ? r.lines + ' lines · ' + r.pieces + ' pieces · condition new — .bsx goes in BrickLink’s file picker; XML goes in BrickLink’s “Upload BrickLink XML format” tab (or import the .xml into Rebrickable).'
     : 'Nothing left to order — every lot in this view is complete.';
   orderSkippedEl.textContent = r.skipped.length
     ? 'Not in the file (' + r.skipped.length + ' lot' + (r.skipped.length === 1 ? '' : 's') + '): ' + r.skipped.map(function (s) { return s.part + ' ' + s.colour + ' ×' + s.qty + ' (' + s.reason + ')'; }).join('; ') + '. Any-colour lots are ordered in the colour pictured.'
@@ -3860,6 +3909,23 @@ function showOrderModal() {
   m.hidden = false;
 }
 function hideOrderModal() { if (orderModal) orderModal.hidden = true; }
+function downloadRemainingBsx() {
+  try {
+    var name = 'bulk-finder-remaining-' + (selectedKeys.join('-') || 'sets') + '.bsx';
+    var blob = new Blob([lastRemainingBsx], { type: 'application/xml' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    orderStatusEl.textContent = 'Downloaded ' + name + ' — choose it in BrickLink’s upload picker.';
+  } catch (e) {
+    orderStatusEl.textContent = 'Download didn\'t work here — use Copy instead.';
+  }
+}
 function downloadRemainingXml() {
   try {
     var name = 'bulk-finder-remaining-' + (selectedKeys.join('-') || 'sets') + '.xml';
@@ -3872,13 +3938,13 @@ function downloadRemainingXml() {
     a.click();
     document.body.removeChild(a);
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
-    orderStatusEl.textContent = 'Downloaded ' + name + '.';
+    orderStatusEl.textContent = 'Downloaded ' + name + ' — import it into Rebrickable’s wanted list.';
   } catch (e) {
     orderStatusEl.textContent = 'Download didn\'t work here — use Copy instead.';
   }
 }
 function copyRemainingXml() {
-  function done() { orderStatusEl.textContent = 'Copied — paste it into Rebrickable\'s wanted-list import.'; }
+  function done() { orderStatusEl.textContent = 'Copied — paste it into BrickLink’s “Upload BrickLink XML format” tab.'; }
   if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(lastRemainingXml).then(done, function () {
       if (orderXmlText.select) orderXmlText.select();

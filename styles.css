@@ -533,6 +533,11 @@ input, select {
 .order-modal .confirm-box { max-width: 560px; }
 .order-xml { width: 100%; font-family: monospace; font-size: 12px; padding: 8px; border: 2px solid #999; border-radius: 8px; resize: vertical; }
 
+/* v3.34 — Order remaining modal buttons wrap: four labelled exports
+ * (Download .bsx, Download .xml, Copy XML, Close) don't fit one row
+ * on a phone. */
+.order-modal .confirm-buttons { flex-wrap: wrap; }
+
 /* v3.30 — "Show more" batches at the end of the set view. */
 .view-more { padding: 16px 0 24px; text-align: center; }
 .view-more .btn { min-width: 220px; }

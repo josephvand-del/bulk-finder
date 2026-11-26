@@ -1683,6 +1683,54 @@ async function main() {
   const xml3001b = r.xml.slice(r.xml.indexOf("<ITEMID>3001</ITEMID>"), r.xml.indexOf("</ITEM>", r.xml.indexOf("<ITEMID>3001</ITEMID>")));
   check("order-xml: 3001 sums to 12 across both sets", xml3001b.includes("<MINQTY>12</MINQTY>"), true);
 
+  // --- v3.34: Order remaining — BrickStore .bsx for BrickLink's
+  // file picker (the .xml is "not supported" there — Joseph, live
+  // 2026-11-25). Same remaining set as the XML, same lines.
+  sandbox.setSelected(["8961-1"]);
+  const x = sandbox.remainingXml();
+  const b = sandbox.remainingBsx();
+  check("order-bsx: 135 lines", b.lines, 135);
+  check("order-bsx: 416 pieces left", b.pieces, 416);
+  check("order-bsx: wraps in BrickStoreXML", b.bsx.startsWith('<?xml version="1.0" encoding="UTF-8"?>') && b.bsx.includes("<BrickStoreXML>") && b.bsx.endsWith("</BrickStoreXML>"), true);
+  check("order-bsx: has an Inventory", b.bsx.includes("<Inventory>") && b.bsx.includes("</Inventory>"), true);
+  check("order-bsx: no DOCTYPE", b.bsx.includes("DOCTYPE"), false);
+  check("order-bsx: item type is P", b.bsx.includes("<ItemTypeID>P</ItemTypeID>"), true);
+  check("order-bsx: condition is new", b.bsx.includes("<Condition>N</Condition>"), true);
+  const bsx3001 = b.bsx.slice(b.bsx.indexOf("<ItemID>3001</ItemID>"), b.bsx.indexOf("</Item>", b.bsx.indexOf("<ItemID>3001</ItemID>")));
+  check("order-bsx: 3001 black remaining 6", bsx3001.includes("<Qty>6</Qty>") && bsx3001.includes("<ColorID>11</ColorID>"), true);
+  check("order-bsx: done lot is out", b.bsx.includes("<ItemID>6141</ItemID>"), false);
+  check("order-bsx: sticker is out", b.bsx.includes("85418"), false);
+  check("order-bsx: not-specified colour is out", b.bsx.includes("2634"), false);
+  check("order-bsx: skipped matches the XML", b.skipped, x.skipped);
+  // Parse both formats back and compare part+colour+qty line by line.
+  function parseBlXml(xml) {
+    const out = [];
+    const re = /<ITEM>([\s\S]*?)<\/ITEM>/g;
+    let m;
+    while ((m = re.exec(xml))) {
+      const body = m[1];
+      out.push({ part: /<ITEMID>([^<]+)<\/ITEMID>/.exec(body)[1], colour: Number(/<COLOR>(\d+)<\/COLOR>/.exec(body)[1]), qty: Number(/<MINQTY>(\d+)<\/MINQTY>/.exec(body)[1]) });
+    }
+    return out;
+  }
+  function parseBsx(bsx) {
+    const out = [];
+    const re = /<Item>([\s\S]*?)<\/Item>/g;
+    let m;
+    while ((m = re.exec(bsx))) {
+      const body = m[1];
+      out.push({ part: /<ItemID>([^<]+)<\/ItemID>/.exec(body)[1], colour: Number(/<ColorID>(\d+)<\/ColorID>/.exec(body)[1]), qty: Number(/<Qty>(\d+)<\/Qty>/.exec(body)[1]) });
+    }
+    return out;
+  }
+  check("order-bsx: parses back to the same lines as the XML", parseBsx(b.bsx), parseBlXml(x.xml));
+  // Multi-set: the same part+colour sums across sets, in both formats.
+  sandbox.setSelected(["8961-1", "10294-1"]);
+  const bm = sandbox.remainingBsx();
+  const bsx3001m = bm.bsx.slice(bm.bsx.indexOf("<ItemID>3001</ItemID>"), bm.bsx.indexOf("</Item>", bm.bsx.indexOf("<ItemID>3001</ItemID>")));
+  check("order-bsx: multi-set 3001 sums to 12", bsx3001m.includes("<Qty>12</Qty>"), true);
+  check("order-bsx: multi-set parses to the same lines as the XML", parseBsx(bm.bsx), parseBlXml(sandbox.remainingXml().xml));
+
   // --- v3.33: bulk lists are local-only, parts stack by part+colour.
   const bl = sandbox.createBulkList("Test bin");
   check("bulk: created with an id", bl.id.slice(0, 3), "bl-");
@@ -1749,6 +1797,12 @@ async function main() {
   check("order: modal opens", sandbox.orderModal.hidden, false);
   check("order: modal holds the XML", sandbox.orderXmlText.value.startsWith("<INVENTORY>"), true);
   check("order: modal XML has the 3001 line", sandbox.orderXmlText.value.includes("<ITEMID>3001</ITEMID>"), true);
+  check("order: .bsx button names the BrickLink file picker", sandbox.orderBsxBtn.textContent.includes("BrickLink") && sandbox.orderBsxBtn.textContent.includes("upload picker"), true);
+  check("order: .xml button names Rebrickable", sandbox.orderXmlBtn.textContent.includes("Rebrickable"), true);
+  check("order: copy button names the XML-format tab", sandbox.orderCopyBtn.textContent.includes("Upload BrickLink XML format"), true);
+  check("order: summary names both routes", sandbox.orderSummaryEl.textContent.includes("file picker") && sandbox.orderSummaryEl.textContent.includes("Upload BrickLink XML format"), true);
+  sandbox.downloadRemainingBsx();
+  check("order: .bsx download fallback tells the user", sandbox.orderStatusEl.textContent, "Download didn't work here — use Copy instead.");
   sandbox.copyRemainingXml();
   check("order: copy fallback tells the user", sandbox.orderStatusEl.textContent, "Text selected — copy it by hand.");
   sandbox.downloadRemainingXml();
