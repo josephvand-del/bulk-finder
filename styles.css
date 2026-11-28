@@ -284,6 +284,18 @@ input, select {
 .tier-3 { background: #8b1a1a; }
 .tier-note { color: #555; font-size: 13px; margin: 0 0 10px; }
 
+/* ---------- Find later banner (v3.43) ----------
+ * Same shape as the old tier banners, its own colour: the section at
+ * the bottom of the list for pieces held aside with a long-press. */
+.find-later-banner {
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 17px;
+  margin: 20px 0 4px;
+  background: #455a64;
+}
+
 /* ---------- Card grid ----------
  * minmax(0, 1fr), not bare 1fr: a bare 1fr track's minimum is the widest
  * item's content, so a 500px part photo (Rebrickable ldraw PNGs, the

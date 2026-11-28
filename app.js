@@ -1,4 +1,4 @@
-/* Bulk Finder v3.42 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.43 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -338,6 +338,7 @@ var cloudMergePromises = {};  // set_num -> in-flight cloud-merge promise
 var statusFilter = 'needed'; // all | needed | done (Still needed is the default)
 var colourFilter = 'all';     // all | family name
 var typeFilter = 'all';       // Rebrickable category name, or 'all'
+var viewSort = 'volAsc';      // volAsc | volDesc | priceAsc | priceDesc (v3.43)
 
 // ---------- View state (filters + set selection) ----------
 // Joseph's rule (2026-11-15): a refresh keeps whatever view he's on —
@@ -536,8 +537,18 @@ async function processOutbox() {
   try {
     while (box.length) {
       var op = box[0];
-      var rows = op.kind === 'bulk' ? op.rows : [op.row];
-      var res = await sb.from('set_parts').upsert(rows, { onConflict: 'user_set_id,part_key' });
+      var res;
+      if (op.kind === 'bulkPart') {
+        res = await sb.from('bulk_list_items').upsert([op.row], { onConflict: 'list_id,part,colour' });
+      } else if (op.kind === 'bulkPartDelete') {
+        res = await sb.from('bulk_list_items').delete().eq('list_id', op.list_id).eq('part', op.part).eq('colour', op.colour);
+      } else if (op.kind === 'bulkListDelete') {
+        res = await sb.from('bulk_list_items').delete().eq('list_id', op.list_id);
+        if (!res.error) res = await sb.from('bulk_lists').delete().eq('id', op.list_id);
+      } else {
+        var rows = op.kind === 'bulk' ? op.rows : [op.row];
+        res = await sb.from('set_parts').upsert(rows, { onConflict: 'user_set_id,part_key' });
+      }
       if (res.error) break; // leave the rest queued; retry later
       box.shift();
       saveOutbox(box);
@@ -821,8 +832,10 @@ async function pullSelectedRemote() {
 // Push what's queued, then pull what other devices changed.
 async function tickSync() {
   await retryDeletedSets();
+  await retryDeletedBulkLists();
   await processOutbox();
   await pullSelectedRemote();
+  await pullBulkLists();
 }
 
 // A part row changed somewhere: re-pull that set (the event itself
@@ -858,6 +871,8 @@ function subscribeLive() {
     liveChannel = sb.channel('bf-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'set_parts' }, onRemoteParts)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'user_sets' }, onRemoteSets)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bulk_list_items' }, onRemoteBulkItems)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bulk_lists' }, onRemoteBulkLists)
       .subscribe();
   } catch (e) {
     liveChannel = null;
@@ -868,6 +883,256 @@ function unsubscribeLive() {
   if (!liveChannel) return;
   try { if (sb) sb.removeChannel(liveChannel); } catch (e) { /* already gone */ }
   liveChannel = null;
+}
+
+/* ---------- Cloud: bulk lists (v3.43) ----------
+ * Bulk lists move from phone-only storage (bf:bulkLists) to the same
+ * Supabase account the sets already sync through, so one shared
+ * account works across devices: sign in with the same email and
+ * password on every phone (Supabase Auth keeps a separate session
+ * per device — signing in on a second phone never signs the first
+ * one out), and every scan, qty change or colour fix lands in
+ * bulk_lists / bulk_list_items and shows up on the other phones.
+ * Delivery is the same two mechanisms the sets use: a Realtime
+ * channel on both tables (the migration adds them to the
+ * supabase_realtime publication) plus the 20s tickSync pull, so an
+ * update on one phone appears on the others without a refresh.
+ * Local storage stays the offline cache: guests keep working exactly
+ * as before, and a list's first login uploads it (first-time upload).
+ * Merge rules mirror the sets: a local-only list is created in the
+ * cloud and its parts uploaded; a cloud list is adopted wholesale,
+ * except rows this device changed but hasn't synced yet (pending
+ * outbox ops keep their local value). A cloud row with the same name
+ * as a local list that has no cloud id yet is the same list — its
+ * items merge by max qty and the merged list uploads. A deleted
+ * list leaves a tombstone (bf:deletedBulkLists) so the pull can never
+ * resurrect it; the wipe retries on the next sync. */
+var bulkMergedThisSession = {};
+var bulkMergePromises = {};
+
+function bulkCloudIds() { return LS.get('bf:bulkCloudIds', {}); }
+function saveBulkCloudIds(m) { LS.set('bf:bulkCloudIds', m); }
+function deletedBulkLists() { return LS.get('bf:deletedBulkLists', {}); }
+function saveDeletedBulkLists(map) { LS.set('bf:deletedBulkLists', map); }
+
+async function fetchCloudBulkLists() {
+  var res = await sb.from('bulk_lists').select('*').order('created_at', { ascending: true });
+  if (res.error) { console.warn('bulk_lists fetch failed', res.error); return []; }
+  return res.data || [];
+}
+async function createCloudBulkList(list) {
+  if (!user) return null;
+  var res = await sb.from('bulk_lists').insert({ user_id: user.id, name: list.name }).select().single();
+  if (res.error) { console.warn('bulk_lists save failed', res.error); cloudError = res.error.message || 'save failed'; updateSyncStatus(); return null; }
+  cloudError = null;
+  var ids = bulkCloudIds();
+  ids[list.id] = res.data.id;
+  saveBulkCloudIds(ids);
+  return res.data.id;
+}
+async function fetchCloudBulkItems(cloudListId) {
+  var res = await sb.from('bulk_list_items').select('part,colour,qty').eq('list_id', cloudListId);
+  if (res.error) { console.warn('bulk_list_items fetch failed', res.error); return null; }
+  return res.data || [];
+}
+async function uploadBulkItems(cloudListId, list) {
+  var rows = (list.parts || []).map(function (p) { return { list_id: cloudListId, part: p.part, colour: p.colour, qty: p.qty }; });
+  if (!rows.length) return true;
+  var res = await sb.from('bulk_list_items').upsert(rows, { onConflict: 'list_id,part,colour' });
+  if (res.error) { console.warn('bulk_list_items upload failed', res.error); return false; }
+  return true;
+}
+async function deleteCloudBulkList(cloudListId) {
+  if (!sb || !user || !cloudListId) return false;
+  try {
+    var items = await sb.from('bulk_list_items').delete().eq('list_id', cloudListId);
+    if (items.error) return false;
+    var row = await sb.from('bulk_lists').delete().eq('id', cloudListId);
+    if (row.error) return false;
+    return true;
+  } catch (e) { return false; }
+}
+async function retryDeletedBulkLists() {
+  if (!sb || !user) return;
+  var tombs = deletedBulkLists();
+  var ids = Object.keys(tombs);
+  if (!ids.length) return;
+  var left = {};
+  for (var i = 0; i < ids.length; i++) {
+    var ok = await deleteCloudBulkList(ids[i]);
+    if (!ok) left[ids[i]] = tombs[ids[i]];
+  }
+  saveDeletedBulkLists(left);
+}
+// (part, colour) keys this device changed but hasn't synced yet.
+function pendingBulkKeys(cloudListId) {
+  var keys = {};
+  var box = outbox();
+  for (var i = 0; i < box.length; i++) {
+    var op = box[i];
+    if (op.list_id !== cloudListId) continue;
+    if (op.kind === 'bulkListDelete') return null;
+    if (op.kind === 'bulkPart' && op.row) keys[op.row.part + '|' + op.row.colour] = true;
+    if (op.kind === 'bulkPartDelete') keys[op.part + '|' + op.colour] = true;
+  }
+  return keys;
+}
+function bulkRowKey(p) { return p.part + '|' + p.colour; }
+function cloudItemsToParts(rows) {
+  return (rows || []).map(function (r) { return { part: r.part, name: '', colour: r.colour, qty: r.qty, img: bulkPartImg(r.part, r.colour) }; });
+}
+// Adopt cloud rows into a local list, keeping pending local rows.
+function adoptBulkItems(list, rows, pending) {
+  var local = {};
+  (list.parts || []).forEach(function (p) { local[bulkRowKey(p)] = p; });
+  var byKey = {};
+  cloudItemsToParts(rows).forEach(function (p) { byKey[bulkRowKey(p)] = p; });
+  Object.keys(pending).forEach(function (k) { if (local[k]) byKey[k] = local[k]; });
+  var next = Object.keys(byKey).map(function (k) { return byKey[k]; });
+  var changed = (list.parts || []).length !== next.length;
+  if (!changed) {
+    var before = {};
+    (list.parts || []).forEach(function (p) { before[bulkRowKey(p)] = p.qty; });
+    next.forEach(function (p) { if (before[bulkRowKey(p)] !== p.qty) changed = true; });
+  }
+  if (!changed) return false;
+  list.parts = next;
+  saveBulkLists();
+  return true;
+}
+// Merge rule (runs once per list per session, when logged in):
+// cloud already has rows for the list -> cloud counts win, adopt them.
+// cloud has no rows -> push the local parts up.
+async function ensureCloudBulkList(list) {
+  if (!sb || !user) return;
+  if (bulkMergePromises[list.id]) return bulkMergePromises[list.id];
+  if (bulkMergedThisSession[list.id]) return;
+  bulkMergePromises[list.id] = (async function () {
+    bulkMergedThisSession[list.id] = true;
+    var ids = bulkCloudIds();
+    var cloudId = ids[list.id] || null;
+    if (!cloudId) {
+      cloudId = await createCloudBulkList(list);
+      if (!cloudId) return;
+      await uploadBulkItems(cloudId, list);
+      updateSyncStatus();
+      return;
+    }
+    var rows = await fetchCloudBulkItems(cloudId);
+    if (rows === null) return; // fetch failed: keep local, retry next open
+    if (!rows.length) {
+      // No cloud rows: the list is new in the cloud (upload the local
+      // parts) — an empty cloud list never wipes local parts here.
+      await uploadBulkItems(cloudId, list);
+      updateSyncStatus();
+      return;
+    }
+    var pending = pendingBulkKeys(cloudId);
+    if (pending === null) return; // a list-level op is queued; it lands shortly
+    if (adoptBulkItems(list, rows, pending)) {
+      renderBulkLists();
+      if (bulkViewId === list.id) renderBulkListView();
+    }
+  })();
+  try { await bulkMergePromises[list.id]; }
+  finally { delete bulkMergePromises[list.id]; }
+}
+// After login: every bulk list known on this device gets a cloud home,
+// and the sidebar list becomes the cloud list (union with local).
+async function refreshBulkListsFromCloud() {
+  if (!sb || !user) return;
+  var cloud = await fetchCloudBulkLists();
+  var tombs = deletedBulkLists();
+  cloud = cloud.filter(function (s) { return !tombs[s.id]; });
+  var ids = bulkCloudIds();
+  for (var i = 0; i < cloud.length; i++) {
+    var row = cloud[i];
+    var localId = null;
+    Object.keys(ids).forEach(function (k) { if (ids[k] === row.id) localId = k; });
+    if (!localId) {
+      // Same name, no cloud id yet: this device made the same list
+      // before it ever synced. Merge by max qty and upload the merge.
+      var sameName = null;
+      bulkLists.forEach(function (l) { if (!sameName && l.name === row.name && !ids[l.id]) sameName = l; });
+      if (sameName) {
+        ids[sameName.id] = row.id;
+        saveBulkCloudIds(ids);
+        localId = sameName.id;
+        var rows = await fetchCloudBulkItems(row.id);
+        if (rows) {
+          var merged = {};
+          (sameName.parts || []).forEach(function (p) { merged[bulkRowKey(p)] = { part: p.part, name: p.name || '', colour: p.colour, qty: p.qty, img: p.img || bulkPartImg(p.part, p.colour) }; });
+          rows.forEach(function (r) {
+            var k = r.part + '|' + r.colour;
+            if (!merged[k]) merged[k] = { part: r.part, name: '', colour: r.colour, qty: r.qty, img: bulkPartImg(r.part, r.colour) };
+            else if (r.qty > merged[k].qty) merged[k].qty = r.qty;
+          });
+          sameName.parts = Object.keys(merged).map(function (k) { return merged[k]; });
+          saveBulkLists();
+          await uploadBulkItems(row.id, sameName);
+          bulkMergedThisSession[sameName.id] = true;
+        }
+      }
+    }
+    if (!localId) {
+      var nl = { id: 'bl-' + Date.now() + '-' + Math.floor(Math.random() * 1000), name: row.name, created: Date.parse(row.created_at) || Date.now(), parts: [] };
+      bulkLists.push(nl);
+      ids[nl.id] = row.id;
+      saveBulkCloudIds(ids);
+      localId = nl.id;
+    }
+  }
+  saveBulkLists();
+  for (var j = 0; j < bulkLists.length; j++) await ensureCloudBulkList(bulkLists[j]);
+  renderBulkLists();
+  if (bulkViewId) renderBulkListView();
+  updateSyncStatus();
+}
+// Pull one list's cloud items and adopt them (except pending rows).
+async function pullBulkListItems(list) {
+  if (!sb || !user) return false;
+  var cloudId = bulkCloudIds()[list.id];
+  if (!cloudId) return false;
+  var rows = await fetchCloudBulkItems(cloudId);
+  if (rows === null || !rows.length) return false;
+  var pending = pendingBulkKeys(cloudId);
+  if (pending === null) return false;
+  if (adoptBulkItems(list, rows, pending)) {
+    renderBulkLists();
+    if (bulkViewId === list.id) renderBulkListView();
+    return true;
+  }
+  return false;
+}
+async function pullBulkLists() {
+  if (!sb || !user) return;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+  for (var i = 0; i < bulkLists.length; i++) await pullBulkListItems(bulkLists[i]);
+}
+// A bulk row changed somewhere: re-pull that list (the event carries
+// one row; a full re-pull is cheaper than trusting it).
+function onRemoteBulkItems(payload) {
+  var row = (payload && payload.new) || (payload && payload.old) || {};
+  if (!row.list_id) return;
+  var list = null;
+  bulkLists.forEach(function (l) { if (bulkCloudIds()[l.id] === row.list_id) list = l; });
+  if (list) pullBulkListItems(list);
+}
+// A bulk list was added or removed somewhere: rebuild the list.
+function onRemoteBulkLists() {
+  refreshBulkListsFromCloud();
+}
+// Queue one bulk-list change for the cloud. Called after the local
+// save, from every bulk-list mutation.
+function bulkCloudIdFor(list) { return bulkCloudIds()[list.id] || null; }
+function enqueueBulkPartSync(list, part, colour) {
+  if (!user || !sb) return;
+  var cloudId = bulkCloudIdFor(list);
+  if (!cloudId) return; // no cloud row yet; the next login/open uploads the whole list
+  var p = null;
+  (list.parts || []).forEach(function (x) { if (x.part === part && x.colour === colour) p = x; });
+  if (p) enqueueSync({ kind: 'bulkPart', list_id: cloudId, row: { list_id: cloudId, part: part, colour: colour, qty: p.qty } });
+  else enqueueSync({ kind: 'bulkPartDelete', list_id: cloudId, part: part, colour: colour });
 }
 
 /* ---------- Confirm modal ----------
@@ -883,6 +1148,7 @@ var confirmTitleEl = null;
 var confirmMsgEl = null;
 var confirmYesEl = null;
 var confirmCallback = null;
+var confirmGuardUntil = 0; // overlay clicks ignored until this time (v3.43 long-press)
 function ensureConfirmModal() {
   if (confirmModal) return confirmModal;
   var overlay = document.createElement('div');
@@ -908,7 +1174,7 @@ function ensureConfirmModal() {
   row.appendChild(no); row.appendChild(confirmYesEl);
   box.appendChild(row);
   overlay.appendChild(box);
-  overlay.addEventListener('click', function (e) { if (e.target === overlay) hideConfirm(); });
+  overlay.addEventListener('click', function (e) { if (Date.now() < confirmGuardUntil) return; if (e.target === overlay) hideConfirm(); });
   document.body.appendChild(overlay);
   confirmModal = overlay;
   return overlay;
@@ -1108,6 +1374,7 @@ async function refreshSessionIfLoggedOut() {
       user = sess.data.session.user;
       subscribeLive();
       await refreshSetsFromCloud();
+      await refreshBulkListsFromCloud();
       renderAuth();
       renderSets();
       updateSyncStatus();
@@ -1132,6 +1399,7 @@ async function handleAuthChange(event, session) {
   }
   subscribeLive();
   await refreshSetsFromCloud();
+  await refreshBulkListsFromCloud();
   renderAuth();
   renderSets();
   // Keep whatever view is already open. init() restored it (same-day
@@ -1872,16 +2140,91 @@ function renderProgress() {
  * already carry loading="lazy", so only on-screen cards fetch photos. */
 var CARD_CHUNK = 120;
 var viewPending = [];    // ordered items not yet rendered in this view
-var viewTierGrids = {};  // tier -> its card-grid element, this view
-var viewTierNames = null;
+var bottomPending = [];  // bottomed items not yet rendered, Find later
+var viewMainGrid = null; // the one card-grid for the main list, this view
+var findLaterGrid = null; // the Find later grid, created on first bottom card
 var viewSentinel = null; // the "Show more" footer, kept last in the view
 var viewMoreBtn = null;
 var viewObserver = null; // IntersectionObserver auto-loading next batches
-var TIER_NOTES = {
-  1: 'Common bricks and plates — the bulk bins are full of these.',
-  2: 'Worth digging for — less common, still in the bins.',
-  3: 'Rare in bulk — check the sorted cases and minifig wall too.'
-};
+
+/* ---------- Sorting + Find later (v3.43) ----------
+ * The three-tier sort is gone from the main view: one flat list in
+ * the order the Sorting dropdown picks. Volume is a stud-area proxy
+ * parsed from the lot's dim string ("2 × 4 studs" -> 8, "12 studs
+ * long" -> 12, "5½ studs long" -> 5.5, "1 stud" / "minifig" -> 1);
+ * price sorts read the BrickOwl price cache (bf:prices) per piece,
+ * and a piece with no cached price sorts last in both price
+ * directions, so an unpriced piece never outranks a priced one.
+ * Find later: holding a card asks "Bottom?" and parks the piece in
+ * a Find later section at the bottom of the list. Bottomed pieces
+ * bypass every filter (status, colour, type) and always show there,
+ * ordered among themselves by the active sort. State is the part key
+ * (partNum|colour), so a piece stays bottomed across sets and
+ * sessions; it lives in localStorage only, never in the cloud. */
+var VIEW_SORTS = ['volAsc', 'volDesc', 'priceAsc', 'priceDesc'];
+function loadViewSort() {
+  var v = LS.get('bf:viewSort', 'volAsc');
+  return VIEW_SORTS.indexOf(v) >= 0 ? v : 'volAsc';
+}
+function saveViewSort() { LS.set('bf:viewSort', viewSort); }
+function fracNum(s) {
+  var f = { '½': 0.5, '¼': 0.25, '¾': 0.75 };
+  var m = String(s).match(/^(\d+)([½¼¾])?$/);
+  if (!m) return NaN;
+  return parseInt(m[1], 10) + (m[2] ? f[m[2]] : 0);
+}
+function lotVolume(dim) {
+  var d = String(dim || '');
+  var m = d.match(/(\d+[½¼¾]?)\s*[×x]\s*(\d+[½¼¾]?)/);
+  if (m) { var a = fracNum(m[1]), b = fracNum(m[2]); if (!isNaN(a) && !isNaN(b)) return a * b; }
+  var l = d.match(/(\d+[½¼¾]?)\s*studs?\s+long/);
+  if (l) { var n = fracNum(l[1]); if (!isNaN(n)) return n; }
+  return 1;
+}
+function cardVolume(item) { return lotVolume(item && item.dim); }
+// Cheapest cached BrickOwl price for one piece, or undefined when the
+// piece has never been priced (a stale cache entry still counts — the
+// sort is advisory, and the price modal handles freshness).
+function cardUnitPrice(item) {
+  var bl = brickLinkColourId(item);
+  if (bl === undefined) return undefined;
+  var c = loadPriceCache()[priceCacheKey(partNumOf(item), bl, false)];
+  return (c && typeof c.usd === 'number' && c.usd > 0) ? c.usd : undefined;
+}
+function sortViewList(list) {
+  var arr = list.slice();
+  var byKey = function (a, b) { var ka = partKeyOf(a), kb = partKeyOf(b); return ka < kb ? -1 : ka > kb ? 1 : 0; };
+  arr.sort(function (a, b) {
+    if (viewSort === 'volDesc') {
+      var vd = cardVolume(b) - cardVolume(a);
+      return vd !== 0 ? vd : byKey(a, b);
+    }
+    if (viewSort === 'priceAsc' || viewSort === 'priceDesc') {
+      var pa = cardUnitPrice(a), pb = cardUnitPrice(b);
+      if (pa === undefined && pb === undefined) { var v0 = cardVolume(a) - cardVolume(b); return v0 !== 0 ? v0 : byKey(a, b); }
+      if (pa === undefined) return 1;
+      if (pb === undefined) return -1;
+      var pd = viewSort === 'priceAsc' ? pa - pb : pb - pa;
+      if (pd !== 0) return pd;
+      var v1 = cardVolume(a) - cardVolume(b);
+      return v1 !== 0 ? v1 : byKey(a, b);
+    }
+    var va = cardVolume(a) - cardVolume(b);
+    return va !== 0 ? va : byKey(a, b);
+  });
+  return arr;
+}
+function loadBottom() {
+  var v = LS.get('bf:bottom', []);
+  return Array.isArray(v) ? v : [];
+}
+function saveBottom(list) { LS.set('bf:bottom', list); }
+function isBottomed(pk) { return loadBottom().indexOf(pk) >= 0; }
+function setBottomed(pk, on) {
+  var v = loadBottom().filter(function (k) { return k !== pk; });
+  if (on) v.push(pk);
+  saveBottom(v);
+}
 
 /* ---------- Merged cards (v3.32) ----------
  * In a multi-set view, lots with the same part number + colour merge
@@ -1936,7 +2279,9 @@ function renderSetView() {
   if (viewObserver) { viewObserver.disconnect(); viewObserver = null; }
   view.innerHTML = '';
   viewPending = [];
-  viewTierGrids = {};
+  bottomPending = [];
+  viewMainGrid = null;
+  findLaterGrid = null;
   viewSentinel = null;
   viewMoreBtn = null;
   if (!selectedKeys.length || !items.length) {
@@ -1968,25 +2313,20 @@ function renderSetView() {
   orderBtn.addEventListener('click', function () { showOrderModal(); });
   view.appendChild(orderBtn);
 
-  // Tier names are the same across sets; take them from the first set
-  // that has an inventory, so a combined view still names each tier once.
-  viewTierNames = { 1: 'MOST LIKELY IN BULK', 2: 'MEDIUM — WORTH A DIG', 3: 'LEAST LIKELY IN BULK' };
-  selectedKeys.forEach(function (key) {
-    var inv = getInventory(key);
-    if (inv && inv.tiers) viewTierNames = inv.tiers;
-  });
-  // One ordered list, tier 1 then 2 then 3 — the same order the old
-  // per-tier banners produced, for single- and multi-set views alike.
-  // Cards carry no set tag in a combined view; the set a part came
-  // from is needless information there. The list is the merged view
-  // (v3.32): one card per like piece when several sets are selected.
+  // v3.43 — no tiers: one flat list in the chosen sort order. Cards
+  // carry no set tag in a combined view; the set a part came from is
+  // needless information there. The list is the merged view (v3.32):
+  // one card per like piece when several sets are selected. Bottomed
+  // pieces bypass every filter and always render in Find later.
   var list = viewList();
-  [1, 2, 3].forEach(function (tier) {
-    list.forEach(function (it) {
-      if (it.tier === tier && cardMatches(it)) viewPending.push(it);
-    });
+  var main = [], bottom = [];
+  list.forEach(function (it) {
+    if (isBottomed(partKeyOf(it))) bottom.push(it);
+    else if (cardMatches(it)) main.push(it);
   });
-  if (!viewPending.length) {
+  viewPending = sortViewList(main);
+  bottomPending = sortViewList(bottom);
+  if (!viewPending.length && !bottomPending.length) {
     view.appendChild(el('p', 'muted', 'No pieces match these filters — try widening the type or colour.'));
   } else {
     renderNextChunk();
@@ -2016,27 +2356,37 @@ function renderSetView() {
   renderSets(); // sidebar progress numbers
 }
 
-// Create a tier's banner + note + grid the first time one of its cards
-// is rendered, and return the grid to append to.
-function ensureTierSection(tier) {
-  if (viewTierGrids[tier]) return viewTierGrids[tier];
+// The one grid for the main list, created the first time a main card
+// is rendered; the Find later grid the same way, with its banner.
+function ensureMainGrid() {
+  if (viewMainGrid) return viewMainGrid;
+  var grid = el('div', 'card-grid');
+  $('setView').appendChild(grid);
+  viewMainGrid = grid;
+  return grid;
+}
+function ensureFindLaterGrid() {
+  if (findLaterGrid) return findLaterGrid;
   var view = $('setView');
-  view.appendChild(el('h3', 'tier-banner tier-' + tier, 'TIER ' + tier + ' — ' + viewTierNames[String(tier)]));
-  view.appendChild(el('p', 'tier-note', TIER_NOTES[tier]));
+  view.appendChild(el('h3', 'find-later-banner', 'FIND LATER'));
+  view.appendChild(el('p', 'tier-note', 'Pieces you set aside — they stay here no matter what the filters say. Hold one again to bring it back.'));
   var grid = el('div', 'card-grid');
   view.appendChild(grid);
-  viewTierGrids[tier] = grid;
+  findLaterGrid = grid;
   return grid;
 }
 
 // Render the next batch of cards. The sentinel stays last in the view:
-// a new tier's banner + grid go in just above it.
+// the main list drains first, then Find later, in the same batches.
 function renderNextChunk() {
   var view = $('setView');
   var n = Math.min(CARD_CHUNK, viewPending.length);
   for (var i = 0; i < n; i++) {
-    var it = viewPending.shift();
-    ensureTierSection(it.tier).appendChild(buildCard(it));
+    ensureMainGrid().appendChild(buildCard(viewPending.shift()));
+  }
+  var m = Math.min(CARD_CHUNK - n, bottomPending.length);
+  for (var j = 0; j < m; j++) {
+    ensureFindLaterGrid().appendChild(buildCard(bottomPending.shift()));
   }
   if (viewSentinel) view.appendChild(viewSentinel);
   updateViewMore();
@@ -2044,12 +2394,12 @@ function renderNextChunk() {
 
 function updateViewMore() {
   if (!viewSentinel || !viewMoreBtn) return;
-  if (!viewPending.length) {
+  if (!viewPending.length && !bottomPending.length) {
     if (viewObserver) { viewObserver.disconnect(); viewObserver = null; }
     viewSentinel.hidden = true;
     return;
   }
-  viewMoreBtn.textContent = 'Show more (' + viewPending.length + ' left)';
+  viewMoreBtn.textContent = 'Show more (' + (viewPending.length + bottomPending.length) + ' left)';
 }
 
 // BrickLink colour ids for the display colours (from Rebrickable's
@@ -2249,13 +2599,25 @@ var LEGO_TO_BRICKLINK = {
  * orders 21 — over-ordering links is harmless spares, under-ordering
  * would leave the chain short). A part whose BrickLink id can't be
  * determined (a rock monster in a colour with no known minifig) is
- * skipped and reported, never exported blindly. */
+ * skipped and reported, never exported blindly.
+ * v3.43 — seven more, from Joseph's Nov 27 upload: BrickLink rejected
+ * 30367b, 3062b, 3650c, 4623, 59900, 6126a, 6141. The first four are
+ * Rebrickable variant numbers BrickLink folds into one item
+ * (30367b -> 553, 3062b -> 3062, 3650c -> 3650b, 6126a -> 6126). The
+ * last three do not exist on BrickLink at all (verified live Nov 27,
+ * 2026 — their catalog pages 404 while 3001 loads fine): 59900 is
+ * BrickLink 4589b (Cone 1 x 1 with Top Groove), 6141 is BrickLink
+ * 4073 (Plate, Round 1 x 1 — BrickLink never split the 6141/4073
+ * mold), and 4623 is BrickLink 4623a (the 6mm bar arm; the bare 4623
+ * "Undetermined Type" entry is gone). */
 var REBRICKABLE_TO_BRICKLINK = {
   '30367': '553', '30385': '52', '30499': '3684a', '3747': '3747b',
   '41669': 'x346', '54196': '2654', '60169': { id: '3711', qtyMult: 21 },
   '60470': '60470b', '60779': '2335', '6143': '3941',
   '64786': { minifigByColour: { 'Transparent_Red': 'pm003', 'Transparent_Blue': 'pm004', 'Transparent_Bright_Orange': 'pm002', 'Transparent_Fluorescent_Green': 'pm005' } },
-  '73587': '4592c02', '86209': '60601', '88072': '4623a'
+  '73587': '4592c02', '86209': '60601', '88072': '4623a',
+  '30367b': '553', '3062b': '3062', '3650c': '3650b', '4623': '4623a',
+  '59900': '4589b', '6126a': '6126', '6141': '4073'
 };
 
 // The BrickLink identity for one inventory lot, or a skip reason.
@@ -2753,6 +3115,48 @@ function buildCard(item) {
   var card = el('article', 'card' + (rem === 0 ? ' done' : ''));
   card.dataset.key = cardKeyFor(item);
 
+  // v3.43 — hold a card to Bottom it into Find later (or take it back
+  // out). The hold must cancel on any real movement: the v3.30
+  // long-press fired while scrolling, so a drag over 10px kills the
+  // timer, and a hold on a counter button never starts one.
+  var lpTimer = null, lpX = 0, lpY = 0;
+  function lpCancel() { if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; } }
+  card.addEventListener('pointerdown', function (e) {
+    if (e.target && typeof e.target.closest === 'function' && e.target.closest('button')) return;
+    if (e.button !== undefined && e.button !== 0) return;
+    lpX = e.clientX || 0; lpY = e.clientY || 0;
+    lpCancel();
+    lpTimer = setTimeout(function () {
+      lpTimer = null;
+      card._lpSuppress = true;
+      setTimeout(function () { card._lpSuppress = false; }, 1000);
+      // The confirm opens under the finger: the click that follows
+      // pointerup would land on the overlay and dismiss it at once,
+      // so overlay clicks are ignored for a beat after a hold.
+      confirmGuardUntil = Date.now() + 400;
+      var pk = partKeyOf(item);
+      var bottomed = isBottomed(pk);
+      showConfirm({
+        title: 'Bottom?',
+        message: bottomed ? 'Take this piece out of Find later and back into the main list?' : 'Move this piece to Find later at the bottom of the list?',
+        confirmLabel: bottomed ? 'Take out of Find later' : 'Move to Find later',
+        danger: false,
+        onConfirm: function () { setBottomed(pk, !bottomed); renderSetView(); }
+      });
+    }, 500);
+  });
+  card.addEventListener('pointermove', function (e) {
+    if (!lpTimer) return;
+    var dx = (e.clientX || 0) - lpX, dy = (e.clientY || 0) - lpY;
+    if (dx * dx + dy * dy > 100) lpCancel();
+  });
+  card.addEventListener('pointerup', lpCancel);
+  card.addEventListener('pointercancel', lpCancel);
+  card.addEventListener('pointerleave', lpCancel);
+  // Android fires a context menu on a long hold — the confirm is the
+  // menu here, so the browser's never shows on a card.
+  card.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
   var photo = el('div', 'photo');
   var img = document.createElement('img');
   img.src = item.img;
@@ -2774,9 +3178,10 @@ function buildCard(item) {
     photo.appendChild(el('div', 'photo-fallback', 'Part ' + partNumOf(item)));
   });
   // Tap the photo (not the counter) to open the carousel of reference
-  // photos for this part.
+  // photos for this part. A tap right after a long-press hold is the
+  // same finger lifting — swallow it, the confirm is the response.
   photo.style.cursor = 'pointer';
-  photo.addEventListener('click', function () { openViewer(item); });
+  photo.addEventListener('click', function () { if (card._lpSuppress) { card._lpSuppress = false; return; } openViewer(item); });
   photo.appendChild(img);
   card.appendChild(photo);
 
@@ -3306,12 +3711,32 @@ function createBulkList(name) {
   var l = { id: 'bl-' + Date.now() + '-' + Math.floor(Math.random() * 1000), name: name, created: Date.now(), parts: [] };
   bulkLists.push(l);
   saveBulkLists();
+  if (user && sb) ensureCloudBulkList(l);
   renderBulkLists();
   return l;
 }
 function deleteBulkList(id) {
+  var cloudId = bulkCloudIds()[id];
   bulkLists = bulkLists.filter(function (l) { return l.id !== id; });
   saveBulkLists();
+  if (cloudId) {
+    var ids = bulkCloudIds();
+    delete ids[id];
+    saveBulkCloudIds(ids);
+    saveOutbox(outbox().filter(function (op) { return op.list_id !== cloudId; }));
+    // Cloud wipe, best effort; a tombstone retries it later, and the
+    // pull skips tombstoned lists so it can never come back.
+    var tombs = deletedBulkLists();
+    tombs[cloudId] = { name: '' };
+    saveDeletedBulkLists(tombs);
+    deleteCloudBulkList(cloudId).then(function (wiped) {
+      if (wiped) {
+        var t2 = deletedBulkLists();
+        delete t2[cloudId];
+        saveDeletedBulkLists(t2);
+      }
+    });
+  }
   if (optViewId === id) { optViewId = null; optViewHistoryPushed = false; }
   if (bulkViewId === id) { bulkViewId = null; loadSelected(); }
   else renderBulkLists();
@@ -3368,6 +3793,7 @@ function addScannedPart(listId, part, name, colour) {
   if (ex) ex.qty++;
   else list.parts.push({ part: part, name: name || '', colour: colour, qty: 1, img: bulkPartImg(part, colour) });
   saveBulkLists();
+  enqueueBulkPartSync(list, part, colour);
   renderBulkLists();
   return list;
 }
@@ -3384,6 +3810,7 @@ function removeScannedPart(listId, part, colour, n, skipView) {
     }
   }
   saveBulkLists();
+  enqueueBulkPartSync(list, part, colour);
   renderBulkLists();
   // The optimizer apply popup (v3.40) removes bulk pieces while the
   // optimizer view is open: re-rendering the bulk list view would
@@ -3403,6 +3830,7 @@ function setScannedQty(listId, part, colour, qty) {
     }
   }
   saveBulkLists();
+  enqueueBulkPartSync(list, part, colour);
   renderBulkLists();
   if (bulkViewId === listId) renderBulkListView();
 }
@@ -3433,6 +3861,8 @@ function setScannedColour(listId, part, oldColour, newColour) {
     row.img = bulkPartImg(part, newColour);
   }
   saveBulkLists();
+  enqueueBulkPartSync(list, part, oldColour);
+  enqueueBulkPartSync(list, part, newColour);
   renderBulkLists();
   if (bulkViewId === listId) renderBulkListView();
 }
@@ -3599,7 +4029,9 @@ function renderBulkListView() {
   if (viewObserver) { viewObserver.disconnect(); viewObserver = null; }
   view.innerHTML = '';
   viewPending = [];
-  viewTierGrids = {};
+  bottomPending = [];
+  viewMainGrid = null;
+  findLaterGrid = null;
   viewSentinel = null;
   viewMoreBtn = null;
   if (!list) { bulkViewId = null; showEmpty(); return; }
@@ -4088,7 +4520,9 @@ function renderOptimizerView() {
   if (viewObserver) { viewObserver.disconnect(); viewObserver = null; }
   view.innerHTML = '';
   viewPending = [];
-  viewTierGrids = {};
+  bottomPending = [];
+  viewMainGrid = null;
+  findLaterGrid = null;
   viewSentinel = null;
   viewMoreBtn = null;
   if (!list) { optViewId = null; bulkViewId = null; showEmpty(); return; }
@@ -6067,6 +6501,16 @@ function bindEvents() {
     saveViewState();
     renderSetView();
   });
+  var sortSel = $('viewSortSelect');
+  if (sortSel) {
+    sortSel.value = loadViewSort();
+    viewSort = sortSel.value;
+    sortSel.addEventListener('change', function (e) {
+      viewSort = e.target.value;
+      saveViewSort();
+      renderSetView();
+    });
+  }
   $('setPickerBtn').addEventListener('click', function (e) {
     e.stopPropagation();
     var panel = $('setPickerPanel');
@@ -6162,6 +6606,7 @@ async function init() {
       user = sess.data.session.user;
       subscribeLive();
       await refreshSetsFromCloud();
+      await refreshBulkListsFromCloud();
       renderAuth();
       renderSets();
       if (selectedKeys.length) loadSelected();

@@ -90,9 +90,17 @@ let invokeHandler = null;
 let replacedUrl = null; // last URL history.replaceState was called with
 let setPartsRows = []; // cloud rows fetchCloudParts returns in tests
 let cloudSetRows = null; // cloud rows fetchCloudSets returns in tests
+let cloudBulkListRows = null; // cloud rows fetchCloudBulkLists returns in tests
+let cloudBulkItemsRows = null; // cloud rows fetchCloudBulkItems returns in tests
 const mockChannels = [];
 function fireParts(payload) {
   for (const ch of mockChannels) for (const h of ch.handlers) if (h.filter.table === "set_parts") h.cb(payload);
+}
+function fireBulkItems(payload) {
+  for (const ch of mockChannels) for (const h of ch.handlers) if (h.filter.table === "bulk_list_items") h.cb(payload);
+}
+function fireBulkLists(payload) {
+  for (const ch of mockChannels) for (const h of ch.handlers) if (h.filter.table === "bulk_lists") h.cb(payload);
 }
 
 class MockQuery {
@@ -109,6 +117,11 @@ class MockQuery {
       const id = "us-" + row.set_num;
       return { data: { id, ...row }, error: null };
     }
+    if (this.table === "bulk_lists" && this._insert) {
+      const row = this._insert;
+      const id = "blc-" + String(row.name || "x").replace(/[^a-z0-9]+/gi, "-");
+      return { data: { id, ...row }, error: null };
+    }
     return { data: null, error: null };
   }
   async maybeSingle() {
@@ -123,6 +136,8 @@ class MockQuery {
     if (this._delete) { dbCalls.push({ table: this.table, op: "delete", filters: { ...this.filters } }); return Promise.resolve({ data: null, error: mockSb._deleteError || null }).then(resolve, reject); }
     if (this.table === "set_parts") return Promise.resolve({ data: setPartsRows, error: null }).then(resolve, reject);
     if (this.table === "user_sets" && cloudSetRows) return Promise.resolve({ data: cloudSetRows, error: null }).then(resolve, reject);
+    if (this.table === "bulk_lists" && cloudBulkListRows) return Promise.resolve({ data: cloudBulkListRows, error: null }).then(resolve, reject);
+    if (this.table === "bulk_list_items" && cloudBulkItemsRows) return Promise.resolve({ data: cloudBulkItemsRows, error: null }).then(resolve, reject);
     return Promise.resolve({ data: [], error: null }).then(resolve, reject);
   }
 }
@@ -690,18 +705,20 @@ async function main() {
   sandbox.changeRemaining(item0, +1); // restore the lot to where it was
   check("sound: counts restored", sandbox.remOf(item0), remBefore);
 
-  // v3.9 — combined view groups tiers across sets: one banner per tier.
+  // v3.43 — the three-tier system is gone: one flat list, one grid,
+  // in the chosen sort order (default smallest to largest).
   sandbox.setSelected(["8961-1", "10294-1"]);
-  while (sandbox.viewPending.length) sandbox.renderNextChunk(); // v3.30: batches render on scroll, drain them to see every banner
+  while (sandbox.viewPending.length) sandbox.renderNextChunk(); // v3.30: batches render on scroll, drain them to see every card
   const banners = $("setView").children.filter((n) => n.className && n.className.indexOf("tier-banner") === 0).map((n) => n.textContent);
-  check("tiers: one banner per tier across sets", banners, ["TIER 1 — MOST LIKELY IN BULK", "TIER 2 — MEDIUM — WORTH A DIG", "TIER 3 — LEAST LIKELY IN BULK"]);
+  check("tiers: no tier banners in the combined view", banners, []);
   check("tiers: no per-set heading in the combined view", $("setView").children.some((n) => n.className === "set-heading"), false);
   const grids = $("setView").children.filter((n) => n.className === "card-grid");
-  // A tier-2 card may be a merged card (dataset.key "merged|part|colour")
-  // spanning both sets, or a single-set card — either way the grid must
+  check("tiers: one grid holds the combined view", grids.length, 1);
+  // A merged card (dataset.key "merged|part|colour") spans both sets,
+  // or a single-set card belongs to one — either way the one grid must
   // hold pieces from both sets.
   const grid2Sets = {};
-  grids[1].children.forEach((c) => {
+  grids[0].children.forEach((c) => {
     const key = c.dataset.key || "";
     if (key.indexOf("merged|") === 0) {
       const m = sandbox.viewList().find((it) => sandbox.partKeyOf(it) === key.slice("merged|".length));
@@ -710,11 +727,11 @@ async function main() {
       grid2Sets[key.split("|")[0]] = true;
     }
   });
-  check("tiers: tier 2 grid holds both sets", grid2Sets["8961-1"] && grid2Sets["10294-1"], true);
-  // Single-set view is unchanged: three banners, no set tags.
+  check("tiers: the one grid holds both sets", grid2Sets["8961-1"] && grid2Sets["10294-1"], true);
+  // Single-set view is the same: no banners, no set tags.
   sandbox.setSelected(["8961-1"]);
   const singleBanners = $("setView").children.filter((n) => n.className && n.className.indexOf("tier-banner") === 0).map((n) => n.textContent);
-  check("tiers: single set still shows all three tiers", singleBanners, ["TIER 1 — MOST LIKELY IN BULK", "TIER 2 — MEDIUM — WORTH A DIG", "TIER 3 — LEAST LIKELY IN BULK"]);
+  check("tiers: single set shows no tier banners", singleBanners, []);
   check("tiers: single set cards carry no set tag", $("setView").children.filter((n) => n.className === "card-grid").some((g) => g.children.some((c) => c.children.some((d) => d.className === "set-tag"))), false);
 
   // v3.9 — the fold follows lots still left: 2+ open lots keeps a section.
@@ -1517,14 +1534,14 @@ async function main() {
   check("batch: draining renders all 138", countCards(setViewEl()), 138);
   check("batch: nothing pending after drain", sandbox.viewPending.length, 0);
   check("batch: marker hides when done", sandbox.viewSentinel.hidden, true);
-  // Tier banners still appear once each, in order, after a full drain.
+  // v3.43 — no tier banners at all after a full drain.
   const tierBanners = [];
   const walkH3 = (el) => {
     if (el.tagName === "H3") tierBanners.push(el.className);
     for (const c of el.children) walkH3(c);
   };
   walkH3(setViewEl());
-  check("batch: tier banners in order", tierBanners, ["tier-banner tier-1", "tier-banner tier-2", "tier-banner tier-3"]);
+  check("batch: no tier banners", tierBanners, []);
   // Default chunk: 8961-1 alone renders 120 of 138, then the rest.
   sandbox.CARD_CHUNK = 120;
   sandbox.setSelected(["8961-1"]);
@@ -1779,8 +1796,148 @@ async function main() {
   check("bl-map: resolver 73587 → 4592c02", sandbox.brickLinkPartFor({ id: "73737-73587-White", colour: "White" }, 4), { id: "4592c02", type: "P", colour: 1, qty: 4 });
   check("bl-map: resolver 86209 → 60601", sandbox.brickLinkPartFor({ id: "4552036-86209-Transparent_Brown", colour: "Trans-Brown" }, 1), { id: "60601", type: "P", colour: 13, qty: 1 });
   check("bl-map: resolver 88072 → 4623a", sandbox.brickLinkPartFor({ id: "4569733-88072-Black", colour: "" }, 2), { id: "4623a", type: "P", colour: 11, qty: 2 });
+  // v3.43 — the seven numbers BrickLink rejected on Nov 27, 2026.
+  check("bl-map: resolver 30367b → 553", sandbox.brickLinkPartFor({ id: "4158779-30367b-Black", colour: "Black" }, 2), { id: "553", type: "P", colour: 11, qty: 2 });
+  check("bl-map: resolver 3062b → 3062", sandbox.brickLinkPartFor({ id: "6003001-3062b-White", colour: "White" }, 1), { id: "3062", type: "P", colour: 1, qty: 1 });
+  check("bl-map: resolver 3650c → 3650b", sandbox.brickLinkPartFor({ id: "4211059-3650c-Dark_Stone_Grey", colour: "Dark Grey" }, 1), { id: "3650b", type: "P", colour: 85, qty: 1 });
+  check("bl-map: resolver 4623 → 4623a", sandbox.brickLinkPartFor({ id: "462326-4623-Black", colour: "Black" }, 2), { id: "4623a", type: "P", colour: 11, qty: 2 });
+  check("bl-map: resolver 59900 → 4589b", sandbox.brickLinkPartFor({ id: "4518029-59900-Bright_Orange", colour: "Orange" }, 1), { id: "4589b", type: "P", colour: 4, qty: 1 });
+  check("bl-map: resolver 6126a → 6126", sandbox.brickLinkPartFor({ id: "6153407-6126a-Transparent_Fluorescent_Red_Orange", colour: "Trans-Neon Orange" }, 1), { id: "6126", type: "P", colour: 18, qty: 1 });
+  check("bl-map: resolver 6141 → 4073", sandbox.brickLinkPartFor({ id: "614126-6141-Black", colour: "Black" }, 4), { id: "4073", type: "P", colour: 11, qty: 4 });
   check("bl-map: resolver passes a shared number through", sandbox.brickLinkPartFor({ id: "300126-3001-Black", colour: "Black" }, 6), { id: "3001", type: "P", colour: 11, qty: 6 });
   check("bl-map: resolver skips a rock monster in an unknown colour", sandbox.brickLinkPartFor({ id: "4578028-64786-Transparent_Yellow", colour: "Trans-Yellow" }, 1), { skip: "rock monster in Trans-Yellow — no known BrickLink minifig number" });
+
+  // v3.43 — Sorting: volume is a stud-area proxy; price sorts read
+  // the BrickOwl cache, unpriced last in both directions.
+  check("sort: volume of a 2x4 is 8", sandbox.lotVolume("2 × 4 studs"), 8);
+  check("sort: volume of a 12-long bar is 12", sandbox.lotVolume("12 studs long"), 12);
+  check("sort: half-stud fractions parse", sandbox.lotVolume("5½ studs long"), 5.5);
+  check("sort: a single stud is 1", sandbox.lotVolume("1 stud"), 1);
+  check("sort: a minifig is 1", sandbox.lotVolume("minifig"), 1);
+  check("sort: an unknown dim is 1", sandbox.lotVolume(""), 1);
+  const sortLots = [
+    { id: "300126-3001-Black", qty: 1, dim: "2 × 4 studs", colour: "Black" },
+    { id: "614126-6141-Black", qty: 1, dim: "1 × 1 studs", colour: "Black" },
+    { id: "602026-6020-Black", qty: 1, dim: "7 × 3 studs", colour: "Black" },
+  ];
+  sandbox.viewSort = "volAsc";
+  check("sort: smallest to largest by default", sandbox.sortViewList(sortLots).map((l) => l.id), ["614126-6141-Black", "300126-3001-Black", "602026-6020-Black"]);
+  sandbox.viewSort = "volDesc";
+  check("sort: largest to smallest", sandbox.sortViewList(sortLots).map((l) => l.id), ["602026-6020-Black", "300126-3001-Black", "614126-6141-Black"]);
+  sandbox.LS.set("bf:prices", {
+    "3001|11": { usd: 0.5, at: Date.now() },
+    "6020|11": { usd: 0.1, at: Date.now() },
+  });
+  sandbox.viewSort = "priceAsc";
+  check("sort: cheapest first, unpriced last", sandbox.sortViewList(sortLots).map((l) => l.id), ["602026-6020-Black", "300126-3001-Black", "614126-6141-Black"]);
+  sandbox.viewSort = "priceDesc";
+  check("sort: most expensive first, unpriced last", sandbox.sortViewList(sortLots).map((l) => l.id), ["300126-3001-Black", "602026-6020-Black", "614126-6141-Black"]);
+  sandbox.viewSort = "volAsc";
+  sandbox.LS.set("bf:prices", {});
+
+  // v3.43 — Find later: bottomed pieces bypass every filter and
+  // always render in the Find later section at the bottom.
+  const prevStatus43 = sandbox.statusFilter, prevColour43 = sandbox.colourFilter, prevType43 = sandbox.typeFilter;
+  sandbox.LS.set("bf:bottom", []);
+  check("bottom: starts unbottomed", sandbox.isBottomed("3001|Black"), false);
+  sandbox.setBottomed("3001|Black", true);
+  check("bottom: set sticks", sandbox.isBottomed("3001|Black"), true);
+  check("bottom: saved to localStorage", sandbox.LS.get("bf:bottom", []), ["3001|Black"]);
+  sandbox.setBottomed("3001|Black", false);
+  check("bottom: unset sticks", sandbox.isBottomed("3001|Black"), false);
+  sandbox.saveCounts("10294-1", { "300126-3001-Black": 6, "4211064-3747-Dark_Stone_Grey": 2, "4541538-30385-Transparent_Blue": 2 });
+  sandbox.setBottomed("3001|Black", true);
+  // A filter that excludes the bottomed piece still shows it, in
+  // Find later, and nothing else.
+  sandbox.statusFilter = "needed"; sandbox.colourFilter = "Red"; sandbox.typeFilter = "all";
+  sandbox.setSelected(["10294-1"]);
+  while (sandbox.viewPending.length || sandbox.bottomPending.length) sandbox.renderNextChunk();
+  check("bottom: Find later banner renders", $("setView").children.filter((n) => n.className === "find-later-banner").map((n) => n.textContent), ["FIND LATER"]);
+  const flOnlyGrids = $("setView").children.filter((n) => n.className === "card-grid");
+  check("bottom: only the Find later grid when the filter hides the rest", flOnlyGrids.length, 1);
+  check("bottom: the bottomed card is in Find later", flOnlyGrids[0].children.some((c) => (c.dataset.key || "").indexOf("3001-Black") >= 0), true);
+  // Unfiltered: the main list holds the other pieces, Find later
+  // holds the bottomed one, after the main list.
+  sandbox.colourFilter = "all";
+  sandbox.setSelected(["10294-1"]);
+  while (sandbox.viewPending.length || sandbox.bottomPending.length) sandbox.renderNextChunk();
+  const flGrids = $("setView").children.filter((n) => n.className === "card-grid");
+  check("bottom: two grids unfiltered", flGrids.length, 2);
+  check("bottom: the bottomed card is not in the main list", flGrids[0].children.some((c) => (c.dataset.key || "").indexOf("3001-Black") >= 0), false);
+  check("bottom: the bottomed card is in Find later", flGrids[1].children.some((c) => (c.dataset.key || "").indexOf("3001-Black") >= 0), true);
+  const flBannerEl = $("setView").children.find((n) => n.className === "find-later-banner");
+  check("bottom: Find later sits after the main list", $("setView").children.indexOf(flBannerEl) > $("setView").children.indexOf(flGrids[0]), true);
+  // Long-press: hold a card, the Bottom? confirm appears; cancel
+  // leaves the piece where it was, confirming bottoms it.
+  sandbox.setBottomed("3001|Black", false);
+  sandbox.setSelected(["10294-1"]);
+  while (sandbox.viewPending.length || sandbox.bottomPending.length) sandbox.renderNextChunk();
+  const lpGrid = $("setView").children.filter((n) => n.className === "card-grid")[0];
+  const lpCard = lpGrid.children[0]; // smallest first: the 1x1 crystal
+  lpCard.listeners.pointerdown[0]({ clientX: 10, clientY: 10, button: 0, target: lpCard });
+  await sleep(650);
+  check("bottom: long-press opens the Bottom? confirm", sandbox.confirmModal.hidden, false);
+  check("bottom: confirm asks Bottom?", sandbox.confirmTitleEl.textContent, "Bottom?");
+  await sleep(300); // the overlay-click guard from the hold has expired
+  sandbox.confirmModal.listeners.click[0]({ target: sandbox.confirmModal });
+  check("bottom: cancel closes the confirm", sandbox.confirmModal.hidden, true);
+  check("bottom: cancel bottoms nothing", sandbox.isBottomed("30385|Trans-Blue"), false);
+  lpCard.listeners.pointerdown[0]({ clientX: 10, clientY: 10, button: 0, target: lpCard });
+  await sleep(650);
+  sandbox.confirmYesEl.listeners.click[0]();
+  check("bottom: confirming Bottom? bottoms the piece", sandbox.isBottomed("30385|Trans-Blue"), true);
+  check("bottom: confirming re-renders into Find later", $("setView").children.filter((n) => n.className === "find-later-banner").length, 1);
+  sandbox.setBottomed("30385|Trans-Blue", false);
+  sandbox.statusFilter = prevStatus43; sandbox.colourFilter = prevColour43; sandbox.typeFilter = prevType43;
+  sandbox.setSelected(["8961-1"]);
+
+  // v3.43 — bulk lists sync: first login uploads local lists, a qty
+  // change on this phone queues a bulk_list_items upsert, and a
+  // remote change arrives over Realtime without a refresh.
+  const prevUser = sandbox.user;
+  const prevBulkLists = sandbox.bulkLists.slice();
+  const prevBulkIds = sandbox.LS.get("bf:bulkCloudIds", {});
+  const prevBulkTombs = sandbox.LS.get("bf:deletedBulkLists", {});
+  sandbox.user = { id: "u-1", email: "josephvand@gmail.com" };
+  sandbox.bulkLists = [];
+  sandbox.saveBulkLists();
+  sandbox.LS.set("bf:bulkCloudIds", {});
+  sandbox.LS.set("bf:deletedBulkLists", {});
+  sandbox.bulkMergedThisSession = {};
+  const syncBl = sandbox.createBulkList("Sync test");
+  sandbox.addScannedPart(syncBl.id, "3001", "Brick 2 x 4", "Black");
+  sandbox.addScannedPart(syncBl.id, "3001", "Brick 2 x 4", "Black");
+  const bulkUpBefore = dbCalls.filter((c) => c.table === "bulk_list_items" && c.op === "upsert").length;
+  await sandbox.ensureCloudBulkList(syncBl);
+  check("bulk-sync: first login creates the cloud list", sandbox.bulkCloudIds()[syncBl.id], "blc-Sync-test");
+  check("bulk-sync: first login uploads the parts", dbCalls.filter((c) => c.table === "bulk_list_items" && c.op === "upsert").length - bulkUpBefore, 1);
+  check("bulk-sync: uploaded rows carry part, colour, qty", dbCalls.filter((c) => c.table === "bulk_list_items" && c.op === "upsert").pop().rows, [{ list_id: "blc-Sync-test", part: "3001", colour: "Black", qty: 2 }]);
+  const qBefore = dbCalls.filter((c) => c.table === "bulk_list_items" && c.op === "upsert").length;
+  sandbox.setScannedQty(syncBl.id, "3001", "Black", 5);
+  await sleep(20); // the queued upsert flushes async
+  check("bulk-sync: qty change queues an upsert", dbCalls.filter((c) => c.table === "bulk_list_items" && c.op === "upsert").length - qBefore, 1);
+  cloudBulkItemsRows = [{ part: "3001", colour: "Black", qty: 9 }];
+  fireBulkItems({ new: { list_id: "blc-Sync-test", part: "3001", colour: "Black", qty: 9 } });
+  await sleep(20);
+  check("bulk-sync: remote qty lands without a refresh", sandbox.bulkListQty(syncBl, "3001", "Black"), 9);
+  cloudBulkItemsRows = null;
+  // Deleting the list wipes the cloud rows; a failed wipe leaves a
+  // tombstone, and the retry finishes it.
+  const delBefore = dbCalls.filter((c) => c.table === "bulk_lists" && c.op === "delete").length;
+  mockSb._deleteError = { message: "boom" };
+  sandbox.deleteBulkList(syncBl.id);
+  await sleep(20);
+  check("bulk-sync: failed wipe leaves a tombstone", !!sandbox.deletedBulkLists()["blc-Sync-test"], true);
+  mockSb._deleteError = null;
+  await sandbox.retryDeletedBulkLists();
+  check("bulk-sync: retry finishes the cloud delete", dbCalls.filter((c) => c.table === "bulk_lists" && c.op === "delete").length - delBefore, 1);
+  check("bulk-sync: retry clears the tombstone", !!sandbox.deletedBulkLists()["blc-Sync-test"], false);
+  sandbox.bulkLists = prevBulkLists;
+  sandbox.saveBulkLists();
+  sandbox.LS.set("bf:bulkCloudIds", prevBulkIds);
+  sandbox.LS.set("bf:deletedBulkLists", prevBulkTombs);
+  sandbox.bulkMergedThisSession = {};
+  sandbox.user = prevUser;
   // End to end: a rock monster in a colour with no known minifig is
   // skipped and reported, never exported blindly.
   sandbox.INVENTORIES["10306-1"] = { set: "10306-1 Test Monster", lots: 1, pieces: 1, tiers: { 1: "MOST LIKELY IN BULK", 2: "MEDIUM — WORTH A DIG", 3: "LEAST LIKELY IN BULK" }, items: [{ id: "4578028-64786-Transparent_Yellow", qty: 1, dim: "1 stud", colour: "Trans-Yellow", any: false, tier: 3, cat: "Minifig / Accessories", img: "https://example.test/4578028.jpg", name: "Rock Monster Mini Assemb." }] };

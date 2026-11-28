@@ -74,6 +74,12 @@
             </div>
             <select id="colourSelect" aria-label="Filter by colour"></select>
             <select id="typeSelect" aria-label="Filter by piece type"></select>
+            <select id="viewSortSelect" aria-label="Sort pieces">
+              <option value="volAsc" selected>Smallest to largest</option>
+              <option value="volDesc">Largest to smallest</option>
+              <option value="priceAsc">Cheapest to most expensive</option>
+              <option value="priceDesc">Most expensive to cheapest</option>
+            </select>
             <div class="set-picker" id="setPicker">
               <button type="button" class="set-picker-btn" id="setPickerBtn" aria-haspopup="true">Sets: All</button>
               <div class="set-picker-panel" id="setPickerPanel" hidden>
