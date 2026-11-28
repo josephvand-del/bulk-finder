@@ -573,6 +573,11 @@ input, select {
 .opt-apply-row { display: flex; align-items: center; gap: 10px; border: 2px solid #ddd; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
 .opt-apply-row .set-text { flex: 1; min-width: 0; }
 .opt-apply-add { flex-shrink: 0; }
+/* v3.45 — the apply popup is a smaller, scrolling display: the box
+ * caps at the viewport height and only the lots list scrolls, so
+ * the title and Close stay put on a long list. */
+.opt-apply .confirm-box { max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); display: flex; flex-direction: column; }
+.opt-apply-list { overflow-y: auto; min-height: 0; flex: 1 1 auto; }
 
 /* v3.33 — Order remaining modal: wider box, XML text area. */
 .order-modal .confirm-box { max-width: 560px; }

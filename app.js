@@ -1,4 +1,4 @@
-/* Bulk Finder v3.44 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.45 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -4509,6 +4509,19 @@ function renderOptRows(wrap, results, list) {
 
 function optRow(r, listId) {
   var row = el('div', 'bulk-opt-row');
+  // v3.45: the tracked rows show the set's picture when one is
+  // known, like the suggestion rows below them — the set meta
+  // carries it, else the inventory does (setImageUrl).
+  var meta = findSet(r.setKey);
+  var imgUrl = meta ? setImageUrl(meta) : null;
+  if (imgUrl) {
+    var thumb = document.createElement('img');
+    thumb.className = 'sugg-thumb';
+    thumb.src = imgUrl;
+    thumb.alt = '';
+    thumb.addEventListener('error', function () { thumb.style.display = 'none'; });
+    row.appendChild(thumb);
+  }
   var text = el('div', 'set-text');
   text.appendChild(el('div', 'set-name', r.setName + (r.year ? ' (' + r.year + ')' : '')));
   text.appendChild(el('div', 'set-num', optRowText(r)));
@@ -4660,6 +4673,7 @@ function ensureOptApplyModal() {
   optApplySub.className = 'muted small';
   box.appendChild(optApplySub);
   optApplyList = document.createElement('div');
+  optApplyList.className = 'opt-apply-list';
   box.appendChild(optApplyList);
   optApplyNote = document.createElement('p');
   optApplyNote.className = 'muted small';
@@ -5079,11 +5093,27 @@ function distinctBulkParts(list, excludeMinifig, blind) {
   var byKey = {}, order = [];
   (list.parts || []).forEach(function (p) {
     if (excludeMinifig && isMinifigBulkPart(p.part, p.colour, blind)) return;
-    var k = p.part + '|' + p.colour;
-    if (!byKey[k]) { byKey[k] = { part: p.part, colour: p.colour, qty: 0, bl_colour: null }; order.push(byKey[k]); }
-    byKey[k].qty += p.qty;
+    // Blind mode matches by part number, and the function checks
+    // the part's most common other colours itself — so one entry
+    // per part, not one per colour. Without this, a part in three
+    // colours eats three of the four blind batch slots, and the
+    // set the bulk came from is discovered one part at a time
+    // instead of four at a time, so it never rises to the top of
+    // the most-from-bulk list. The entry keeps the bulk's biggest
+    // colour of the part, so the function's first query for it is
+    // the commonest one.
+    var k = blind ? p.part : p.part + '|' + p.colour;
+    var it = byKey[k];
+    if (!it) { it = byKey[k] = { part: p.part, colour: p.colour, qty: 0, bl_colour: null }; order.push(it); }
+    it.qty += p.qty;
+    if (blind) {
+      var cq = it._cq || (it._cq = {});
+      cq[p.colour] = (cq[p.colour] || 0) + p.qty;
+      if (cq[p.colour] > (cq[it.colour] || 0)) it.colour = p.colour;
+    }
   });
   order.forEach(function (it) {
+    delete it._cq;
     var bl = BRICKLINK_COLOUR[it.colour];
     it.bl_colour = (bl === undefined) ? null : bl;
   });

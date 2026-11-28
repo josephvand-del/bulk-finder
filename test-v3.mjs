@@ -2313,11 +2313,15 @@ async function main() {
   // The cache is shared across sets: 3001's price, fetched for
   // 10294-1, is reused by 10305-1 and test-2, so only two invokes.
   check("price: two invokes cover three sets (shared cache)", priceCalls, 2);
+  // Optimizer rows carry a thumbnail first when the set has a
+  // picture (v3.45), so the text div is found by class, not by
+  // position.
+  const optRowTextEl = (r) => r.children.find((c) => (c.className || "").includes("set-text"));
   sandbox.runOptimizer(optList.id, "price");
   await sleep(50);
-  const priceRows = sandbox.bulkOptWrap.children[2].children.map((r) => r.children[0].children[0].textContent);
+  const priceRows = sandbox.bulkOptWrap.children[2].children.map((r) => optRowTextEl(r).children[0].textContent);
   check("price: rows sort cheapest first", priceRows, ["test-2", "Test Set 2 (2022)", "Test Ship (2021)", "Crystal Sweeper"]);
-  const priceSub = sandbox.bulkOptWrap.children[2].children.map((r) => r.children[0].children[1].textContent);
+  const priceSub = sandbox.bulkOptWrap.children[2].children.map((r) => optRowTextEl(r).children[1].textContent);
   check("price: test-2 row shows cost and the unpriced lot", priceSub[0], "Cost to complete $0.10 · 3 pieces left · 1 lot unpriced");
   check("price: 10305-1 row shows $0.35", priceSub[1], "Cost to complete $0.35 · 5 pieces left");
   check("price: 8961-1 row counts its unpriced lots", priceSub[3].includes("unpriced"), true);
@@ -2395,6 +2399,24 @@ async function main() {
   sandbox.addScannedPart(miniList.id, "64786", "Rock Monster", "Trans-Blue");
   sandbox.addScannedPart(miniList.id, "3001", "Brick 2 x 4", "Black");
   check("minifig: on, a rock monster never drives a suggestion", sandbox.distinctBulkParts(miniList, true, false).map((p) => p.part), ["3001"]);
+  // v3.45: blind mode queries one entry per part number, not one
+  // per colour — the function checks the part's other colours
+  // itself, so a part in two colours must not eat two of the four
+  // blind batch slots.
+  const blindDupList = sandbox.createBulkList("Blind dedupe test");
+  sandbox.addScannedPart(blindDupList.id, "3001", "Brick 2 x 4", "Black");
+  sandbox.addScannedPart(blindDupList.id, "3001", "Brick 2 x 4", "Black");
+  sandbox.addScannedPart(blindDupList.id, "3001", "Brick 2 x 4", "Red");
+  sandbox.addScannedPart(blindDupList.id, "3001", "Brick 2 x 4", "Red");
+  sandbox.addScannedPart(blindDupList.id, "3001", "Brick 2 x 4", "Red");
+  sandbox.addScannedPart(blindDupList.id, "6141", "Tile 1 x 1", "White");
+  const blindDup = sandbox.distinctBulkParts(blindDupList, false, true);
+  check("blind: same part in two colours is one query entry", blindDup.map((p) => p.part).sort(), ["3001", "6141"]);
+  check("blind: representative colour is the biggest", blindDup.find((p) => p.part === "3001").colour, "Red");
+  check("blind: quantities sum across colours", blindDup.find((p) => p.part === "3001").qty, 5);
+  check("blind: no scratch fields leak into the entry", blindDup.find((p) => p.part === "3001")._cq, undefined);
+  const exactDup = sandbox.distinctBulkParts(blindDupList, false, false);
+  check("exact: same part in two colours stays two entries", exactDup.map((p) => p.part + "|" + p.colour).sort(), ["3001|Black", "3001|Red", "6141|White"]);
   sandbox.runOptimizer(optList.id, "pieces");
   check("minifig: toggle button starts off", sandbox.bulkOptMinifigBtn.textContent, "Exclude minifigures");
   sandbox.bulkOptMinifigBtn.listeners.click[0]();
@@ -2733,7 +2755,7 @@ async function main() {
   // Budget UI: price mode with a $1 max shows the two cheap sets
   // as rows and names the over-budget ones in a note, not as rows.
   invokeHandler = priceHandler;
-  const priceRows38 = () => sandbox.bulkOptWrap.children[2].children.filter((c) => c.className.includes("bulk-opt-row")).map((r) => r.children[0].children[0].textContent);
+  const priceRows38 = () => sandbox.bulkOptWrap.children[2].children.filter((c) => c.className.includes("bulk-opt-row")).map((r) => optRowTextEl(r).children[0].textContent);
   sandbox.openOptimizerView(optList.id);
   sandbox.runOptimizer(optList.id, "price");
   await sleep(50);
@@ -2792,13 +2814,13 @@ async function main() {
   sandbox.addScannedPart(srcList38.id, "6141", "Tile 1 x 1", "White");
   sandbox.bulkOptSort = "pieces";
   sandbox.openOptimizerView(srcList38.id);
-  const optRows38 = () => sandbox.bulkOptWrap.children[2].children.filter((c) => c.className.includes("bulk-opt-row")).map((r) => r.children[0].children[0].textContent);
+  const optRows38 = () => sandbox.bulkOptWrap.children[2].children.filter((c) => c.className.includes("bulk-opt-row")).map((r) => optRowTextEl(r).children[0].textContent);
   check("inv38: set with a missing inventory is not ranked yet", optRows38().includes("Test Set 2 (2022)"), false);
   check("inv38: the optimizer says the parts list is still loading", sandbox.bulkOptWrap.children.some((c) => c.textContent && c.textContent.includes("Still loading parts for Test Set 2")), true);
   await sleep(50);
   check("inv38: once the inventory lands, the partial set is ranked", optRows38().includes("Test Set 2 (2022)"), true);
-  const srcRow38 = sandbox.bulkOptWrap.children[2].children.filter((c) => c.className.includes("bulk-opt-row")).find((r) => r.children[0].children[0].textContent === "Test Set 2 (2022)");
-  check("inv38: partial upload shows 3 of 5 pieces, 2 lots", srcRow38.children[0].children[1].textContent, "3 of 5 pieces (60%) · 2 lots");
+  const srcRow38 = sandbox.bulkOptWrap.children[2].children.filter((c) => c.className.includes("bulk-opt-row")).find((r) => optRowTextEl(r).children[0].textContent === "Test Set 2 (2022)");
+  check("inv38: partial upload shows 3 of 5 pieces, 2 lots", optRowTextEl(srcRow38).children[1].textContent, "3 of 5 pieces (60%) · 2 lots");
   sandbox.closeOptimizerView();
 
   // Tapping a saved set in the left list opens it — even when its
@@ -2916,15 +2938,22 @@ async function main() {
   const applyRows = () => sandbox.optApplyList.children.filter((c) => c.className.includes("opt-apply-row"));
   const applyRowText = () => applyRows().map((r) => [r.children[0].children[0].textContent, r.children[0].children[1].textContent]);
   const optRows40 = () => sandbox.bulkOptWrap.children[2].children.filter((c) => c.className.includes("bulk-opt-row"));
-  const optRowText40 = (name) => { const r = optRows40().find((x) => x.children[0].children[0].textContent === name); return r ? r.children[0].children[1].textContent : null; };
+  const optRowText40 = (name) => { const r = optRows40().find((x) => optRowTextEl(x).children[0].textContent === name); return r ? optRowTextEl(r).children[1].textContent : null; };
   sandbox.openBulkList(applyList.id);
   sandbox.openOptimizerView(applyList.id);
   sandbox.runOptimizer(applyList.id, "pieces");
-  const shipRow = optRows40().find((r) => r.children[0].children[0].textContent === "Test Ship (2021)");
+  const shipRow = optRows40().find((r) => optRowTextEl(r).children[0].textContent === "Test Ship (2021)");
   check("apply40: Test Ship row is ranked", !!shipRow, true);
   check("apply40: Test Ship covers 6 pieces, 2 lots", optRowText40("Test Ship (2021)"), "6 of 10 pieces (60%) · 2 lots");
+  // v3.45: tracked rows show the set's picture when one is known.
+  const sweeperRow = optRows40().find((r) => optRowTextEl(r).children[0].textContent === "Crystal Sweeper");
+  const sweeperThumb = sweeperRow.children.find((c) => c.tagName === "IMG");
+  check("thumb45: 8961-1 row shows its set picture first", [sweeperRow.children[0].tagName, sweeperThumb && sweeperThumb.src], ["IMG", "https://cdn.rebrickable.com/media/sets/8961-1.jpg"]);
+  check("thumb45: a set with no picture gets no image", shipRow.children.some((c) => c.tagName === "IMG"), false);
   shipRow.listeners.click[0]();
   check("apply40: tap opens the popup, not the set view", [sandbox.optApplyModal.hidden, sandbox.optViewId], [false, applyList.id]);
+  // v3.45: the popup's lots list is the scrolling element.
+  check("apply45: popup lots list carries the scroll class", sandbox.optApplyList.className.includes("opt-apply-list"), true);
   check("apply40: popup title is the set", sandbox.optApplyTitle.textContent, "Test Ship");
   check("apply40: popup pushes a history entry", hist37.some((c) => c[0] === "push" && c[1] && c[1].bfoptapply === true), true);
   check("apply40: only the lots the bulk can still feed", applyRowText(), [
@@ -2939,7 +2968,7 @@ async function main() {
   check("apply40: popstate after Escape hides the popup", sandbox.optApplyModal.hidden, true);
   check("apply40: optimizer view stays open after Escape", sandbox.optViewId, applyList.id);
   // Reopen and Add the 3001 row: the set is credited 4, the bulk loses 4.
-  optRows40().find((r) => r.children[0].children[0].textContent === "Test Ship (2021)").listeners.click[0]();
+  optRows40().find((r) => optRowTextEl(r).children[0].textContent === "Test Ship (2021)").listeners.click[0]();
   applyRows()[0].children[1].listeners.click[0]();
   check("apply40: set credited 4 of the 3001 lot", JSON.parse(sandbox.localStorage.getItem("bf:counts:10294-1"))["300126-3001-Black"], 0);
   check("apply40: bulk keeps 1 black 2x4", sandbox.findBulkList(applyList.id).parts.find((p) => p.part === "3001").qty, 1);
