@@ -1,4 +1,4 @@
-/* Bulk Finder v3.46 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.47 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -5039,7 +5039,10 @@ function suggestBatchSize() { return bulkOptBlind ? SUGGEST_MAX_PARTS_BLIND : SU
 var SUGGEST_SHOW = 10;
 function suggestCacheKeyFor(parts, blind, excludeMinifig) {
   var keys = (parts || []).map(function (p) { return p.part + '|' + p.colour + '|' + p.qty; }).sort();
-  return keys.join(';') + (blind ? '|blind' : '|exact') + (excludeMinifig ? '|nominifig' : '|minifig');
+  // v2 (v3.47): candidates now carry shared keys for the piece
+  // count — entries cached before v3.42 have none, so they must
+  // not be served; the new key forces one fresh fetch.
+  return keys.join(';') + (blind ? '|blind' : '|exact') + (excludeMinifig ? '|nominifig' : '|minifig') + '|v2';
 }
 function loadSuggestCache() {
   var v = LS.get('bf:suggest', {});
@@ -5224,6 +5227,19 @@ function mergeCandidates(into, fresh) {
 // come through another colour. Returns null when the candidate
 // carries no shared keys — a pre-v3.42 cache entry — so the caller
 // keeps the old lots-only text.
+// The subtitle under a suggestion row. The exact piece count leads
+// (v3.47, Joseph: "Shares 3 lots" doesn't say how much of the bulk
+// a set actually uses) — "Uses 8 pieces from bulk · 2 lots · 50
+// pieces total · up to 48 missing". Without shared keys there is
+// no piece count to show, so the row falls back to the lots-only
+// text it had before.
+function suggSub(c, pieces) {
+  var missing = (typeof c.missingUpper === 'number') ? c.missingUpper : Math.max(0, c.num_parts - c.lotsCovered);
+  var lots = c.lotsCovered + ' lot' + (c.lotsCovered === 1 ? '' : 's');
+  var tail = ' · ' + c.num_parts + ' pieces total · up to ' + missing + ' missing';
+  if (pieces === null || pieces === undefined) return 'Shares ' + lots + tail;
+  return 'Uses ' + pieces + ' piece' + (pieces === 1 ? '' : 's') + ' from bulk · ' + lots + tail;
+}
 function bulkPiecesForCandidate(c, list, blind) {
   if (!c || !Array.isArray(c.shared) || !c.shared.length || !list) return null;
   var total = 0;
@@ -5280,7 +5296,15 @@ async function findSuggestions(listId, more) {
     var key = suggestCacheKeyFor(parts, bulkOptBlind, bulkOptExcludeMinifig);
     var cached = loadSuggestCache()[key];
     if (cached && (Date.now() - cached.at) < SUGGEST_TTL_MS) {
-      bulkSuggState = { listId: listId, status: 'done', candidates: cached.candidates || [], queried: [], partial: false, unmapped: [], error: '', remaining: cached.remaining || [], cacheKey: key, page: 1 };
+      var cachedCands = cached.candidates || [];
+      // fnV42 from the cached candidates: the v3.42 function returns
+      // shared keys on every candidate and the older one on none —
+      // mergeCandidates stamps shared: [] on the latter, so only
+      // a non-empty shared list counts. A cached old-function
+      // result still shows the redeploy note instead of silently
+      // showing lots-only rows.
+      var cachedFnV42 = cachedCands.length ? cachedCands.some(function (c) { return Array.isArray(c.shared) && c.shared.length > 0; }) : null;
+      bulkSuggState = { listId: listId, status: 'done', candidates: cachedCands, queried: [], partial: false, unmapped: [], error: '', remaining: cached.remaining || [], cacheKey: key, page: 1, fnV42: cachedFnV42 };
       renderSuggestionsInto(bulkSuggWrap, list);
       return;
     }
@@ -5335,9 +5359,11 @@ async function fetchSuggestBatch(list, batch, runToken) {
 /* ---------- Suggestion sort + pager (v3.39) ----------
  * The suggestions section has its own sort row — "Most of bulk"
  * ranks by lots shared (the honest metric: Rebrickable's
- * parts-in-sets answers carry no per-set quantities, so the row
- * already says "Shares N lots"). Changing the sort or turning a
- * page re-renders only; nothing is re-fetched. */
+ * parts-in-sets answers carry no per-set quantities). The row
+ * itself leads with the exact pieces used when the candidate
+ * carries shared keys ("Uses N pieces from bulk", v3.47),
+ * falling back to "Shares N lots" without them. Changing the
+ * sort or turning a page re-renders only; nothing is re-fetched. */
 function buildSuggSortRow(list) {
   var row = el('div', 'bulk-actions sugg-sort');
   function sortBtn(mode, label) {
@@ -5450,9 +5476,8 @@ function renderSuggestionsInto(wrap, list) {
       }
       var text = el('div', 'set-text');
       text.appendChild(el('div', 'set-name', c.name + (c.year ? ' (' + c.year + ')' : '')));
-      var missing = (typeof c.missingUpper === 'number') ? c.missingUpper : Math.max(0, c.num_parts - c.lotsCovered);
       var pieces = bulkPiecesForCandidate(c, list, bulkOptBlind);
-      var sub = 'Shares ' + c.lotsCovered + ' lot' + (c.lotsCovered === 1 ? '' : 's') + (pieces === null ? '' : ' · ' + pieces + ' piece' + (pieces === 1 ? '' : 's') + ' from bulk') + ' · ' + c.num_parts + ' pieces total · up to ' + missing + ' missing';
+      var sub = suggSub(c, pieces);
       text.appendChild(el('div', 'set-num', sub));
       row.appendChild(text);
       var add = el('button', 'btn btn-small sugg-add', 'Add to My sets');
@@ -5477,8 +5502,14 @@ function renderSuggestionsInto(wrap, list) {
   if (st.unmapped.length) {
     wrap.appendChild(el('p', 'muted small', 'Not checked (' + st.unmapped.length + '): ' + st.unmapped.map(function (u) { return u.part + ' ' + u.colour; }).join(', ') + '.'));
   }
-  if (bulkOptBlind && st.status === 'done' && !st.remaining.length && st.fnV42 === false) {
-    wrap.appendChild(el('p', 'muted small', 'Colour doesn\'t matter needs the updated suggest-sets function — redeploy it from the Supabase dashboard (Edge Functions > Deploy suggest-sets) and these results will widen to other colours.'));
+  // The deployed function is pre-v3.42 (no partCounts): it returns
+  // no shared keys, so no row can show a piece count — in blind
+  // mode blind matching is also still colour-locked. Say so in
+  // either mode; the fix is the same redeploy.
+  if (st.status === 'done' && !st.remaining.length && st.fnV42 === false) {
+    wrap.appendChild(el('p', 'muted small', bulkOptBlind
+      ? 'Colour doesn\'t matter needs the updated suggest-sets function — redeploy it from the Supabase dashboard (Edge Functions > Deploy suggest-sets) and these results will widen to other colours.'
+      : 'Piece counts need the updated suggest-sets function — redeploy it from the Supabase dashboard (Edge Functions > Deploy suggest-sets) and each set will show how many pieces it uses from your bulk.'));
   }
 }
 async function addSuggestedSet(setNum, btn) {

@@ -3144,8 +3144,35 @@ async function main() {
   sandbox.runOptimizer(piecesList.id, "pieces");
   await sandbox.findSuggestions(piecesList.id, false);
   const piecesRows = sandbox.bulkSuggWrap.children.filter((c) => c.className.includes("sugg-row"));
-  check("pieces42: row shows pieces from bulk", piecesRows[0].children[1].children[1].textContent, "Shares 2 lots · 8 pieces from bulk · 50 pieces total · up to 48 missing");
+  check("pieces42: row shows pieces from bulk", piecesRows[0].children[1].children[1].textContent, "Uses 8 pieces from bulk · 2 lots · 50 pieces total · up to 48 missing");
   check("rare42: partCounts feed the rarity cache", sandbox.readPartRarity()["3747|Dark Grey"].sets, 3);
+
+  // v3.47 — suggestion rows lead with the exact pieces used, not
+  // the lot count (Joseph: "Shares 3 lots" doesn't say how much
+  // of the bulk a set uses).
+  check("pieces47: row leads with pieces used", sandbox.suggSub({ lotsCovered: 2, num_parts: 50, missingUpper: 48 }, 8), "Uses 8 pieces from bulk · 2 lots · 50 pieces total · up to 48 missing");
+  check("pieces47: one piece and one lot read singular", sandbox.suggSub({ lotsCovered: 1, num_parts: 10, missingUpper: 9 }, 1), "Uses 1 piece from bulk · 1 lot · 10 pieces total · up to 9 missing");
+  check("pieces47: no shared keys falls back to lots only", sandbox.suggSub({ lotsCovered: 3, num_parts: 50, missingUpper: 47 }, null), "Shares 3 lots · 50 pieces total · up to 47 missing");
+  check("pieces47: missing derives from num_parts when missingUpper is absent", sandbox.suggSub({ lotsCovered: 2, num_parts: 50 }, 8), "Uses 8 pieces from bulk · 2 lots · 50 pieces total · up to 48 missing");
+  check("pieces47: cache key carries the v2 marker", sandbox.suggestCacheKeyFor(sandbox.distinctBulkParts(piecesList), false, false).indexOf("|v2") !== -1, true);
+  // Exact mode against a pre-v3.42 function (no partCounts, no
+  // shared keys on the candidates): the rows can't show piece
+  // counts, so the redeploy note shows here too, not only in
+  // blind mode.
+  invokeHandler = async (name, opts) => {
+    if (name === "suggest-sets") {
+      return { data: { ok: true, candidates: [
+        { set_num: "99999-1", name: "Fake Set A", year: 2023, num_parts: 50, set_img_url: "https://cdn.rebrickable.com/media/sets/99999-1.jpg", lotsCovered: 2, missingUpper: 48 },
+      ], queried: ["3001|Black", "3747|Dark Grey"], partial: false, unmapped: [] }, error: null };
+    }
+    return { data: null, error: { message: "no handler" } };
+  };
+  sandbox.runOptimizer(piecesList.id, "pieces");
+  sandbox.LS.set("bf:suggest", {}); // force a fresh fetch, not the pieces42 cache entry
+  await sandbox.findSuggestions(piecesList.id, false);
+  check("pieces47: exact mode shows the redeploy note when piece counts are unavailable", sandbox.bulkSuggWrap.children.some((c) => c.textContent && c.textContent.indexOf("Piece counts need the updated") !== -1), true);
+  await sandbox.findSuggestions(piecesList.id, false); // cache hit on the old-function result now
+  check("pieces47: the redeploy note survives a cached old-function result", sandbox.bulkSuggWrap.children.some((c) => c.textContent && c.textContent.indexOf("Piece counts need the updated") !== -1), true);
 
   // --- v3.42 E: blind discovery widens the net ---
   let blindBodies = [];
