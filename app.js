@@ -1,4 +1,4 @@
-/* Bulk Finder v3.45 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.46 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -2152,8 +2152,16 @@ var viewObserver = null; // IntersectionObserver auto-loading next batches
  * The three-tier sort is gone from the main view: one flat list in
  * the order the Sorting dropdown picks. Volume is a stud-area proxy
  * parsed from the lot's dim string ("2 × 4 studs" -> 8, "12 studs
- * long" -> 12, "5½ studs long" -> 5.5, "1 stud" / "minifig" -> 1);
- * price sorts read the BrickOwl price cache (bf:prices) per piece,
+ * long" -> 12, "5½ studs long" -> 5.5, "1 stud" / "minifig" -> 1).
+ * When the dim carries no size — most Technic pins, bars, gears,
+ * propellers and turntables — the part NAME is parsed instead
+ * ("5 Diameter" -> 5, "56 Tooth" -> 7, "Bar 4L" -> 4,
+ * "Technic Pin 1/2" -> 0.5), so a big part with no dim no longer
+ * sorts as size 1 ahead of the 1-stud pieces (v3.46: a 5-diameter
+ * propeller and the 56-tooth turntables were doing exactly that).
+ * A millimetre diameter in the dim ("Ø62 mm" -> 7.75) reads the
+ * same way — one stud is 8 mm.
+ * Price sorts read the BrickOwl price cache (bf:prices) per piece,
  * and a piece with no cached price sorts last in both price
  * directions, so an unpriced piece never outranks a priced one.
  * Find later: holding a card asks "Bottom?" and parks the piece in
@@ -2174,15 +2182,46 @@ function fracNum(s) {
   if (!m) return NaN;
   return parseInt(m[1], 10) + (m[2] ? f[m[2]] : 0);
 }
-function lotVolume(dim) {
-  var d = String(dim || '');
-  var m = d.match(/(\d+[½¼¾]?)\s*[×x]\s*(\d+[½¼¾]?)/);
+// Size from a dim string or a part name, in the order the patterns
+// are tried: stud rectangle ("2 × 4" -> 8), diameter ("5 Diameter"
+// -> 5), millimetre diameter ("Ø62 mm" -> 7.75 — one stud is 8 mm),
+// gear teeth ("56 Tooth" -> 7 — a LEGO gear tooth is about
+// an eighth of a stud, so teeth / 8 is its diameter in studs),
+// length ("12 studs long" -> 12), stud-length ("Bar 4L" -> 4),
+// stud count ("with 4 Studs" -> 4), slash fraction ("1/2" -> 0.5).
+// Anything with no size pattern is 1 — the right size for a 1-stud
+// piece and a minifig bit, and the reason a size stated only in the
+// name has to be read from the name: deriveDim only writes "N × M"
+// and "Axle N" dims, so the rest arrive with an empty dim.
+function sizeFromText(s) {
+  var t = String(s || '');
+  var m = t.match(/(\d+[½¼¾]?)\s*[×x]\s*(\d+[½¼¾]?)/);
   if (m) { var a = fracNum(m[1]), b = fracNum(m[2]); if (!isNaN(a) && !isNaN(b)) return a * b; }
-  var l = d.match(/(\d+[½¼¾]?)\s*studs?\s+long/);
+  var d = t.match(/(\d+[½¼¾]?)\s*Diameter/i);
+  if (d) { var dn = fracNum(d[1]); if (!isNaN(dn)) return dn; }
+  var mm = t.match(/Ø\s*(\d+[½¼¾]?)\s*mm/i);
+  if (mm) { var mn = fracNum(mm[1]); if (!isNaN(mn)) return mn / 8; }
+  var g = t.match(/(\d+)\s*Tooth/i);
+  if (g) { var tn = parseInt(g[1], 10); if (isFinite(tn)) return tn / 8; }
+  var l = t.match(/(\d+[½¼¾]?)\s*studs?\s+long/i);
   if (l) { var n = fracNum(l[1]); if (!isNaN(n)) return n; }
+  var bl = t.match(/(\d+[½¼¾]?)\s*L\b/);
+  if (bl) { var bn = fracNum(bl[1]); if (!isNaN(bn)) return bn; }
+  var sc = t.match(/(\d+[½¼¾]?)\s*Studs\b/i);
+  if (sc) { var sn = fracNum(sc[1]); if (!isNaN(sn)) return sn; }
+  var f = t.match(/(\d+)\s*\/\s*(\d+)/);
+  if (f) { var fn = parseInt(f[1], 10), fd = parseInt(f[2], 10); if (fd > 0) return fn / fd; }
   return 1;
 }
-function cardVolume(item) { return lotVolume(item && item.dim); }
+function lotVolume(dim) { return sizeFromText(dim); }
+// A stored dim of "" parses to the 1 fallback, which is also a real
+// size for 1-stud pieces — so only fall back to the name when the
+// dim carries no size pattern at all.
+function cardVolume(item) {
+  if (!item) return 1;
+  if (item.dim) return sizeFromText(item.dim);
+  return sizeFromText(item.name);
+}
 // Cheapest cached BrickOwl price for one piece, or undefined when the
 // piece has never been priced (a stale cache entry still counts — the
 // sort is advisory, and the price modal handles freshness).

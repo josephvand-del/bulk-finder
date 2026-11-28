@@ -1835,6 +1835,25 @@ async function main() {
   sandbox.viewSort = "volAsc";
   sandbox.LS.set("bf:prices", {});
 
+  // v3.46 — size from the name when the dim carries none: a big
+  // part with no dim used to sort as size 1, ahead of the 1-studs.
+  check("sort: propeller diameter reads from the name", sandbox.cardVolume({ id: "247926-2479-Black", dim: "", name: "Propeller 4 Blade 5 Diameter with Rounded Ends, Open Hub", colour: "Black" }), 5);
+  check("sort: turntable teeth read from the name", sandbox.cardVolume({ id: "4490248-2856-Black", dim: "", name: "Technic Turntable Large Type 1 Base, 56 Tooth", colour: "Black" }), 7);
+  check("sort: bar length reads from the name", sandbox.cardVolume({ id: "x-123-Black", dim: "", name: "Bar 4L (Lightsaber Blade / Wand)", colour: "Black" }), 4);
+  check("sort: half pin reads from the name", sandbox.cardVolume({ id: "x-124-Black", dim: "", name: "Technic Pin 1/2 without Friction Ridges", colour: "Black" }), 0.5);
+  check("sort: gear teeth read from the name", sandbox.cardVolume({ id: "x-125-Black", dim: "", name: "Technic Gear 12 Tooth Double Bevel", colour: "Black" }), 1.5);
+  check("sort: millimetre diameter reads from the dim", sandbox.lotVolume("Ø62 mm"), 7.75);
+  check("sort: a stored dim still wins over the name", sandbox.cardVolume({ id: "300126-3001-Black", dim: "2 × 4 studs", name: "Brick 2 x 4", colour: "Black" }), 8);
+  check("sort: a nameless small part is still 1", sandbox.cardVolume({ id: "x-126-Black", dim: "", name: "Lever Small Base with Black Lever", colour: "Black" }), 1);
+  const sortBigLots = [
+    { id: "4490248-2856-Black", qty: 1, dim: "", name: "Technic Turntable Large Type 1 Base, 56 Tooth", colour: "Black" },
+    { id: "614126-6141-Black", qty: 1, dim: "1 × 1 studs", name: "Tile 1 x 1", colour: "Black" },
+    { id: "300126-3001-Black", qty: 1, dim: "2 × 4 studs", name: "Brick 2 x 4", colour: "Black" },
+    { id: "247926-2479-Black", qty: 1, dim: "", name: "Propeller 4 Blade 5 Diameter with Rounded Ends, Open Hub", colour: "Black" },
+  ];
+  sandbox.viewSort = "volAsc";
+  check("sort: turntable and propeller sort after the 2x4, not first", sandbox.sortViewList(sortBigLots).map((l) => l.id), ["614126-6141-Black", "247926-2479-Black", "4490248-2856-Black", "300126-3001-Black"]);
+
   // v3.43 — Find later: bottomed pieces bypass every filter and
   // always render in the Find later section at the bottom.
   const prevStatus43 = sandbox.statusFilter, prevColour43 = sandbox.colourFilter, prevType43 = sandbox.typeFilter;
