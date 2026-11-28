@@ -3174,6 +3174,65 @@ async function main() {
   await sandbox.findSuggestions(piecesList.id, false); // cache hit on the old-function result now
   check("pieces47: the redeploy note survives a cached old-function result", sandbox.bulkSuggWrap.children.some((c) => c.textContent && c.textContent.indexOf("Piece counts need the updated") !== -1), true);
 
+  // v3.48 — exact coverage from the set's inventory: the lots-based
+  // "up to N missing" is a guess (5 shared lots held 96 pieces of
+  // a 110-piece set, so the true missing was 14, not "up to 105").
+  sandbox.INVENTORIES["99999-1"] = { set: "99999-1", lots: 3, pieces: 50, items: [
+    { id: "300126-3001-Black", qty: 3, dim: "2 × 4 studs", colour: "Black", any: false, tier: 1, cat: "Bricks", img: "", name: "Brick 2 x 4" },
+    { id: "374726-3747-Dark_Grey", qty: 5, dim: "", colour: "Dark Grey", any: false, tier: 1, cat: "Sloped Bricks", img: "", name: "Slope 45 2 x 1" },
+    { id: "614126-6141-White", qty: 2, dim: "1 × 1 studs", colour: "White", any: false, tier: 1, cat: "Small pieces", img: "", name: "Tile 1 x 1" },
+  ] };
+  check("exact48: exact mode takes min(set qty, bulk qty) per lot", sandbox.suggExactCoverage({ set_num: "99999-1", num_parts: 50 }, piecesList, false), { covered: 5, missing: 45 });
+  check("exact48: no inventory means no exact count", sandbox.suggExactCoverage({ set_num: "nope-1", num_parts: 10 }, piecesList, false), null);
+  check("exact48: row shows exact missing, no up-to", sandbox.suggSub({ lotsCovered: 5, num_parts: 110, missingUpper: 105 }, 96, { covered: 96, missing: 14 }), "Uses 96 pieces from bulk · 5 lots · 110 pieces total · 14 missing");
+  check("exact48: without an inventory the estimate keeps its up-to", sandbox.suggSub({ lotsCovered: 5, num_parts: 110, missingUpper: 105 }, 96, null), "Uses 96 pieces from bulk · 5 lots · 110 pieces total · up to 105 missing");
+  // Blind mode shares one bulk pool per part: 1 Black + 1 White
+  // can't cover 2 Black + 2 White, however the lots are counted.
+  sandbox.INVENTORIES["99997-1"] = { set: "99997-1", lots: 2, pieces: 4, items: [
+    { id: "300126-3001-Black", qty: 2, dim: "2 × 4 studs", colour: "Black", any: false, tier: 1, cat: "Bricks", img: "", name: "Brick 2 x 4" },
+    { id: "300126-3001-White", qty: 2, dim: "2 × 4 studs", colour: "White", any: false, tier: 1, cat: "Bricks", img: "", name: "Brick 2 x 4" },
+  ] };
+  const blindPoolList = sandbox.createBulkList("Blind pool test");
+  sandbox.addScannedPart(blindPoolList.id, "3001", "Brick 2 x 4", "Black");
+  sandbox.addScannedPart(blindPoolList.id, "3001", "Brick 2 x 4", "White");
+  check("exact48: blind mode draws both colours from one pool", sandbox.suggExactCoverage({ set_num: "99997-1", num_parts: 4 }, blindPoolList, true), { covered: 2, missing: 2 });
+  delete sandbox.INVENTORIES["99999-1"];
+  delete sandbox.INVENTORIES["99997-1"];
+  // Row upgrade: 99999-1's inventory is nowhere (not in the table,
+  // not loaded), so the background loop fetches it through
+  // import-set and the row upgrades from the estimate to exact
+  // counts once it lands. Drain any loop left over from earlier
+  // tests first — clearing its queue lets it exit after its
+  // current set, at most one delay away.
+  sandbox.suggInvQueue.length = 0;
+  for (const k in sandbox.suggInvTried) delete sandbox.suggInvTried[k];
+  await sleep(2000);
+  delete sandbox.INVENTORIES["99999-1"];
+  sandbox.LS.set("bf:suggest", {});
+  invokeHandler = async (name, opts) => {
+    if (name === "suggest-sets") {
+      return { data: { ok: true, candidates: [
+        { set_num: "99999-1", name: "Fake Set A", year: 2023, num_parts: 50, set_img_url: "https://cdn.rebrickable.com/media/sets/99999-1.jpg", lotsCovered: 2, missingUpper: 48, shared: ["3001|Black", "3747|Dark Grey"] },
+      ], queried: ["3001|Black", "3747|Dark Grey"], partial: false, unmapped: [], partCounts: [{ part: "3001", colour: "Black", sets: 1200 }] }, error: null };
+    }
+    if (name === "import-set") {
+      return { data: { ok: true, set: { set_num: "99999-1", name: "Fake Set A", year: 2023, num_parts: 50, set_img_url: "" }, inventory: { set: "99999-1", lots: 3, pieces: 50, items: [
+        { id: "300126-3001-Black", qty: 3, dim: "2 × 4 studs", colour: "Black", any: false, tier: 1, cat: "Bricks", img: "", name: "Brick 2 x 4" },
+        { id: "374726-3747-Dark_Grey", qty: 5, dim: "", colour: "Dark Grey", any: false, tier: 1, cat: "Sloped Bricks", img: "", name: "Slope 45 2 x 1" },
+        { id: "614126-6141-White", qty: 2, dim: "1 × 1 studs", colour: "White", any: false, tier: 1, cat: "Small pieces", img: "", name: "Tile 1 x 1" },
+      ] } }, error: null };
+    }
+    return { data: null, error: { message: "no handler" } };
+  };
+  sandbox.runOptimizer(piecesList.id, "pieces");
+  await sandbox.findSuggestions(piecesList.id, false);
+  // The background loop waits out any in-flight suggestion fetch
+  // before calling import-set (shared Rebrickable key), so the
+  // inventory can land ~1.5s after the first render.
+  await sleep(2500);
+  const exactRows = sandbox.bulkSuggWrap.children.filter((c) => c.className.includes("sugg-row"));
+  check("exact48: row upgrades to exact counts once the inventory lands", exactRows[0].children[1].children[1].textContent, "Uses 5 pieces from bulk · 2 lots · 50 pieces total · 45 missing");
+
   // --- v3.42 E: blind discovery widens the net ---
   let blindBodies = [];
   invokeHandler = async (name, opts) => {

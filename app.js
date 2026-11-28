@@ -1,4 +1,4 @@
-/* Bulk Finder v3.47 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.48 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -5230,15 +5230,108 @@ function mergeCandidates(into, fresh) {
 // The subtitle under a suggestion row. The exact piece count leads
 // (v3.47, Joseph: "Shares 3 lots" doesn't say how much of the bulk
 // a set actually uses) — "Uses 8 pieces from bulk · 2 lots · 50
-// pieces total · up to 48 missing". Without shared keys there is
-// no piece count to show, so the row falls back to the lots-only
-// text it had before.
-function suggSub(c, pieces) {
-  var missing = (typeof c.missingUpper === 'number') ? c.missingUpper : Math.max(0, c.num_parts - c.lotsCovered);
+// pieces total · up to 48 missing". With the set's inventory in
+// hand (exact, v3.48) both numbers are exact, so no "up to":
+// "Uses 96 pieces from bulk · 5 lots · 110 pieces total ·
+// 14 missing". Without shared keys there is no piece count to
+// show, so the row falls back to the lots-only text it had before.
+function suggSub(c, pieces, exact) {
   var lots = c.lotsCovered + ' lot' + (c.lotsCovered === 1 ? '' : 's');
-  var tail = ' · ' + c.num_parts + ' pieces total · up to ' + missing + ' missing';
-  if (pieces === null || pieces === undefined) return 'Shares ' + lots + tail;
-  return 'Uses ' + pieces + ' piece' + (pieces === 1 ? '' : 's') + ' from bulk · ' + lots + tail;
+  var tail = ' · ' + c.num_parts + ' pieces total';
+  if (exact) {
+    return 'Uses ' + exact.covered + ' piece' + (exact.covered === 1 ? '' : 's') + ' from bulk · ' + lots + tail + ' · ' + exact.missing + ' missing';
+  }
+  var missing = (typeof c.missingUpper === 'number') ? c.missingUpper : Math.max(0, c.num_parts - c.lotsCovered);
+  if (pieces === null || pieces === undefined) return 'Shares ' + lots + tail + ' · up to ' + missing + ' missing';
+  return 'Uses ' + pieces + ' piece' + (pieces === 1 ? '' : 's') + ' from bulk · ' + lots + tail + ' · up to ' + missing + ' missing';
+}
+// Exact coverage for a suggestion row (v3.48): the lots-based
+// "up to N missing" is a guess — each shared lot covers at least
+// one piece of the set, but a lot can cover many (5 shared lots
+// held 96 pieces of a 110-piece set, so the true missing was 14,
+// not "up to 105"). With the set's inventory the missing count is
+// exact, using the same min() match the tracked optimizer uses: a
+// set lot takes min(set qty, bulk qty), drawn from a shared bulk
+// pool per part so a part in two colours can't be counted twice
+// in blind mode. Returns null when the inventory isn't in hand
+// yet, so the row keeps the lots-based estimate until it lands.
+function suggExactCoverage(c, list, blind) {
+  var inv = getInventory(c.set_num);
+  if (!inv || !Array.isArray(inv.items)) return null;
+  var pool = {};
+  (list.parts || []).forEach(function (p) {
+    var k = blind ? p.part : p.part + '|' + p.colour;
+    pool[k] = (pool[k] || 0) + p.qty;
+  });
+  var covered = 0;
+  inv.items.forEach(function (it) {
+    var k = blind ? partNumOf(it) : partNumOf(it) + '|' + it.colour;
+    var bq = pool[k] || 0;
+    if (!bq) return;
+    var take = Math.min(it.qty, bq);
+    covered += take;
+    pool[k] = bq - take;
+  });
+  return { covered: covered, missing: Math.max(0, c.num_parts - covered) };
+}
+// Background inventory fetch for suggestion rows (v3.48). One loop
+// at a time; a set already tried this session is never retried, and
+// the loop stops if the user moved to another bulk list. A set
+// whose inventory lands re-renders the suggestions, upgrading its
+// row from the lots estimate to exact counts.
+var suggInvQueue = [];
+var suggInvRunning = false;
+var suggInvTried = {};
+function suggDelay(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
+function suggEnsureInventories(setNums, listId) {
+  if (!sb) return;
+  (setNums || []).forEach(function (n) {
+    if (!n || getInventory(n) || suggInvTried[n] || suggInvQueue.indexOf(n) !== -1) return;
+    suggInvQueue.push(n);
+  });
+  runSuggInvQueue(listId);
+}
+async function runSuggInvQueue(listId) {
+  if (suggInvRunning) return;
+  suggInvRunning = true;
+  while (suggInvQueue.length) {
+    var setNum = suggInvQueue.shift();
+    if (!setNum || suggInvTried[setNum] || getInventory(setNum)) continue;
+    suggInvTried[setNum] = true;
+    if (!bulkSuggState || bulkSuggState.listId !== listId) break;
+    var inv = null, usedImport = false;
+    try { inv = await fetchSetInventory(setNum); } catch (e) { inv = null; }
+    if (!inv) {
+      // Not in the shared table: fetch it from Rebrickable through
+      // import-set, which also writes the table row for next time.
+      // Never while a suggestion batch is in flight — the two share
+      // one Rebrickable key — so wait it out first.
+      var waits = 0;
+      while (bulkSuggState && bulkSuggState.status === 'loading' && waits < 26) {
+        await suggDelay(1500);
+        waits++;
+        if (!bulkSuggState || bulkSuggState.listId !== listId) break;
+      }
+      if (!bulkSuggState || bulkSuggState.listId !== listId) break;
+      usedImport = true;
+      try {
+        var res = await invokeImportSet({ set_num: setNum }, null);
+        var payload = (res && res.data) || null;
+        if (payload && payload.ok && payload.inventory) {
+          INVENTORIES[setNum] = payload.inventory;
+          inv = payload.inventory;
+        }
+      } catch (e) { inv = null; }
+    }
+    if (inv) {
+      var list = findBulkList(listId);
+      if (list && bulkSuggState && bulkSuggState.listId === listId) renderSuggestionsInto(bulkSuggWrap, list);
+    }
+    // Pause between Rebrickable-touching calls so the shared key
+    // isn't hammered; a table read costs nothing, so it needs none.
+    if (usedImport) await suggDelay(1500);
+  }
+  suggInvRunning = false;
 }
 function bulkPiecesForCandidate(c, list, blind) {
   if (!c || !Array.isArray(c.shared) || !c.shared.length || !list) return null;
@@ -5362,8 +5455,11 @@ async function fetchSuggestBatch(list, batch, runToken) {
  * parts-in-sets answers carry no per-set quantities). The row
  * itself leads with the exact pieces used when the candidate
  * carries shared keys ("Uses N pieces from bulk", v3.47),
- * falling back to "Shares N lots" without them. Changing the
- * sort or turning a page re-renders only; nothing is re-fetched. */
+ * falling back to "Shares N lots" without them — and once the
+ * set's inventory lands (v3.48, fetched in the background for
+ * the rows on screen), both numbers go exact: the missing count
+ * drops its "up to". Changing the sort or turning a page
+ * re-renders only; nothing is re-fetched. */
 function buildSuggSortRow(list) {
   var row = el('div', 'bulk-actions sugg-sort');
   function sortBtn(mode, label) {
@@ -5477,7 +5573,8 @@ function renderSuggestionsInto(wrap, list) {
       var text = el('div', 'set-text');
       text.appendChild(el('div', 'set-name', c.name + (c.year ? ' (' + c.year + ')' : '')));
       var pieces = bulkPiecesForCandidate(c, list, bulkOptBlind);
-      var sub = suggSub(c, pieces);
+      var exact = suggExactCoverage(c, list, bulkOptBlind);
+      var sub = suggSub(c, pieces, exact);
       text.appendChild(el('div', 'set-num', sub));
       row.appendChild(text);
       var add = el('button', 'btn btn-small sugg-add', 'Add to My sets');
@@ -5489,6 +5586,11 @@ function renderSuggestionsInto(wrap, list) {
     if (totalPages > 1) {
       wrap.appendChild(buildSuggPager(list, page, totalPages, ranked.length));
     }
+    // Exact numbers need each set's inventory: fetch any missing
+    // ones for the rows on screen (table first, then import-set one
+    // at a time in the background) — rows upgrade from the lots
+    // estimate to exact counts as inventories land.
+    suggEnsureInventories(ranked.slice(first, first + SUGGEST_SHOW).map(function (c) { return c.set_num; }), list.id);
   }
   if (st.partial && st.remaining.length) {
     var more = el('button', 'btn btn-small', 'Check ' + st.remaining.length + ' more part' + (st.remaining.length === 1 ? '' : 's'));
