@@ -1,4 +1,4 @@
-/* Bulk Finder v3.48 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.49 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -9,7 +9,6 @@
  * logged-in device also listens for changes from other devices
  * (Supabase Realtime) and re-pulls the open sets every 20s, so a tap
  * on one device shows up on the other without a refresh.
- *
  * Tables (in the "bulk finder" Supabase project):
  *   public.user_sets — one row per set a user tracks
  *   public.set_parts — one row per part lot, qty_remaining is the
@@ -21,9 +20,15 @@
  * Rebrickable, converts it with Joseph's category/colour rules,
  * caches it in set_inventories, and returns it.
  * Row Level Security: a user can only touch their own rows.
+ *
+ * The version below is the single source of truth for the build
+ * number: the header comment, the sidebar-footer label (v3.49)
+ * and the harness all read it, so they can't drift apart.
  */
 
 'use strict';
+
+var APP_VERSION = '3.49';
 
 /* ---------- Config ---------- */
 // Supabase project "bulk finder". The publishable key is public by
@@ -4745,6 +4750,18 @@ function renderOptApplyRows() {
   optApplyNote.hidden = true;
   rows.forEach(function (r) {
     var row = el('div', 'opt-apply-row');
+    // Piece photo (v3.49, Joseph: "so I know what I'm adding and
+    // where") — the lot's element image shows the exact part in the
+    // right colour. A lot with no image gets no img element, and a
+    // broken URL hides itself, like the set thumbnails.
+    if (r.lot && r.lot.img) {
+      var thumb = document.createElement('img');
+      thumb.className = 'opt-apply-thumb';
+      thumb.src = r.lot.img;
+      thumb.alt = '';
+      thumb.addEventListener('error', function () { thumb.style.display = 'none'; });
+      row.appendChild(thumb);
+    }
     var text = el('div', 'set-text');
     text.appendChild(el('div', 'set-name', r.name + ' · ' + r.colour));
     text.appendChild(el('div', 'set-num', r.cover + ' of ' + r.need + ' from bulk'));
@@ -6686,6 +6703,9 @@ function bindEvents() {
   $('signupBtn').addEventListener('click', doSignup);
   $('logoutBtn').addEventListener('click', doLogout);
   $('changePwBtn').addEventListener('click', startChangePassword);
+  // App version under Change password in the sidebar footer (v3.49)
+  // — Joseph checks it to confirm the phone is on the latest build.
+  $('appVersion').textContent = 'v' + APP_VERSION;
   $('soundToggleBtn').addEventListener('click', function () { setSoundOn(!soundOn); });
   $('scanBtn').addEventListener('click', openScanPicker);
   // "Displayed" columns control (sidebar footer): - / + buttons and a

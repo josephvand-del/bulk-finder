@@ -2955,7 +2955,8 @@ async function main() {
   for (let i = 0; i < 2; i++) sandbox.addScannedPart(applyList.id, "6141", "Tile 1 x 1", "White");
   sandbox.addScannedPart(applyList.id, "99999", "No Such Part", "Black");
   const applyRows = () => sandbox.optApplyList.children.filter((c) => c.className.includes("opt-apply-row"));
-  const applyRowText = () => applyRows().map((r) => [r.children[0].children[0].textContent, r.children[0].children[1].textContent]);
+  const applyRowText = () => applyRows().map((r) => { const t = r.children.find((c) => c.className.includes("set-text")); return [t.children[0].textContent, t.children[1].textContent]; });
+  const applyAddBtn = (row) => row.children.find((c) => c.className.includes("opt-apply-add"));
   const optRows40 = () => sandbox.bulkOptWrap.children[2].children.filter((c) => c.className.includes("bulk-opt-row"));
   const optRowText40 = (name) => { const r = optRows40().find((x) => optRowTextEl(x).children[0].textContent === name); return r ? optRowTextEl(r).children[1].textContent : null; };
   sandbox.openBulkList(applyList.id);
@@ -2979,6 +2980,13 @@ async function main() {
     ["Brick 2 x 4 · Black", "4 of 4 from bulk"],
     ["Rock 1 x 1 Crystal 5 Point · Trans-Blue", "1 of 2 from bulk"],
   ]);
+  // v3.49: each apply row shows the piece photo, so Joseph knows
+  // what he's adding — the lot's element image, in the right colour.
+  check("photo49: apply rows show the piece photo first", applyRows().map((r) => { const img = r.children.find((c) => c.tagName === "IMG"); return img && img.src; }), ["https://example.test/300126.jpg", "https://example.test/4541538.jpg"]);
+  // v3.49: the sidebar footer shows the app version under Change
+  // password, reading the same constant the header carries.
+  check("version49: footer shows the app version", $("appVersion").textContent, "v" + sandbox.APP_VERSION);
+  check("version49: app version is 3.49", sandbox.APP_VERSION, "3.49");
   // Escape closes it the same way as X: back() first, hidden on popstate.
   const escBacksBefore = hist37.filter((c) => c[0] === "back").length;
   sandbox.document.listeners.keydown[0]({ key: "Escape" });
@@ -2988,7 +2996,7 @@ async function main() {
   check("apply40: optimizer view stays open after Escape", sandbox.optViewId, applyList.id);
   // Reopen and Add the 3001 row: the set is credited 4, the bulk loses 4.
   optRows40().find((r) => optRowTextEl(r).children[0].textContent === "Test Ship (2021)").listeners.click[0]();
-  applyRows()[0].children[1].listeners.click[0]();
+  applyAddBtn(applyRows()[0]).listeners.click[0]();
   check("apply40: set credited 4 of the 3001 lot", JSON.parse(sandbox.localStorage.getItem("bf:counts:10294-1"))["300126-3001-Black"], 0);
   check("apply40: bulk keeps 1 black 2x4", sandbox.findBulkList(applyList.id).parts.find((p) => p.part === "3001").qty, 1);
   check("apply40: covered lot drops off the popup", applyRowText(), [
@@ -2998,7 +3006,7 @@ async function main() {
   check("apply40: optimizer behind it re-ranks", optRowText40("Test Ship (2021)"), "2 of 10 pieces (20%) · 2 lots");
   // Add the crystal row: the bulk crystal is gone, the popup says
   // nothing fits now.
-  applyRows()[0].children[1].listeners.click[0]();
+  applyAddBtn(applyRows()[0]).listeners.click[0]();
   check("apply40: set credited 1 crystal", JSON.parse(sandbox.localStorage.getItem("bf:counts:10294-1"))["4541538-30385-Transparent_Blue"], 1);
   check("apply40: bulk crystal is gone", sandbox.findBulkList(applyList.id).parts.find((p) => p.part === "30385"), undefined);
   check("apply40: popup says nothing fits now", [sandbox.optApplyNote.hidden, sandbox.optApplyNote.textContent], [false, "No pieces from this bulk list fit Test Ship right now."]);
@@ -3027,7 +3035,7 @@ async function main() {
   sandbox.bulkOptBlind = true;
   sandbox.openOptApply(blindList.id, "red-1");
   check("apply40: blind on, blue covers the red need", applyRowText(), [["Brick 2 x 4 · Red", "2 of 2 from bulk"]]);
-  applyRows()[0].children[1].listeners.click[0]();
+  applyAddBtn(applyRows()[0]).listeners.click[0]();
   check("apply40: blind Add credits the red lot", JSON.parse(sandbox.localStorage.getItem("bf:counts:red-1"))["x-3001-Red"], 0);
   check("apply40: blind Add removes the blue pieces", sandbox.findBulkList(blindList.id).parts.length, 0);
   check("apply40: blind Add leaves the popup with nothing fitting", sandbox.optApplyNote.hidden, false);
