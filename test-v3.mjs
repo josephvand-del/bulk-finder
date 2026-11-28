@@ -1938,6 +1938,71 @@ async function main() {
   sandbox.LS.set("bf:deletedBulkLists", prevBulkTombs);
   sandbox.bulkMergedThisSession = {};
   sandbox.user = prevUser;
+
+  // v3.44 — Group like parts: one run per piece type, smallest to
+  // largest inside each run, runs smallest to largest by their
+  // smallest piece.
+  const prevSort44 = sandbox.viewSort;
+  const prevStatus44 = sandbox.statusFilter, prevColour44 = sandbox.colourFilter, prevType44 = sandbox.typeFilter;
+  sandbox.statusFilter = "needed"; sandbox.colourFilter = "all"; sandbox.typeFilter = "all";
+  sandbox.viewSort = "groupAsc";
+  sandbox.setSelected(["8961-1"]);
+  const grouped = sandbox.sortViewList(sandbox.viewList());
+  const gItems = grouped.map((it) => ({ cat: sandbox.displayCat(it), vol: sandbox.lotVolume(it.dim) }));
+  const gRuns = [];
+  gItems.forEach((g) => { if (!gRuns.length || gRuns[gRuns.length - 1].cat !== g.cat) gRuns.push({ cat: g.cat, vols: [] }); gRuns[gRuns.length - 1].vols.push(g.vol); });
+  check("group: more than one type run (the test discriminates)", gRuns.length >= 3, true);
+  check("group: no type reappears after another type", gRuns.length, new Set(gRuns.map((r) => r.cat)).size);
+  check("group: smallest to largest inside each run", gRuns.every((r) => r.vols.every((v, i) => i === 0 || v >= r.vols[i - 1])), true);
+  const gFirsts = gRuns.map((r) => r.vols[0]);
+  check("group: runs smallest to largest", gFirsts.every((v, i) => i === 0 || v >= gFirsts[i - 1]), true);
+
+  // v3.44 — price sort audit: with an empty cache the sort is just
+  // volume order, because nothing in the set view ever loaded prices.
+  // Picking a price sort now fetches them on demand and says so.
+  sandbox.LS.set("bf:prices", {});
+  sandbox.viewPriceState = {};
+  sandbox.user = { id: "u-1", email: "josephvand@gmail.com" };
+  const prevInvoke44 = invokeHandler;
+  let viewPriceCalls = 0;
+  invokeHandler = async (name, opts) => {
+    if (name === "get-prices") {
+      viewPriceCalls++;
+      return { data: { ok: true, prices: (opts.body.items || []).map((it) => ({ key: it.key, usd: it.design_id === "3001" ? 0.05 : 0.1 })) }, error: null };
+    }
+    return { data: null, error: { message: "no handler" } };
+  };
+  sandbox.viewSort = "priceAsc";
+  sandbox.saveCounts("10294-1", { "300126-3001-Black": 6, "4211064-3747-Dark_Stone_Grey": 2, "4541538-30385-Transparent_Blue": 2 });
+  sandbox.setSelected(["10294-1"]);
+  check("price44: picking a price sort with no prices says Loading prices…", $("setView").children.some((n) => n.className === "muted" && n.textContent === "Loading prices…"), true);
+  await sleep(50);
+  check("price44: the view fetched the set's prices", viewPriceCalls, 1);
+  check("price44: prices landed in the cache", Object.keys(sandbox.loadPriceCache()).length > 0, true);
+  const priceFirst = $("setView").children.filter((n) => n.className === "card-grid")[0].children.map((c) => c.dataset.key);
+  check("price44: cheapest first after the fetch", priceFirst[0].indexOf("3001-Black") >= 0, true);
+  check("price44: the note is gone once prices land", $("setView").children.some((n) => n.className === "muted" && n.textContent === "Loading prices…"), false);
+  // Logged out: no fetch, and the note says so.
+  sandbox.viewPriceState = {};
+  sandbox.LS.set("bf:prices", {});
+  sandbox.user = null;
+  sandbox.setSelected(["10294-1"]);
+  check("price44: logged out, the note says to log in", $("setView").children.some((n) => n.className === "muted" && n.textContent.indexOf("Log in first") === 0), true);
+  check("price44: logged out, no fetch attempted", viewPriceCalls, 1);
+  // A bad BrickOwl key: the note names the key instead of a silent $0.
+  sandbox.viewPriceState = {};
+  sandbox.user = { id: "u-1", email: "josephvand@gmail.com" };
+  invokeHandler = async (name) => (name === "get-prices" ? { data: { ok: false, error: "no_api_key" }, error: null } : { data: null, error: { message: "no handler" } });
+  sandbox.setSelected(["10294-1"]);
+  await sleep(50);
+  check("price44: a bad key shows the setup message", $("setView").children.some((n) => n.className === "muted" && n.textContent.indexOf("BRICKOWL_API_KEY") >= 0), true);
+  invokeHandler = prevInvoke44;
+  sandbox.user = prevUser;
+  sandbox.viewPriceState = {};
+  sandbox.LS.set("bf:prices", {});
+  sandbox.viewSort = prevSort44;
+  sandbox.statusFilter = prevStatus44; sandbox.colourFilter = prevColour44; sandbox.typeFilter = prevType44;
+  sandbox.setSelected(["8961-1"]);
   // End to end: a rock monster in a colour with no known minifig is
   // skipped and reported, never exported blindly.
   sandbox.INVENTORIES["10306-1"] = { set: "10306-1 Test Monster", lots: 1, pieces: 1, tiers: { 1: "MOST LIKELY IN BULK", 2: "MEDIUM — WORTH A DIG", 3: "LEAST LIKELY IN BULK" }, items: [{ id: "4578028-64786-Transparent_Yellow", qty: 1, dim: "1 stud", colour: "Trans-Yellow", any: false, tier: 3, cat: "Minifig / Accessories", img: "https://example.test/4578028.jpg", name: "Rock Monster Mini Assemb." }] };

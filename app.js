@@ -1,4 +1,4 @@
-/* Bulk Finder v3.43 — multi-set LEGO bulk-hunt tracker.
+/* Bulk Finder v3.44 — multi-set LEGO bulk-hunt tracker.
  *
  * Single-page app, no framework. Static files on GitHub Pages.
  * Backend: Supabase (Postgres + Auth). The app is LOCAL-FIRST:
@@ -1390,6 +1390,7 @@ async function handleAuthChange(event, session) {
     return;
   }
   user = (session && session.user) ? session.user : null;
+  viewPriceState = {}; // a fresh session retries the on-demand price fetch (v3.44)
   if (!user) {
     // Signed out on this device (or the session expired): drop the
     // live listener and show the logged-out UI.
@@ -2161,7 +2162,7 @@ var viewObserver = null; // IntersectionObserver auto-loading next batches
  * ordered among themselves by the active sort. State is the part key
  * (partNum|colour), so a piece stays bottomed across sets and
  * sessions; it lives in localStorage only, never in the cloud. */
-var VIEW_SORTS = ['volAsc', 'volDesc', 'priceAsc', 'priceDesc'];
+var VIEW_SORTS = ['volAsc', 'volDesc', 'groupAsc', 'priceAsc', 'priceDesc'];
 function loadViewSort() {
   var v = LS.get('bf:viewSort', 'volAsc');
   return VIEW_SORTS.indexOf(v) >= 0 ? v : 'volAsc';
@@ -2194,6 +2195,25 @@ function cardUnitPrice(item) {
 function sortViewList(list) {
   var arr = list.slice();
   var byKey = function (a, b) { var ka = partKeyOf(a), kb = partKeyOf(b); return ka < kb ? -1 : ka > kb ? 1 : 0; };
+  if (viewSort === 'groupAsc') {
+    // Group like parts (v3.44): one run per piece type (the display
+    // category the type filter uses), smallest to largest inside each
+    // run, and the runs themselves smallest to largest by their
+    // smallest piece; equal smallest pieces fall back to the type name.
+    var gmin = {};
+    arr.forEach(function (it) { var c = displayCat(it); var v = cardVolume(it); if (gmin[c] === undefined || v < gmin[c]) gmin[c] = v; });
+    arr.sort(function (a, b) {
+      var ca = displayCat(a), cb = displayCat(b);
+      if (ca !== cb) {
+        var gd = gmin[ca] - gmin[cb];
+        if (gd !== 0) return gd;
+        return ca < cb ? -1 : 1;
+      }
+      var va = cardVolume(a) - cardVolume(b);
+      return va !== 0 ? va : byKey(a, b);
+    });
+    return arr;
+  }
   arr.sort(function (a, b) {
     if (viewSort === 'volDesc') {
       var vd = cardVolume(b) - cardVolume(a);
@@ -2213,6 +2233,41 @@ function sortViewList(list) {
     return va !== 0 ? va : byKey(a, b);
   });
   return arr;
+}
+/* ---------- Price sorts (v3.44) ----------
+ * Audit (Joseph: price sort showed the same order as smallest to
+ * largest): the comparator and the cache keys are correct — get-prices
+ * echoes the requested key and the app stores and looks it up in the
+ * same "design|BrickLink colour" form. The real cause is that nothing
+ * in the set view ever loads prices: only the optimizer's price mode
+ * fills bf:prices, so with an empty cache every piece is unpriced and
+ * the price branch falls through to volume order — exactly the
+ * smallest-to-largest order. When a price sort is picked, fetch the
+ * selected sets' prices on demand (one Edge Function call per set;
+ * the 7-day cache makes repeat views free) and say so while they load
+ * — or say why they didn't, instead of silently showing volume order. */
+var viewPriceState = {}; // setKey -> 'fetching' | 'done' | 'error:<code>'
+function viewPriceNote(list) {
+  var priced = list.filter(function (it) { return cardUnitPrice(it) !== undefined; }).length;
+  if (priced > 0) return null;
+  if (!sb || !user) return 'Log in first — pricing needs an account.';
+  var fetching = false, errCode = null;
+  selectedKeys.forEach(function (k) {
+    var st = viewPriceState[k];
+    if (st === 'fetching') fetching = true;
+    else if (st && st.indexOf('error:') === 0) errCode = st.slice(6);
+    else if (!st) {
+      viewPriceState[k] = 'fetching';
+      fetchSetPrices(k, false, false).then(function (r) {
+        viewPriceState[k] = (r && r.error) ? 'error:' + r.error : 'done';
+        if ((viewSort === 'priceAsc' || viewSort === 'priceDesc') && !bulkViewId) renderSetView();
+      });
+      fetching = true;
+    }
+  });
+  if (fetching) return 'Loading prices…';
+  if (errCode) return priceErrorText(errCode);
+  return null;
 }
 function loadBottom() {
   var v = LS.get('bf:bottom', []);
@@ -2326,6 +2381,10 @@ function renderSetView() {
   });
   viewPending = sortViewList(main);
   bottomPending = sortViewList(bottom);
+  // v3.44 — a price sort with no prices loaded is just volume order;
+  // fetch them on demand and say so (or say why they didn't load).
+  var priceNote = (viewSort === 'priceAsc' || viewSort === 'priceDesc') ? viewPriceNote(main.concat(bottom)) : null;
+  if (priceNote) view.appendChild(el('p', 'muted', priceNote));
   if (!viewPending.length && !bottomPending.length) {
     view.appendChild(el('p', 'muted', 'No pieces match these filters — try widening the type or colour.'));
   } else {
